@@ -126,7 +126,7 @@ export class Store {
       const answer = action === 'answer' ? need(data.answer, 'ответ') : data.answer || 'Разрешаю работу';
       const output = this.firstmate.answer(task.id, answer, action === 'answer' ? 'Ответить' : 'Разрешить работу', action === 'answer' ? 'done' : 'release');
       if (/^skipped:/m.test(output)) throw new Error(output);
-      return { output, note: this.firstmate.note(`Дело: капитан ответил на ${task.id}`) };
+      return { output };
     }
     if (action === 'later') return { output: this.firstmate.captainLater(task.id, need(data.reason, 'причину'), need(data.until, 'дату')) };
     if (action === 'pause') return { task: this.firstmate.hold(task.id, data.reason || 'Приостановлено в Деле') };

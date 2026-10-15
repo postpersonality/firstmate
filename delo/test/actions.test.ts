@@ -76,3 +76,19 @@ test('card actions reach Firstmate through notes, answers and backlog commands',
     assert.equal(existsSync(stubLog), false, 'no agent or Herdr stub was called');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('an answer given in Дело wakes firstmate exactly once and leaves no inbox note', () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-answer-wake-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root) });
+    const fm = store.firstmate.home;
+    const wakes = () => existsSync(join(fm, 'state', '.wake-queue')) ? readFileSync(join(fm, 'state', '.wake-queue'), 'utf8').split('\n').filter(Boolean) : [];
+    run(join(fm, 'bin', 'fm-captain-hold.sh'), ['hold', 'cap-w', '--title', 'Какой путь', '--reason', 'Нужен выбор пути'], fm, 45000, { ...process.env, FM_HOME: fm });
+    const before = wakes().length;
+    assert.equal('note' in store.act('cap-w', 'answer', { answer: 'Первым путём' }), false);
+    const added = wakes().slice(before);
+    assert.equal(added.length, 1, 'one answer appends exactly one wake');
+    assert.match(added[0], /\tcheck\t.*captain answered through delo: cap-w$/);
+    assert.equal(existsSync(join(fm, 'state', 'inbox')) ? readdirSync(join(fm, 'state', 'inbox')).filter(f => f.endsWith('.note')).length : 0, 0, 'no inbox note is created');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -23,7 +23,7 @@
 #   fm-captain-hold.sh hold <task-id> --reason <reason> \
 #     [--title <title>] [--repo <repo>] [--origin <origin-id>] [--until YYYY-MM-DD]
 #   fm-captain-hold.sh answer <task-id> --decision-file <path> [--release]
-#   fm-captain-hold.sh answers [<legacy-origin> | --any-origin] --source <provenance>   (keyed answers on stdin)
+#   fm-captain-hold.sh answers [<legacy-origin> | --any-origin] --source <provenance> [--wake]   (keyed answers on stdin)
 #   fm-captain-hold.sh reconcile-requests --source-id <source-id> --source <provenance>   (task ids on stdin)
 #   fm-captain-hold.sh bind <source-id> [<legacy-origin> | --any-origin]
 #   fm-captain-hold.sh unbind <source-id>
@@ -91,6 +91,11 @@
 # skipped. `--source` is provenance text recorded in the
 # durable decision, never a behavior switch: this command has no per-channel
 # branch and no knowledge of chat, review decks, or any transport.
+# `--wake` is for a caller with no wake path of its own: after the answers are
+# recorded it appends ONE `check` wake naming the source and the closed ids
+# when at least one key closed, and none when every key was skipped. A wake
+# failure never undoes a recorded answer; it is reported and exits nonzero.
+# Callers that already wake firstmate (fm-send.sh, fm-procevent.sh) omit it.
 # Legacy input: an optional positional origin (or a stored concrete-origin
 # binding) makes a key that names no task fall back to the old
 # `<origin>-decision-<key>` identity, so an in-flight pre-collapse channel
@@ -1316,11 +1321,12 @@ sanitize_reconcile_provenance() {
 command_answers() {
   local origin='' source='' row rest key answer label mode id show state hold_kind body digest legacy_digest legacy_key
   local recorded_digest recorded_mode occurrence tmp err closed=0 skipped=0 reason release_flag tab=$'\t'
-  local resolve_rc
+  local resolve_rc wake=0 closed_ids='' wake_rc=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --source) shift; source=${1:-} ;;
       --any-origin) origin=$BINDING_ANY ;;
+      --wake) wake=1 ;;
       --*) usage >&2; exit 2 ;;
       *)
         [ -z "$origin" ] || { usage >&2; exit 2; }
@@ -1425,6 +1431,7 @@ command_answers() {
         esac
         printf 'closed: %s\n' "$id"
         closed=$((closed + 1))
+        closed_ids="$closed_ids $id"
         continue
       fi
     fi
@@ -1445,6 +1452,7 @@ command_answers() {
       [ ! -s "$err" ] || cat "$err" >&2
       printf 'closed: %s\n' "$id"
       closed=$((closed + 1))
+      closed_ids="$closed_ids $id"
     else
       reason=$(tr -d '\n' < "$err" | sed 's/^fm-captain-hold: //')
       printf 'skipped: %s (%s)\n' "$id" "$reason"
@@ -1453,7 +1461,14 @@ command_answers() {
   done
   rm -f -- "$tmp" "$err"
   printf 'answers: closed=%s skipped=%s\n' "$closed" "$skipped"
-  [ "$skipped" -eq 0 ]
+  if [ "$wake" = 1 ] && [ "$closed" -gt 0 ]; then
+    # The key carries the ids because a drain shows one row per kind and key.
+    fm_wake_append check "captain-answers:$(printf '%s' "${closed_ids# }" | tr ' ' ',')" \
+      "check: captain answered through $source:$closed_ids" || wake_rc=$?
+    [ "$wake_rc" -eq 0 ] \
+      || printf 'fm-captain-hold: answers recorded but firstmate was NOT woken (rc=%s)\n' "$wake_rc" >&2
+  fi
+  [ "$skipped" -eq 0 ] && [ "$wake_rc" -eq 0 ]
 }
 
 # --- reconcile: verify latest state, then close with evidence or annotate ----

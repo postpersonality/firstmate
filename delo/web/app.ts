@@ -40,7 +40,7 @@ async function taskAction(g: ViewGoal, action: string) {
   const run = async (body: Record<string, unknown> = {}) => {
     const result = await api(path, body);
     const ready = result.ready && result.ready.can_receive !== true ? ` Firstmate сейчас не принимает заметки (can_receive: ${result.ready.can_receive}, posture: ${result.ready.posture?.state ?? '-'}).` : '';
-    message(result.note && action !== 'answer' && action !== 'release' ? `Заметка для firstmate: ${result.note.outcome === 'replay' ? 'повтор уже отправленного запроса (replay)' : 'отправлена'}, ${result.note.id}.${ready}` : `${actionLabels[action]}: готово.`);
+    message(result.note ? `Заметка для firstmate: ${result.note.outcome === 'replay' ? 'повтор уже отправленного запроса (replay)' : 'отправлена'}, ${result.note.id}.${ready}` : `${actionLabels[action]}: готово.`);
     await reload();
   };
   if (action === 'decline') modal('Отказ', field('reason', 'Причина отказа', '', false, true), async f => run({ reason: f.get('reason') }), 'Отказаться');

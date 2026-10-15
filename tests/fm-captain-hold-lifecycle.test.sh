@@ -1845,6 +1845,42 @@ test_normal_answers_retire_pending_reconcile_requests() {
 }
 
 # The two verification outcomes, and the honesty of the record each writes.
+# `--wake` is the opt-in wake for a caller with no wake path of its own: one
+# check row per invocation that closed something, none without the flag or
+# when every key was skipped.
+test_answers_wake_flag_appends_one_check_wake() {
+  local home id out rows
+  home=$(make_home answers-wake)
+  for id in sample-wake-one sample-wake-two sample-wake-quiet; do
+    tasks_in "$home" add "$id" "Captain call $id" --repo sample >/dev/null
+    run_captain "$home" hold "$id" --reason "waiting for the captain" >/dev/null
+  done
+
+  printf 'sample-wake-quiet\tyes\tYes\n' \
+    | run_captain "$home" answers --source "board fixture" >/dev/null \
+    || fail "an answer without --wake failed"
+  rows=$(cat "$home/state/.wake-queue" 2>/dev/null | wc -l)
+  [ "$rows" -eq 0 ] || fail "answers without --wake appended $rows wake rows"
+
+  printf 'sample-wake-one\tyes\tYes\nsample-wake-two\tgo\tGo\trelease\n' \
+    | run_captain "$home" answers --source "board fixture" --wake >/dev/null \
+    || fail "an answer with --wake failed"
+  rows=$(wc -l < "$home/state/.wake-queue")
+  [ "$rows" -eq 1 ] || fail "answers --wake appended $rows wake rows instead of one"
+  out=$(cat "$home/state/.wake-queue")
+  assert_contains "$out" "check" "the --wake row is not a check wake: $out"
+  assert_contains "$out" "board fixture: sample-wake-one sample-wake-two" \
+    "the --wake row does not name the source and the answered ids: $out"
+
+  set +e
+  printf 'sample-wake-absent\tyes\tYes\n' \
+    | run_captain "$home" answers --source "board fixture" --wake >/dev/null 2>&1
+  set -e
+  rows=$(wc -l < "$home/state/.wake-queue")
+  [ "$rows" -eq 1 ] || fail "an all-skipped answers --wake appended a wake row"
+  pass "answers --wake appends one check wake only when something closed"
+}
+
 test_reconcile_closes_with_evidence_or_keeps_the_call_open() {
   local home show list rc out
   home=$(make_home reconcile-outcomes)
@@ -4654,6 +4690,7 @@ test_secondmate_reconcile_publishes_before_request_retirement
 test_bound_channel_answers_close_at_answer_time
 test_reconcile_never_closes_through_the_keyed_answer_intake
 test_normal_answers_retire_pending_reconcile_requests
+test_answers_wake_flag_appends_one_check_wake
 test_reconcile_closes_with_evidence_or_keeps_the_call_open
 test_reconcile_outcomes_retry_partial_failures_once
 test_unbound_source_closes_no_hold

@@ -81,6 +81,6 @@ export class Firstmate {
   }
   receipts() { return JSON.parse(this.script('fm-inbox.sh', ['receipts', '--all-pending', '--all-handled'])); }
   ready() { return JSON.parse(this.script('fm-inbox.sh', ['ready'])); }
-  answer(id: string, answer: string, label: string, mode: 'done' | 'release') { return this.script('fm-captain-hold.sh', ['answers', '--source', 'delo'], `${id}\t${answer}\t${label}\t${mode}\n`); }
+  answer(id: string, answer: string, label: string, mode: 'done' | 'release') { return this.script('fm-captain-hold.sh', ['answers', '--source', 'delo', '--wake'], `${id}\t${answer}\t${label}\t${mode}\n`); }
   captainLater(id: string, reason: string, until: string) { return this.script('fm-captain-hold.sh', ['hold', id, '--reason', reason, '--until', until]); }
 }
