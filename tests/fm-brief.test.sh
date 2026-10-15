@@ -1249,6 +1249,30 @@ test_base_branch_is_rendered_and_bounded() {
 # (a) An unregistered/default project - no --branch-prefix passed at all - must
 # keep every generated ship mode's branch on the legacy "fm/<task-id>" name, byte
 # for byte, so every existing firstmate installation is unaffected.
+test_scout_read_only_dir_setup_paragraph() {
+  local home brief out status
+  home="$TMP_ROOT/read-only-dir-home"
+  mkdir -p "$home/data"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ro-b1 some-proj --scout --read-only-dir /srv/product >/dev/null 2>&1 \
+    || fail "--scout --read-only-dir should scaffold"
+  brief="$home/data/brief-ro-b1/brief.md"
+  assert_grep 'Read-only folder: /srv/product' "$brief" "the scout brief did not name the read-only folder"
+  assert_grep 'GIT_OPTIONAL_LOCKS=0' "$brief" "the scout brief did not require lock-free read-only git"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ro-b2 some-proj --scout >/dev/null 2>&1 \
+    || fail "a plain scout brief should scaffold"
+  assert_no_grep 'Read-only folder:' "$home/data/brief-ro-b2/brief.md" \
+    "a scout brief without --read-only-dir gained the read-only paragraph"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ro-b3 some-proj --mode direct-PR --read-only-dir /srv/product 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "--read-only-dir on a ship brief should refuse"
+  assert_contains "$out" "applies only to --scout briefs" "the ship refusal did not explain why"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ro-b4 some-proj --scout --read-only-dir srv/product 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a relative --read-only-dir should refuse"
+  assert_contains "$out" "takes an absolute path" "the relative-path refusal did not explain why"
+  pass "fm-brief.sh: --read-only-dir adds the scout Setup paragraph only when given, and only on scouts"
+}
+
 test_ship_branch_prefix_defaults_to_legacy_fm() {
   local home id mode brief
   home="$TMP_ROOT/branch-prefix-default-home"
@@ -1495,6 +1519,7 @@ test_workers_wait_without_spending_turns
 test_wait_no_turns_absent_keeps_the_previous_brief
 test_home_brief_include_is_appended_last
 test_base_branch_is_rendered_and_bounded
+test_scout_read_only_dir_setup_paragraph
 test_ship_branch_prefix_defaults_to_legacy_fm
 test_ship_branch_prefix_override_is_consistent_across_modes
 test_ship_branch_prefix_empty_override_yields_bare_task_id

@@ -357,6 +357,10 @@
       "audience": "maintainer-architecture"
     },
     {
+      "path": "docs/duty.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": "docs/extension-bindings.md",
       "audience": "maintainer-architecture"
     },

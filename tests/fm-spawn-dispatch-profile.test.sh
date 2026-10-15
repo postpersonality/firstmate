@@ -1607,6 +1607,67 @@ test_claude_long_launch_is_delivered_intact() {
   pass "fm-spawn: a Claude launch longer than 1024 bytes is delivered intact through the staging path"
 }
 
+# --read-only-dir lets a scout read one folder outside its own copy while the
+# claude settings forbid every write there: the Edit permission rule covers the
+# file tools and the sandbox denyWrite covers Bash, git included.
+test_claude_scout_read_only_dir_adds_the_deny_rules() {
+  local rec id out status settings ro
+  id=profile-claude-readonly-z40
+  rec=$(make_spawn_case profile-claude-readonly claude "$id")
+  read_case_record "$rec"
+  mkdir -p "$CASE_DIR/product"
+  ro=$(cd -P "$CASE_DIR/product" && pwd -P)
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout \
+    --read-only-dir "$CASE_DIR/product")
+  status=$?
+  expect_code 0 "$status" "claude scout spawn with --read-only-dir should succeed"$'\n'"$out"
+  settings=$(claude_settings_json_arg "$(cat "$LAUNCH_LOG")") || fail "launch carries no --settings"
+  assert_equals "Edit(/$ro/**)" "$(jq -r '.permissions.deny | join(",")' <<<"$settings")" \
+    "the settings must deny Edit under the read-only folder"
+  assert_equals "true true false /$ro" \
+    "$(jq -r '[.sandbox.enabled, .sandbox.failIfUnavailable, .sandbox.allowUnsandboxedCommands, (.sandbox.filesystem.denyWrite | join(","))] | join(" ")' <<<"$settings")" \
+    "the settings must enable a mandatory sandbox that denies writes to the read-only folder"
+  assert_grep "readonly_dir=$ro" "$HOME_DIR/state/$id.meta" "meta must record the resolved read-only folder"
+
+  id=profile-claude-readonly-off-z41
+  fm_test_spawn_brief "$HOME_DIR" "$id"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout)
+  status=$?
+  expect_code 0 "$status" "claude scout spawn without --read-only-dir should succeed"$'\n'"$out"
+  settings=$(claude_settings_json_arg "$(cat "$LAUNCH_LOG")") || fail "launch carries no --settings"
+  assert_equals "null null" "$(jq -c '[.permissions, .sandbox] | map(tostring) | join(" ")' -r <<<"$settings")" \
+    "a scout without --read-only-dir must not gain permission or sandbox settings"
+  assert_no_grep "readonly_dir=" "$HOME_DIR/state/$id.meta" "meta must not record a read-only folder without the flag"
+  pass "a claude scout with --read-only-dir gets Edit-deny and sandbox denyWrite rules, and one without it gets neither"
+}
+
+test_read_only_dir_refusals() {
+  local rec id out status n=0 args argv
+  rec=$(make_spawn_case profile-readonly-refusals claude)
+  read_case_record "$rec"
+  mkdir -p "$CASE_DIR/product" "$CASE_DIR/br[ack" "$WT_DIR/sub"
+  while IFS='|' read -r args want; do
+    n=$((n + 1))
+    id="profile-readonly-refusal-z5$n"
+    fm_test_spawn_brief "$HOME_DIR" "$id"
+    eval "argv=($args)"
+    out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "${argv[@]}" 2>&1)
+    status=$?
+    [ "$status" -ne 0 ] || fail "spawn with '$args' should refuse"$'\n'"$out"
+    assert_contains "$out" "$want" "refusal for '$args' should name its reason"
+    [ ! -s "$LAUNCH_LOG" ] || fail "refused spawn with '$args' still launched an agent"
+  done <<EOF
+--scout --read-only-dir relative/product|takes an absolute path
+--scout --read-only-dir '$CASE_DIR/missing'|must name an existing directory
+--scout --read-only-dir '$CASE_DIR/br[ack'|character
+--scout --read-only-dir '$WT_DIR/sub'|inside this task's own copy
+--mode no-mistakes --yolo off --read-only-dir '$CASE_DIR/product'|applies only to --scout
+--scout --harness codex --read-only-dir '$CASE_DIR/product'|claude
+EOF
+  pass "--read-only-dir refuses a relative, missing, glob-bearing or task-internal path, a ship spawn and a non-claude harness"
+}
+
 test_claude_crewmate_launch_carries_the_attribution_policy() {
   local rec id out status launch
   id=profile-claude-attribution-z22
@@ -2257,4 +2318,6 @@ test_keep_ai_trailers_reaches_secondmate_crew_launches
 test_claude_secondmate_launch_carries_the_attribution_policy
 test_active_dispatch_profile_does_not_block_secondmate_launch
 
+test_claude_scout_read_only_dir_adds_the_deny_rules
+test_read_only_dir_refusals
 echo "# all fm-spawn-dispatch-profile tests passed"

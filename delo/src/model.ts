@@ -8,14 +8,14 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Нужна дата ГГГ�
 export const goalInput = z.object({
   title: line.min(1), kind: z.enum(['ship', 'scout']).default('ship'), repo: line.default(''), body: text.default(''),
   blockedBy: z.union([id, z.literal('')]).default(''), holdUntil: z.union([day, z.literal('')]).default(''), personal: z.boolean().default(false),
-  caseId: z.union([id, z.literal('')]).default(''),
+  caseId: z.union([id, z.literal('')]).default(''), folder: line.default(''),
 });
 // A дело is a backlog row of kind program whose body is the managed brief after its `Источник:` lines.
 export const caseInput = z.object({
   title: line.min(1), why: text.default(''), doneWhen: text.default(''), context: text.default(''), constraints: text.default(''), sources: text.default(''),
 });
 export const closeCaseInput = z.object({ confirmed: z.array(id).default([]) });
-export const goalPatch = z.object({ title: line.min(1).optional(), body: text.optional(), personal: z.boolean().optional(), state: state.optional() });
+export const goalPatch = z.object({ title: line.min(1).optional(), body: text.optional(), personal: z.boolean().optional(), folder: line.optional(), state: state.optional() });
 export const actionInput = z.object({ reason: line.optional(), answer: line.refine(v => !v.includes('\t'), 'Без табуляции').optional(), until: day.optional() });
 export const personalLine = 'Личное';
 
@@ -39,5 +39,5 @@ export function phase(task: { state: string; hold_kind?: string }): Phase {
 // A card is one Firstmate row; links are the row's own pr/report/doc links.
 export type Goal = {
   id: string; title: string; state: z.infer<typeof state>; body: string; kind?: string; repo?: string; personal: boolean; actions: Action[];
-  why: string; doneWhen: string; context: string; constraints: string[]; holdKind?: string; inFlight?: boolean; links: string[]; report: boolean;
+  why: string; doneWhen: string; context: string; constraints: string[]; holdKind?: string; inFlight?: boolean; links: string[]; report: boolean; folder: string;
 };

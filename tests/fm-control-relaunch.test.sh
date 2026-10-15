@@ -1147,6 +1147,43 @@ test_spawn_relaunch_of_promoted_scout_uses_the_recorded_branch() {
   pass "fm-spawn --relaunch: a promoted scout with a recorded custom branch relaunches on it instead of being refused"
 }
 
+# A relaunch rebuilds the claude settings from the task record, so a scout
+# spawned with --read-only-dir keeps its write denial across replacements, and
+# one whose recorded folder no longer passes the checks refuses to relaunch.
+test_spawn_relaunch_reapplies_the_recorded_read_only_dir() {
+  local dir id=rl-readonly home out ro
+  dir=$(new_case readonly "$id")
+  home="$dir/home"
+  add_ship_task "$dir" "$id" claude
+  mkdir -p "$dir/product"
+  ro=$(cd -P "$dir/product" && pwd -P)
+  sed -i '/^kind=/d; /^mode=/d; /^yolo=/d' "$home/state/$id.meta"
+  printf '%s\n' kind=scout "readonly_dir=$ro" >> "$home/state/$id.meta"
+  printf 'zsh' > "$dir/fake/command"
+  out=$(run_spawn "$dir" "$id" --relaunch) || fail "read-only scout relaunch should succeed: $out"
+  assert_grep "\"permissions\":{\"deny\":[\"Edit(/$ro/**)\"]}" "$dir/fake/literal" \
+    "the replacement launch must deny Edit under the recorded read-only folder"
+  assert_grep "\"denyWrite\":[\"/$ro\"]" "$dir/fake/literal" \
+    "the replacement launch must deny sandbox writes to the recorded read-only folder"
+  [ "$(meta_field "$dir" "$id" readonly_dir)" = "$ro" ] \
+    || fail "the recorded read-only folder must survive the relaunch"
+
+  out=$(run_spawn "$dir" "$id" --relaunch --read-only-dir "$ro") \
+    && fail "--relaunch must refuse an explicit --read-only-dir: $out"
+  assert_contains "$out" "reuses the task's recorded read-only folder" "the override refusal should say why"
+
+  printf 'zsh' > "$dir/fake/command"
+  out=$(run_spawn "$dir" "$id" --relaunch --harness codex) \
+    && fail "a read-only scout must not relaunch on a non-claude harness: $out"
+  assert_contains "$out" "has no verified equivalent" "the harness refusal should say why"
+
+  rmdir "$dir/product"
+  out=$(run_spawn "$dir" "$id" --relaunch) \
+    && fail "a relaunch whose recorded read-only folder is gone must refuse: $out"
+  assert_contains "$out" "no longer passes the --read-only-dir checks" "the stale-folder refusal should say why"
+  pass "fm-spawn --relaunch: a scout's recorded read-only folder is re-checked and re-applied, never dropped"
+}
+
 test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
   local dir home id brief launch out mode rule
   for mode in no-mistakes direct-PR local-only; do
@@ -2519,6 +2556,7 @@ test_explicit_secondmate_harness_ignores_configured_profile_axes
 test_ship_relaunch_ignores_the_crew_harness_config
 test_spawn_relaunch_without_a_harness_reuses_the_recorded_one
 test_spawn_relaunch_of_promoted_scout_uses_the_recorded_branch
+test_spawn_relaunch_reapplies_the_recorded_read_only_dir
 test_promoted_scout_relaunch_receives_the_current_delivery_contract
 test_prefixed_prior_harness_wiring_is_still_retired
 test_muse_session_binding_is_retired_on_a_harness_switch

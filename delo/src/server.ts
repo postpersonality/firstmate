@@ -38,6 +38,7 @@ export function router(store: Store) {
       if (req.method === 'POST' && url.pathname === '/api/goals') return send(store.create(await req.json()), 201);
       if (req.method === 'POST' && url.pathname === '/api/cases') return send(store.createCase(await req.json()), 201);
       if (req.method === 'GET' && url.pathname === '/api/cases') return send(store.closedCases());
+      if (req.method === 'GET' && url.pathname === '/api/folders') return send(store.folders());
       const report = /^\/api\/reports\/([^/]+)$/.exec(url.pathname);
       if (req.method === 'GET' && report) { let taskId = ''; try { taskId = decodeURIComponent(report[1]); } catch { /* A malformed id is just not found. */ } return send(store.report(taskId)); }
       const caseRoute = /^\/api\/cases\/([^/]+)(?:\/(close|reopen|continue))?$/.exec(url.pathname);

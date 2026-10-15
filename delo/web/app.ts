@@ -33,11 +33,15 @@ function modal(title: string, body: string, action: (form: FormData) => Promise<
 }
 const personalLine = 'Личное';
 const personalBox = (on = false) => `<label class="checkbox"><input type="checkbox" name="personal" ${on ? 'checked' : ''}> Личное</label>`;
-function newGoal() {
+// The folder is the body's `Папка:` line; suggestions are the folders other backlog tasks name.
+const folderLine = 'Папка: ';
+const folderField = (folders: string[], value = '') => `<label>Папка (только чтение)<input name="folder" value="${esc(value)}" list="folder-list" maxlength="500" placeholder="абсолютный путь или ~/…"><datalist id="folder-list">${folders.map(f => `<option value="${esc(f)}">`).join('')}</datalist></label>`;
+async function newGoal() {
+  const folders = await api<string[]>('/api/folders');
   const repos = view?.repos ?? [];
   const cases = view?.cases ?? [];
-  modal('Новая задача', `${field('title', 'Название', '', false, true)}${personalBox()}<label>Дело<select name="caseId"><option value="">Без дела</option>${cases.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select></label><label>Вид<select name="kind"><option value="ship">ship</option><option value="scout">scout</option></select></label><label>Проект<input name="repo" list="repo-list" maxlength="500"><datalist id="repo-list">${repos.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>${field('body', 'Описание', '', true)}${field('blockedBy', 'После задачи (id)')}<label>Отложить до<input type="date" name="holdUntil"></label>`, async f => {
-    const g = await api<Goal>('/api/goals', { title: f.get('title'), kind: f.get('kind'), repo: f.get('repo'), body: f.get('body'), blockedBy: f.get('blockedBy'), holdUntil: f.get('holdUntil'), personal: f.has('personal'), caseId: f.get('caseId') });
+  modal('Новая задача', `${field('title', 'Название', '', false, true)}${personalBox()}<label>Дело<select name="caseId"><option value="">Без дела</option>${cases.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select></label><label>Вид<select name="kind"><option value="ship">ship</option><option value="scout">scout</option></select></label><label>Проект<input name="repo" list="repo-list" maxlength="500"><datalist id="repo-list">${repos.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>${folderField(folders)}${field('body', 'Описание', '', true)}${field('blockedBy', 'После задачи (id)')}<label>Отложить до<input type="date" name="holdUntil"></label>`, async f => {
+    const g = await api<Goal>('/api/goals', { title: f.get('title'), kind: f.get('kind'), repo: f.get('repo'), body: f.get('body'), blockedBy: f.get('blockedBy'), holdUntil: f.get('holdUntil'), personal: f.has('personal'), caseId: f.get('caseId'), folder: f.get('folder') });
     location.hash = g.id; await reload();
   }, 'Завести задачу');
 }
@@ -129,7 +133,10 @@ async function copyPath() {
 async function goalAction(action: string) {
   const g = current; if (!g) return;
   const base = `/api/goals/${encodeURIComponent(g.id)}`;
-  if (action === 'edit') modal('Править дело', `${field('title', 'Название', g.title, false, true)}${field('body', 'Описание', g.body.split('\n').filter(l => l !== personalLine).join('\n'), true)}${personalBox(g.personal)}`, async f => { await api(base, { title: f.get('title'), body: f.get('body'), personal: f.has('personal') }, 'PATCH'); await reload(); });
+  if (action !== 'edit') return;
+  // A дело's brief has no folder: only its tasks are duties.
+  const folder = g.kind === 'program' ? '' : folderField(await api<string[]>('/api/folders'), g.folder);
+  modal('Править дело', `${field('title', 'Название', g.title, false, true)}${field('body', 'Описание', g.body.split('\n').filter(l => l !== personalLine && !(folder && l.startsWith(folderLine))).join('\n'), true)}${folder}${personalBox(g.personal)}`, async f => { await api(base, { title: f.get('title'), body: f.get('body'), personal: f.has('personal'), folder: f.get('folder') ?? undefined }, 'PATCH'); await reload(); });
 }
 
 async function caseAction(c: ViewCase, action: string) {
@@ -160,7 +167,7 @@ async function navigate() {
 async function reload() {
   view = await api('/api/overview'); await navigate();
 }
-$('new-goal').onclick = newGoal;
+$('new-goal').onclick = () => { newGoal().catch(e => message(e.message, true)); };
 $('new-case').onclick = newCase;
 $('dialog-close').onclick = () => ($('dialog') as HTMLDialogElement).close();
 $('dialog-form').onsubmit = async event => { event.preventDefault(); $('dialog-submit').setAttribute('disabled', ''); try { await submitDialog(new FormData($('dialog-form') as HTMLFormElement)); ($('dialog') as HTMLDialogElement).close(); } catch (e: any) { $('dialog-error').textContent = e.message; } finally { $('dialog-submit').removeAttribute('disabled'); } };
@@ -169,7 +176,7 @@ $('main').onclick = async event => {
   if (taskButton && current) { taskButton.disabled = true; try { await taskAction(current, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } finally { taskButton.disabled = false; } return; }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
   if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, input, select, textarea, label')) go.querySelector('a')?.click(); return; }
-  try { if (button.dataset.action === 'new') return newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }
+  try { if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }
     if (button.dataset.action === 'pin') { button.disabled = true; view = await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); renderOverview(); return; } if (button.dataset.action!.endsWith('-case') && current) return await caseAction(current as ViewCase, button.dataset.action!); await goalAction(button.dataset.action!); }
   catch (e: any) { message(e.message, true); } finally { button.disabled = false; }
 };

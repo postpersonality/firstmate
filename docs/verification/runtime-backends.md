@@ -529,6 +529,32 @@ ok - unseeded path without --approve still prompts on Trust project folder?
 
 Portable launch-command coverage lives in `tests/fm-spawn-dispatch-profile.test.sh` (`test_pi_seeded_secondmate_preapproves_project_trust`, `test_pi_worker_launch_omits_seeded_home_approve`, `test_pi_approve_probe_omits_unsupported_flag`).
 
+## Claude read-only scout folder
+
+[`fm-spawn.sh --help`](../../bin/fm-spawn.sh) owns the `--read-only-dir` contract: a claude scout's `--settings` gain a `permissions.deny` `Edit(//<path>/**)` rule and a mandatory sandbox whose `filesystem.denyWrite` names the folder.
+`tests/fm-spawn-read-only-dir-live-e2e.test.sh` builds that launch through the real `bin/fm-spawn.sh` in a fake pane, runs the real `claude` headless with the launch's flags and settings in the task copy, and asks it to touch, Write, Edit, branch, and commit inside a temporary one-commit git repository named as the read-only folder.
+It requires all five attempts in the transcript and an unchanged folder listing (modes, sizes, times), HEAD, branch list, and porcelain status.
+
+Verified 2026-10-15 on Claude Code 2.1.300 (Linux, bubblewrap sandbox), with the lab path shortened to `<lab>`:
+
+```sh
+FM_READ_ONLY_DIR_LIVE_E2E=1 bash tests/fm-spawn-read-only-dir-live-e2e.test.sh
+```
+
+```
+# Exit code 1 touch: cannot touch '<lab>/product/touched.txt': Read-only file system
+# <tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>
+# 1 original 2
+# <tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>
+# Exit code 128 fatal: cannot lock ref 'refs/heads/t': Unable to create '<lab>/product/.git/refs/heads/t.lock': Read
+# Exit code 128 fatal: Unable to create '<lab>/product/.git/index.lock': Read-only file system
+ok - claude 2.1.300 (Claude Code): a --read-only-dir scout's touch, Write, Edit, git branch and git commit all leave the folder unchanged
+```
+
+The `Edit` deny rule also refused the Write tool, so the settings carry no separate Write rule.
+The sandbox refused the Bash writes, git included.
+Portable coverage of the produced settings, the refusals, and the relaunch carry-over lives in `tests/fm-spawn-dispatch-profile.test.sh` and `tests/fm-control-relaunch.test.sh`.
+
 ## Launch-prompt backstop signatures
 
 `bin/fm-busy-lib.sh`'s launch-prompt backstop (`fm_busy_launch_prompt_parked`) reclassifies a launch whose busy record is still pinned at the fm-spawn seed as `unknown launch-prompt`, rather than `busy fm-spawn`, when the captured pane matches that harness's own recognized trust, sign-in, or first-run dialog.

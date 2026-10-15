@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, phase, id } from './model.ts';
 import type { Goal, Action } from './model.ts';
@@ -46,9 +47,29 @@ export function titleSources(value: string) {
   return { title: cleaned || 'Новое дело', sources: [...refs].map(ref => `Источник: ${ref}`) };
 }
 
+// A duty's read-only folder is one `Папка:` line of the body, which firstmate reads when it starts the task.
+const folderLine = 'Папка: ';
+export const folderOf = (body: string) => body.split('\n').find(l => l.startsWith(folderLine))?.slice(folderLine.length).trim() ?? '';
+export function checkFolder(value: string) {
+  const typed = value.trim();
+  if (!typed) return '';
+  const path = typed === '~' || typed.startsWith('~/') ? join(homedir(), typed.slice(1)) : typed;
+  if (!isAbsolute(path)) throw new Error(`Папка: нужен абсолютный путь или ~/…, а не «${typed}»`);
+  let directory = false; try { directory = statSync(path).isDirectory(); } catch { /* A missing path is refused below. */ }
+  if (!directory) throw new Error(`Папка: нет такой папки ${path}`);
+  return resolve(path);
+}
+
 // The body exactly as typed, with source lines first and the personal marker as its own last line.
-export function composeBody(body: string, sources: string[], personal: boolean) {
-  const own = body.split('\n').filter(l => l !== personalLine).join('\n');
+// A changed folder line goes right after the leading reference lines; an unchanged one stays put, so a rename keeps the body byte-for-byte.
+export function composeBody(body: string, sources: string[], personal: boolean, folder = folderOf(body)) {
+  let lines = body ? body.split('\n').filter(l => l !== personalLine) : [];
+  if (folderOf(lines.join('\n')) !== folder) {
+    lines = lines.filter(l => !l.startsWith(folderLine));
+    const at = lines.findIndex(l => !/^(?:Дело|Источник): /.test(l));
+    if (folder) lines.splice(at < 0 ? lines.length : at, 0, `${folderLine}${folder}`);
+  }
+  const own = lines.join('\n');
   return [...sources.filter(l => !own.includes(l)), own, personal ? personalLine : ''].filter(Boolean).join('\n');
 }
 const sourceLine = 'Источник: ';
@@ -71,7 +92,7 @@ export class Store {
     const data = goalInput.parse(input);
     const { title, sources } = titleSources(data.title);
     if (data.caseId) { const c = this.firstmate.show(data.caseId); if (c.kind !== 'program' || c.state === 'done') throw new Error('Такого открытого дела нет'); }
-    const body = [data.caseId ? `Дело: ${data.caseId}` : '', composeBody(data.body, sources, data.personal)].filter(Boolean).join('\n');
+    const body = [data.caseId ? `Дело: ${data.caseId}` : '', composeBody(data.body, sources, data.personal, checkFolder(data.folder))].filter(Boolean).join('\n');
     const task = this.firstmate.add(undefined, title, body, { kind: data.kind, repo: data.repo, blockedBy: data.blockedBy });
     if (data.holdUntil) this.firstmate.hold(task.id, `Отложено до ${data.holdUntil}`, 'parked', data.holdUntil);
     return this.get(task.id);
@@ -140,7 +161,7 @@ export class Store {
       holdKind: field(task.hold_kind), inFlight: task.state === 'in_flight',
       why: managed ? section(body, 'Зачем') : '', doneWhen: managed ? section(body, 'Критерий готовности') : '', context: managed ? section(body, 'Контекст') : body,
       constraints: managed ? section(body, 'Ограничения').split('\n').filter(s => s.startsWith('- ')).map(s => s.slice(2)) : [],
-      links: nativeLinks(task), report: hasReport(task),
+      links: nativeLinks(task), report: hasReport(task), folder: folderOf(body),
     };
   }
 
@@ -151,12 +172,12 @@ export class Store {
   }
 
   update(goalId: string, input: unknown): Goal {
-    const { title: newTitle, body, personal, state: nextState } = goalPatch.parse(input);
-    if (newTitle !== undefined || body !== undefined || personal !== undefined) {
+    const { title: newTitle, body, personal, folder, state: nextState } = goalPatch.parse(input);
+    if (newTitle !== undefined || body !== undefined || personal !== undefined || folder !== undefined) {
       const g = this.get(goalId);
       if (g.state === 'done') throw new Error('Бриф закрытой цели заморожен');
       const { title, sources } = newTitle === undefined ? { title: g.title, sources: [] } : titleSources(newTitle);
-      const next = composeBody(body ?? g.body, sources, personal ?? g.personal);
+      const next = composeBody(body ?? g.body, sources, personal ?? g.personal, folder === undefined ? g.folder : checkFolder(folder));
       this.firstmate.update(goalId, { title, ...(next !== g.body ? { body: next, archiveBody: true } : {}) });
     }
     if (nextState === undefined) return this.get(goalId);
@@ -226,6 +247,9 @@ export class Store {
     const path = join(this.firstmate.home, reportPath(taskId));
     try { return { path, title: task.title, text: readFileSync(path, 'utf8') }; } catch { throw missing(); }
   }
+
+  // Suggestions for the folder field: every folder an open backlog task names.
+  folders() { return [...new Set(this.list().map(g => g.folder).filter(Boolean))].sort(); }
 
   overview() {
     return overview(this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh'), this.firstmate.archive());

@@ -15,10 +15,16 @@
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
 # Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--branch-prefix <prefix>] [--base-branch <branch>] [--forge <none|gerrit> [--shape squash]] [--herdr-lab]
-#        fm-brief.sh <task-id> <repo-name> --scout [--base-branch <branch>] [--herdr-lab]
+#        fm-brief.sh <task-id> <repo-name> --scout [--base-branch <branch>] [--read-only-dir <absolute-path>] [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
+#   --read-only-dir <absolute-path> adds a Setup paragraph telling the scout to
+#   read that folder by absolute path, read its CLAUDE.md/AGENTS.md and nested
+#   repositories' AGENTS.md first as context, ignore their writing rules, never
+#   write there, and run git there only read-only with GIT_OPTIONAL_LOCKS=0. It
+#   is refused on ship and secondmate briefs; bin/fm-spawn.sh --read-only-dir
+#   owns the enforcement and the path checks.
 #   It offers the Lavish review loop only when `fm-bootstrap.sh lavish-compatible`
 #   confirms the legacy board-compatibility floor; otherwise it asks for a text report.
 #   --secondmate writes a persistent secondmate charter. The project list
@@ -197,6 +203,8 @@ BRANCH_PREFIX=fm/
 BRANCH_PREFIX_SET=0
 BASE_BRANCH=
 BASE_BRANCH_SET=0
+READ_ONLY_DIR=
+READ_ONLY_DIR_SET=0
 FORGE=none
 FORGE_SET=0
 SHAPE=
@@ -212,6 +220,7 @@ for a in "$@"; do
       mode) MODE=$a; MODE_SET=1 ;;
       branch-prefix) BRANCH_PREFIX=$a; BRANCH_PREFIX_SET=1 ;;
       base-branch) BASE_BRANCH=$a; BASE_BRANCH_SET=1 ;;
+      read-only-dir) READ_ONLY_DIR=$a; READ_ONLY_DIR_SET=1 ;;
       forge) FORGE=$a; FORGE_SET=1 ;;
       shape) SHAPE=$a; SHAPE_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
@@ -230,6 +239,8 @@ for a in "$@"; do
     --branch-prefix=*) BRANCH_PREFIX=${a#--branch-prefix=}; BRANCH_PREFIX_SET=1 ;;
     --base-branch) want_value="base-branch" ;;
     --base-branch=*) BASE_BRANCH=${a#--base-branch=}; BASE_BRANCH_SET=1 ;;
+    --read-only-dir) want_value="read-only-dir" ;;
+    --read-only-dir=*) READ_ONLY_DIR=${a#--read-only-dir=}; READ_ONLY_DIR_SET=1 ;;
     --forge) want_value=forge ;;
     --forge=*) FORGE=${a#--forge=}; FORGE_SET=1 ;;
     --shape) want_value=shape ;;
@@ -299,6 +310,13 @@ if [ "$BASE_BRANCH_SET" -eq 1 ]; then
     exit 1
   fi
   fm_base_branch_valid "$BASE_BRANCH" "$MODE" "$FORGE" "fm-brief.sh --base-branch" || exit 1
+fi
+if [ "$READ_ONLY_DIR_SET" -eq 1 ]; then
+  [ "$KIND" = scout ] || { echo "error: --read-only-dir applies only to --scout briefs" >&2; exit 1; }
+  case "$READ_ONLY_DIR" in
+    /*) ;;
+    *) echo "error: --read-only-dir takes an absolute path (got '$READ_ONLY_DIR')" >&2; exit 1 ;;
+  esac
 fi
 ID=${POS[0]}
 BRANCH="$BRANCH_PREFIX$ID"
@@ -593,6 +611,16 @@ else
   SETUP_BASE="You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch."
 fi
 
+READ_ONLY_SETUP=
+if [ -n "$READ_ONLY_DIR" ]; then
+  READ_ONLY_SETUP="
+Read-only folder: $READ_ONLY_DIR
+Read this folder by its absolute path; it is not your worktree, and you must never write in it.
+First read its \`CLAUDE.md\` or \`AGENTS.md\` and the \`AGENTS.md\` of each git repository nested in it, as context for the subject.
+Their rules about writing, such as saving notes under \`./drafts/\`, do not apply to this task.
+Run git there only with read-only commands and with \`GIT_OPTIONAL_LOCKS=0\` set, for example \`GIT_OPTIONAL_LOCKS=0 git -C <repo> log\`; never run \`fetch\`, \`pull\`, \`checkout\`, \`switch\`, \`stash\`, or \`commit\` there."
+fi
+
 if [ "$KIND" = scout ]; then
 if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
   LAVISH_LINE='If your deliverable is a visual artifact the captain will review and iterate on, use the lavish-axi rule: arm your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled <source-id> <sequence> to conclude and retire your board.'
@@ -610,7 +638,7 @@ $HERDR_SECTION
 $SETUP_BASE
 This is a SCOUT task: the deliverable is a written report, not a PR.
 The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
-The report is the only thing that survives, so anything worth keeping must be in it.
+The report is the only thing that survives, so anything worth keeping must be in it.$READ_ONLY_SETUP
 
 # Rules
 1. Never push to any remote and never open a PR.
