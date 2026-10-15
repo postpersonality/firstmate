@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f4f1e9">
+  <title>Дело — что происходит</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%233e5137'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-size='46' fill='%23f4f1e9'%3EД%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#"><span class="brand-mark">Д</span><span>Дело<small>Задачи Firstmate</small></span></a>
+    <button id="new-goal" class="primary">Завести дело</button>
+  </header>
+  <div class="layout">
+    <main id="main"><p class="muted">Читаю задачи Firstmate…</p></main>
+  </div>
+  <dialog id="dialog"><form id="dialog-form"><div class="dialog-heading"><h2 id="dialog-title"></h2><button id="dialog-close" type="button" class="quiet" aria-label="Закрыть">Закрыть</button></div><div id="dialog-body"></div><p id="dialog-error" role="alert"></p><footer><button id="dialog-submit" type="submit" class="primary">Сохранить</button></footer></form></dialog>
+  <div id="message" class="message" role="status" hidden></div>
+</body>
+</html>

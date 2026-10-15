@@ -1,0 +1,8 @@
+node_modules/
+web/app.js
+.data/
+coverage/
+*.log
+.env
+.env.*
+!.env.example

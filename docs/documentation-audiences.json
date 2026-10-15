@@ -289,6 +289,30 @@
       "audience": "public-product"
     },
     {
+      "path": "delo/README.md",
+      "audience": "public-product"
+    },
+    {
+      "path": "delo/docs/archive/2-Дело-концепция-фокус-хаба-для-работы-с-агентами-1-.md",
+      "audience": "public-product"
+    },
+    {
+      "path": "delo/docs/implementation.md",
+      "audience": "maintainer-architecture"
+    },
+    {
+      "path": "delo/docs/superpowers/plans/2026-10-12-firstmate.md",
+      "audience": "maintainer-architecture"
+    },
+    {
+      "path": "delo/docs/superpowers/plans/2026-10-14-launch-folder.md",
+      "audience": "maintainer-architecture"
+    },
+    {
+      "path": "delo/docs/verification.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/agent-control.md",
       "audience": "maintainer-architecture"
     },

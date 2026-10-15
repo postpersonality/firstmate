@@ -1,0 +1,31 @@
+{
+  "name": "delo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.10"
+  },
+  "bin": {
+    "delo": "bin/delo"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/cli.ts serve",
+    "service:init": "node --disable-warning=ExperimentalWarning scripts/service.ts init",
+    "service:restart": "systemctl --user restart delo.service",
+    "delo": "node --disable-warning=ExperimentalWarning src/cli.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-isolation=none test/*.test.ts",
+    "check": "tsc --noEmit",
+    "build": "node --disable-warning=ExperimentalWarning scripts/build.ts"
+  },
+  "dependencies": {
+    "@toon-format/toon": "2.3.1",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.7.0",
+    "jsdom": "30.1.1",
+    "typescript": "5.9.3"
+  }
+}
