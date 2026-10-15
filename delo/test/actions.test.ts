@@ -92,3 +92,26 @@ test('an answer given in Дело wakes firstmate exactly once and leaves no inb
     assert.equal(existsSync(join(fm, 'state', 'inbox')) ? readdirSync(join(fm, 'state', 'inbox')).filter(f => f.endsWith('.note')).length : 0, 0, 'no inbox note is created');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('«Взять в работу» reaches firstmate as a structured start request for that row', () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-start-request-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root) });
+    const fm = store.firstmate.home;
+    const wakes = () => existsSync(join(fm, 'state', '.wake-queue')) ? readFileSync(join(fm, 'state', '.wake-queue'), 'utf8').split('\n').filter(Boolean) : [];
+    const row = store.create({ title: 'Начать из Дела' }).id;
+    const before = wakes().length;
+    assert.equal(store.act(row, 'start', {}).note.outcome, 'created');
+    const receipts = JSON.parse(run(join(fm, 'bin', 'fm-inbox.sh'), ['receipts', '--all-pending'], fm, 45000, { ...process.env, FM_HOME: fm }));
+    assert.deepEqual(receipts.pending.map((n: any) => [n.kind, n.task, n.request_id, n.body]), [['start', row, `delo-start-${row}-1`, `Дело: возьми в работу задачу ${row}`]]);
+    const added = wakes().slice(before);
+    assert.equal(added.length, 1, 'one start request appends exactly one wake');
+    assert.match(added[0], new RegExp(`start request for task ${row} `));
+
+    const flying = store.create({ title: 'Закрыть из Дела' }).id;
+    store.firstmate.start(flying);
+    store.act(flying, 'close', {});
+    const close = store.firstmate.receipts().pending.find((n: any) => n.request_id === `delo-close-${flying}-1`);
+    assert.deepEqual([close.kind, close.task], [null, null], 'the close request stays a free-text note');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -75,8 +75,9 @@ export class Firstmate {
 
   private script(name: string, args: string[], input?: string) { return this.call(args, join(this.home, 'bin', name), input); }
   // Exit 3 means the note is saved but the primary was not woken; the note still counts.
-  note(text: string, requestId?: string) {
-    try { return JSON.parse(this.script('fm-inbox.sh', ['note', ...(requestId ? ['--request-id', requestId] : []), '--json', '--', text])); }
+  // A start request also names its task, so firstmate reads it without parsing the text.
+  note(text: string, requestId?: string, startTask?: string) {
+    try { return JSON.parse(this.script('fm-inbox.sh', ['note', ...(requestId ? ['--request-id', requestId] : []), ...(startTask ? ['--kind', 'start', '--task', startTask] : []), '--json', '--', text])); }
     catch (error: any) { if (error.status === 3 && error.stdout) return JSON.parse(error.stdout); throw error; }
   }
   receipts() { return JSON.parse(this.script('fm-inbox.sh', ['receipts', '--all-pending', '--all-handled'])); }

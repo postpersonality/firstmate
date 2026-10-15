@@ -119,7 +119,7 @@ export class Store {
     if (action === 'start' || action === 'close' && task.state === 'in_flight') {
       const kind = action === 'start' ? 'start' : 'close';
       const text = kind === 'start' ? `Дело: возьми в работу задачу ${task.id}` : `Дело: закрой задачу ${task.id}`;
-      const note = this.firstmate.note(text, this.requestId(kind, task.id));
+      const note = this.firstmate.note(text, this.requestId(kind, task.id), kind === 'start' ? task.id : undefined);
       return { note, ready: this.firstmate.ready() };
     }
     if (action === 'answer' || action === 'release') {

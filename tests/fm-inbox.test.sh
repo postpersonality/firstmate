@@ -6,7 +6,8 @@
 # announced state of notes that predate the marker, bounded receipts JSON with
 # omission disclosure, the reply cursor's strict order, and the readiness
 # projection's model-aware verdict and unknown path. Human note/list/drain
-# behaviour stays unchanged when the new flags are omitted.
+# behaviour stays unchanged when the new flags are omitted. A structured start
+# request records its kind and task and names the task in its wake.
 set -euo pipefail
 
 # shellcheck source=tests/lib.sh
@@ -533,6 +534,40 @@ escaped=$(run_inbox "$home" note -- "--request-id is body text here") \
   || fail "-- should end option parsing"
 assert_contains "$escaped" "queued " "-- escapes a body that looks like a flag"
 pass "a note body that opens with a double dash is queued as text"
+
+# --- structured start request ---------------------------------------------
+
+home=$(make_home start-request)
+start_json=$(run_inbox "$home" note --request-id delo-start-row-1 --kind start --task row-1 --json \
+  "start row-1 please") || fail "a start note should be saved and announced"
+start_id=$(printf '%s' "$start_json" | json_get id)
+assert_contains "$(cat "$home/state/inbox/$start_id.note")" "kind=start" "the record carries the kind"
+assert_contains "$(cat "$home/state/inbox/$start_id.note")" "task=row-1" "the record carries the task"
+start_receipt=$(run_inbox "$home" receipts --all-pending | python3 -c 'import json,sys
+n=json.load(sys.stdin)["pending"][0]; print(n["kind"], n["task"], n["body"])')
+assert_equals "start row-1 start row-1 please" "$start_receipt" "receipts expose kind and task"
+assert_contains "$(cat "$home/state/.wake-queue")" "start request for task row-1" \
+  "the wake names the start request and its task"
+assert_equals "1" "$(count_wakes "$home")" "a start note appends one wake"
+pass "a start note records its kind and task and its wake names the task"
+
+home=$(make_home start-refusals)
+kind_only=$(run_inbox "$home" note --kind start "no task" 2>&1) \
+  && fail "--kind without --task should be refused"
+task_only=$(run_inbox "$home" note --task row-1 "no kind" 2>&1) \
+  && fail "--task without --kind should be refused"
+unknown_kind=$(run_inbox "$home" note --kind close --task row-1 "wrong kind" 2>&1) \
+  && fail "an unknown kind should be refused"
+assert_contains "$kind_only" "go together" "--kind alone is refused by name"
+assert_contains "$task_only" "go together" "--task alone is refused by name"
+assert_contains "$unknown_kind" "unknown note kind" "an unknown kind is refused by name"
+assert_equals "0" "$(count_notes "$home")" "start refusals must not write a note"
+assert_equals "0" "$(count_wakes "$home")" "start refusals must not wake firstmate"
+run_inbox "$home" note "plain text" >/dev/null || fail "plain note failed"
+plain_fields=$(run_inbox "$home" receipts --all-pending | python3 -c 'import json,sys
+n=json.load(sys.stdin)["pending"][0]; print(n["kind"], n["task"])')
+assert_equals "None None" "$plain_fields" "a plain note has null kind and task"
+pass "incomplete or unknown start requests are refused and plain notes stay unkinded"
 
 # --- drain still acks by moving the note ------------------------------------
 

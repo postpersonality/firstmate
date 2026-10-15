@@ -20,8 +20,8 @@
 #           fleet work and must not become fleet work.
 #
 # Usage:
-#   fm-inbox.sh note [--request-id <id>] [--json] [--] <text>...
-#   fm-inbox.sh note [--request-id <id>] [--json] -   (body from stdin)
+#   fm-inbox.sh note [--request-id <id>] [--kind start --task <task-id>] [--json] [--] <text>...
+#   fm-inbox.sh note [--request-id <id>] [--kind start --task <task-id>] [--json] -   (body from stdin)
 #   fm-inbox.sh announce [--json] <id>
 #   fm-inbox.sh reply [--json] <id> <text>... | reply [--json] <id> -
 #   fm-inbox.sh receipts [--after <cursor>] [--all-pending] [--all-handled] [--all-replies]
@@ -38,6 +38,12 @@
 # retry are distinguishable. The binding is recorded before announcement, so a
 # crash between save and wake still replays the original note. Without
 # --request-id the historical one-note-per-call behaviour is unchanged.
+# `note --kind start --task <task-id>` makes the note a structured request to
+# start that backlog task, so firstmate need not parse the body for it. The two
+# flags go together, `start` is the only kind, and the task id is checked for
+# syntax only, never against the backlog. The record carries `kind=` and `task=`
+# header lines, receipts report both (null on any other note), and the note's
+# wake names the start request and its task; everything else is a plain note.
 # `announce` repairs the wake for an already-saved note without creating another.
 # A note already acknowledged (in handled/) gets no wake from `announce` or a
 # request-id replay; both report it as acknowledged and exit 0.
@@ -334,7 +340,7 @@ PY
 # Returns 2 without waking when the note is no longer pending: firstmate has
 # already acknowledged it, so a wake would only spend a turn on an empty inbox.
 announce_note() {  # <id> <summary>
-  local id=$1 summary=$2 lib="$FM_ROOT/bin/fm-wake-lib.sh" status=0
+  local id=$1 summary=$2 lib="$FM_ROOT/bin/fm-wake-lib.sh" status=0 kind task
   if note_announced "$id"; then
     return 0
   fi
@@ -352,6 +358,11 @@ announce_note() {  # <id> <summary>
   if [ ! -f "$INBOX/$id.note" ]; then
     fm_lock_release "$FM_WAKE_QUEUE_LOCK"
     return 2
+  fi
+  kind=$(sed -n '/^--$/q;s/^kind=//p' "$INBOX/$id.note")
+  task=$(sed -n '/^--$/q;s/^task=//p' "$INBOX/$id.note")
+  if [ "$kind" = start ] && [ -n "$task" ]; then
+    summary="start request for task $task - $summary"
   fi
   if fm_wake_append_locked check "inbox:$id" "check: captain inbox note $id - $summary"; then
     mark_announced "$id"
@@ -470,32 +481,49 @@ queue_note() {
 }
 
 cmd_note() {
-  local body json=0 request_id=""
+  local body json=0 request_id="" kind="" task="" extra=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --json) json=1; shift ;;
       --request-id)
-        [ "$#" -ge 2 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)"
+        [ "$#" -ge 2 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--kind start --task <task-id>] [--json] [--] <text>... (or: note -)"
         request_id=$2
         valid_request_id "$request_id" \
           || die "invalid request id (use 1-128 characters: A-Za-z0-9._:-)"
         shift 2
         ;;
+      --kind)
+        [ "$#" -ge 2 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--kind start --task <task-id>] [--json] [--] <text>... (or: note -)"
+        kind=$2
+        [ "$kind" = start ] || die "unknown note kind: $kind (the only kind is start)"
+        shift 2
+        ;;
+      --task)
+        [ "$#" -ge 2 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--kind start --task <task-id>] [--json] [--] <text>... (or: note -)"
+        task=$2
+        valid_note_id "$task" || die "invalid task id (use A-Za-z0-9._- without ..)"
+        shift 2
+        ;;
       --) shift; break ;;
-      -h|--help) die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)" ;;
+      -h|--help) die "usage: fm-inbox.sh note [--request-id <id>] [--kind start --task <task-id>] [--json] [--] <text>... (or: note -)" ;;
       *) break ;;
     esac
   done
   if [ "$#" -eq 0 ]; then
-    die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)"
+    die "usage: fm-inbox.sh note [--request-id <id>] [--kind start --task <task-id>] [--json] [--] <text>... (or: note -)"
   elif [ "$1" = "-" ]; then
-    [ "$#" -eq 1 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--json] -"
+    [ "$#" -eq 1 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--kind start --task <task-id>] [--json] -"
     body=$(cat; printf .)
     body=${body%.}
   else
     body="$*"
   fi
-  queue_note text "$body" "" "$request_id" "$json"
+  if [ -n "$kind" ] || [ -n "$task" ]; then
+    [ -n "$kind" ] && [ -n "$task" ] || die "--kind start and --task <task-id> go together"
+    extra="kind=$kind
+task=$task"
+  fi
+  queue_note text "$body" "$extra" "$request_id" "$json"
 }
 
 cmd_announce() {
@@ -728,6 +756,8 @@ def list_notes(folder):
             "at": meta.get("at"),
             "source": meta.get("source"),
             "request_id": meta.get("request_id"),
+            "kind": meta.get("kind"),
+            "task": meta.get("task"),
             "announce_marker": meta.get("announce_marker") == "1",
             "body": body,
             "path": str(path),
