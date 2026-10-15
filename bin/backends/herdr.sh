@@ -3079,6 +3079,28 @@ fm_backend_herdr_send_text_line() {  # <target> <text>
   fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane run "$FM_BACKEND_HERDR_PANE" "$2" >/dev/null 2>&1
 }
 
+# fm_backend_herdr_wait_shell_prompt: before the first line goes into a pane
+# fm-spawn just created, wait for the pane to show any output, which its shell
+# draws once its line editor reads input. On Herdr 0.8.2 with nushell as the
+# default shell, a `pane run` sent right after `tab create` left the text in
+# nushell's input line unexecuted, while waiting for the prompt first
+# (0.1-0.2s) ran it every time. Returns 1 when no output appears within
+# FM_BACKEND_HERDR_SHELL_PROMPT_POLLS samples 0.1s apart.
+# shortcut: any output ends the wait, so a shell that prints a banner before its
+# line editor reads input is sent too early; read the prompt row itself if such
+# a default shell turns up.
+fm_backend_herdr_wait_shell_prompt() {  # <target>
+  local attempt=0 screen
+  fm_backend_herdr_target_ready "$1" || return 1
+  while :; do
+    screen=$(fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source visible 2>/dev/null) || screen=
+    case "$screen" in *[![:space:]]*) return 0 ;; esac
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt "$FM_BACKEND_HERDR_SHELL_PROMPT_POLLS" ] || return 1
+    sleep 0.1
+  done
+}
+
 # fm_backend_herdr_send_literal: send TEXT as literal, UNSUBMITTED input - the
 # caller sends Enter separately. Mirrors tmux's `send-keys -t T -l text`.
 # Verified: `pane send-text` does NOT auto-submit (contrary to the addendum's
@@ -3735,6 +3757,9 @@ fm_backend_herdr_busy_state() {  # <target>
 # call-count assertions).
 FM_BACKEND_HERDR_SUBMIT_POLLS=${FM_BACKEND_HERDR_SUBMIT_POLLS:-6}
 FM_BACKEND_HERDR_SUBMIT_MIN_SLEEP=${FM_BACKEND_HERDR_SUBMIT_MIN_SLEEP:-0.6}
+# Prompt samples for fm_backend_herdr_wait_shell_prompt, 0.1s apart (a 5s
+# bound by default).
+FM_BACKEND_HERDR_SHELL_PROMPT_POLLS=${FM_BACKEND_HERDR_SHELL_PROMPT_POLLS:-50}
 
 fm_backend_herdr_submit_confirm_budget() {  # <caller-budget-seconds>
   awk -v b="${1:-0}" -v m="$FM_BACKEND_HERDR_SUBMIT_MIN_SLEEP" 'BEGIN {

@@ -752,6 +752,9 @@ fm_backend_resolve_selector() {  # <raw-target> <state-dir>
 fm_backend_capture() {  # <backend> <target> <lines> [expected-label]
   local backend=$1
   shift
+  # A task whose meta records no_screen_read=1 runs in a pane the captain works
+  # in directly, and reads disturb that screen: decline the read.
+  [ "$(fm_meta_get "$(fm_backend_meta_for_window "$1" "${STATE:-}" 2>/dev/null)" no_screen_read)" != 1 ] || return 1
   fm_backend_source "$backend" || return 1
   case "$backend" in
     tmux) fm_backend_tmux_capture "$@" ;;

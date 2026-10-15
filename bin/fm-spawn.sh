@@ -4417,6 +4417,10 @@ elif [ "$RELAUNCH" -eq 1 ]; then
   fi
   [ "$KIND" = secondmate ] || validate_spawn_worktree "relaunch" "$T"
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
+  # This is the first line into a brand-new pane, whose shell may not read
+  # input yet; fm_backend_herdr_wait_shell_prompt owns that wait. A pane that
+  # never shows a prompt still gets the line, and the wait below decides.
+  [ "$BACKEND" != herdr ] || fm_backend_herdr_wait_shell_prompt "$WT_TARGET" || true
   spawn_send_text_line "$WT_TARGET" 'treehouse get'
 
   # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
@@ -4567,7 +4571,11 @@ esac
 # this user and writable by nobody else, then tightened, so no other local user
 # can plant or swap a file in it. The staged launch command lives in a sibling
 # directory namespaced by home identity, not in this shared per-id root.
-TASK_TMP="/tmp/fm-$ID"
+# A read-only /tmp (Claude Code's sandbox) moves both temp dirs under its $TMPDIR;
+# bin/fm-teardown.sh applies the same rule.
+FM_TASK_TMP_BASE=/tmp
+[ -w /tmp ] || [ -z "${TMPDIR:-}" ] || FM_TASK_TMP_BASE=${TMPDIR%/}
+TASK_TMP="$FM_TASK_TMP_BASE/fm-$ID"
 if ! (umask 077 && mkdir "$TASK_TMP") 2>/dev/null; then
   if [ -L "$TASK_TMP" ] || [ ! -d "$TASK_TMP" ] || [ ! -O "$TASK_TMP" ] ||
     [ -n "$(find "$TASK_TMP" -prune \( -perm -g=w -o -perm -o=w \) -print 2>/dev/null)" ] ||
@@ -5527,7 +5535,7 @@ fi
 case "$SPAWN_GEN" in
   *[!A-Za-z0-9.]*|'') echo "error: spawn incarnation token is not a usable launch-file nonce" >&2; exit 1 ;;
 esac
-LAUNCH_DIR="/tmp/fm-$ID+$LAUNCH_HOME_TOKEN"
+LAUNCH_DIR="$FM_TASK_TMP_BASE/fm-$ID+$LAUNCH_HOME_TOKEN"
 if ! (umask 077 && mkdir "$LAUNCH_DIR") 2>/dev/null; then
   if [ -L "$LAUNCH_DIR" ] || [ ! -d "$LAUNCH_DIR" ] || [ ! -O "$LAUNCH_DIR" ] ||
     [ -n "$(find "$LAUNCH_DIR" -prune \( -perm -g=w -o -perm -o=w \) -print 2>/dev/null)" ] ||

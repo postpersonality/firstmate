@@ -583,6 +583,38 @@ test_corrupt_store_fails_closed() {
   pass "fm-claude-trust.sh: refuses an unparseable store and leaves it untouched"
 }
 
+# A sandbox can mount the store read-only. A fresh worktree of a project the
+# human already trusted still passes with nothing written; an untrusted one
+# still refuses.
+test_read_only_store_passes_only_with_recorded_project_trust() {
+  local rec out store wt2 sum
+  if [ "$(id -u)" = 0 ]; then
+    pass "fm-claude-trust.sh: a read-only store passes only with recorded project trust (skipped as root)"
+    return 0
+  fi
+  rec=$(make_case readonly)
+  read_case "$rec"
+  store="$CONFIG/.claude.json"
+  printf '%s\n' '{"projects":{}}' > "$store"
+  chmod 0444 "$store"
+  out=$(run_trust "$CONFIG" "$WT" "$PROJ")
+  expect_code 1 $? "a read-only store without recorded trust must be refused: $out"
+  assert_contains "$out" "not writable" "the refusal did not name the unwritable store"
+  chmod 0644 "$store"
+  out=$(run_trust "$CONFIG" "$WT" "$PROJ")
+  expect_code 0 $? "a writable store must record trust: $out"
+  wt2="$CASE_DIR/wt2"
+  git -C "$PROJ" worktree add --quiet -b wt2-readonly "$wt2"
+  chmod 0444 "$store"
+  sum=$(cksum < "$store")
+  out=$(run_trust "$CONFIG" "$wt2" "$PROJ")
+  expect_code 0 $? "a read-only store with recorded project trust must pass: $out"
+  assert_contains "$out" "already trusted" "the pass did not report the recorded trust"
+  [ "$(cksum < "$store")" = "$sum" ] || fail "a read-only store was modified"
+  chmod 0644 "$store"
+  pass "fm-claude-trust.sh: a read-only store passes only with recorded project trust"
+}
+
 # A refused registration must abort the spawn before any per-task state exists.
 # The busy-state generation is armed after it, and nothing between that arm and
 # the far-later rollback arming can clear it, so a record stranded here would
@@ -862,6 +894,7 @@ test_unrelated_store_content_is_preserved
 test_symlinked_store_to_a_foreign_owned_target_is_refused
 test_symlinked_store_to_an_owned_target_is_accepted
 test_corrupt_store_fails_closed
+test_read_only_store_passes_only_with_recorded_project_trust
 test_missing_node_is_refused
 test_scope_refusal_stays_fail_closed_without_node
 test_claude_spawn_pretrusts_its_worktree_and_reaches_the_brief

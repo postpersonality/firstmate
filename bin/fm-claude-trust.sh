@@ -18,6 +18,7 @@
 #   --lab-home  the disposable lab home bin/fm-live-lab.sh launches a lab
 #               primary in
 # Prints one line naming what it registered; refuses loudly on anything else.
+# A store it cannot write passes unwritten only when trust is already recorded.
 #
 # WHY THIS EXISTS. Claude Code gates a folder it has never seen behind an
 # interactive workspace-trust dialog, and --dangerously-skip-permissions does
@@ -402,7 +403,18 @@ fi
 if [ -e "$STORE" ]; then
   [ -f "$STORE" ] || refuse "'$STORE' is not a regular file"
   [ -O "$STORE" ] || refuse "'$STORE' is not owned by this user"
-  [ -w "$STORE" ] || refuse "'$STORE' is not writable"
+  # A sandbox can mount the store read-only. That is still enough when the entry
+  # Claude Code's trust check reads first already holds trust - the project root
+  # in worktree mode, the target otherwise - so nothing is written; an untrusted
+  # entry still refuses.
+  if [ ! -w "$STORE" ]; then
+    TRUST_KEY=$TARGET_REAL
+    [ "$MODE" = worktree ] && TRUST_KEY=$PROJ_CANON
+    node -e 'const p=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).projects;process.exit(p?.[process.argv[2]]?.hasTrustDialogAccepted===true?0:1)' "$STORE" "$TRUST_KEY" 2>/dev/null \
+      || refuse "'$STORE' is not writable"
+    echo "already trusted (read-only store): $TRUST_KEY"
+    exit 0
+  fi
 fi
 
 # Read-modify-write, then read back and confirm. fm-spawn runs from a live
