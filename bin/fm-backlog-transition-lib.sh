@@ -11,7 +11,10 @@
 # same process, under the per-task meta lock it already holds, before it reports
 # success. Nothing else - not a later agent turn, not a printed reminder - is
 # load-bearing for the pairing.
-#   bin/fm-spawn.sh      meta published => `tasks-axi start`
+#   bin/fm-spawn.sh      meta published => `tasks-axi start`; a `program` row
+#                        (a long-lived umbrella that stays In flight with no
+#                        worker) is never dispatchable, so spawn refuses it
+#                        before any endpoint, local copy, or record exists
 #   bin/fm-teardown.sh   meta removed => `tasks-axi done`, or `tasks-axi reopen`
 #                        with the deliverable recorded when the row is still an
 #                        open captain call (bin/fm-captain-hold.sh `open`), so
@@ -68,6 +71,10 @@ FM_BACKLOG_ROW_ERROR=
 # the row is not held.
 # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
 FM_BACKLOG_ROW_HOLD_KIND=
+# Set by fm_backlog_row_probe on every call: the probed id, and on a found row
+# its tasks-axi kind (empty when unset). fm_backlog_row_dispatchable reads them.
+FM_BACKLOG_ROW_ID=
+FM_BACKLOG_ROW_KIND=
 # Set by fm_backlog_close_marker_replay: closed | closed_incomplete | retained |
 # retained_incomplete | answered | stale | noop.
 # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
@@ -424,7 +431,9 @@ fm_backlog_row_list() {  # <resolved-data-dir> [flag...]
 }
 
 fm_backlog_row_probe() {  # <data-dir> <id>
-  local data authorized_data=$1 id=$2 out state held blocked hold_kind command_status source_status
+  local data authorized_data=$1 id=$2 out state held blocked hold_kind kind command_status source_status
+  FM_BACKLOG_ROW_ID=$id
+  FM_BACKLOG_ROW_KIND=
   if ! data=$(fm_backlog_data_absolute "$1"); then
     FM_BACKLOG_ROW_RESULT=error
     FM_BACKLOG_ROW_STATE=
@@ -463,6 +472,7 @@ fm_backlog_row_probe() {  # <data-dir> <id>
   held=$(printf '%s\n' "$out" | sed -n 's/^  held: *//p' | head -1)
   blocked=$(printf '%s\n' "$out" | sed -n 's/^  blocked: *//p' | head -1)
   hold_kind=$(printf '%s\n' "$out" | sed -n 's/^  hold_kind: *//p' | head -1)
+  kind=$(printf '%s\n' "$out" | sed -n 's/^  kind: *//p' | head -1)
   if [ -z "$state" ]; then
     FM_BACKLOG_ROW_ERROR="tasks-axi show $id returned no state"
     return 1
@@ -472,6 +482,10 @@ fm_backlog_row_probe() {  # <data-dir> <id>
   case "$hold_kind" in
     ''|'"-"'|-) FM_BACKLOG_ROW_HOLD_KIND= ;;
     *) FM_BACKLOG_ROW_HOLD_KIND=$hold_kind ;;
+  esac
+  case "$kind" in
+    ''|'"-"'|-) ;;
+    *) FM_BACKLOG_ROW_KIND=$kind ;;
   esac
   return 0
 }
@@ -794,7 +808,13 @@ fm_backlog_meta_spawn_gen_optional() {  # <meta> <state>
   fm_backlog_meta_spawn_gen "$meta" "$state"
 }
 
+# <row-state> as fm_backlog_row_probe just set it. A `program` row is refused in
+# every state, naming itself on stderr so the caller's refusal says why.
 fm_backlog_row_dispatchable() {
+  if [ "$FM_BACKLOG_ROW_KIND" = program ]; then
+    printf 'backlog item %s is a program row, which is never handed to a worker\n' "$FM_BACKLOG_ROW_ID" >&2
+    return 1
+  fi
   case "$1" in
     in_flight\ no\ no|queued\ no\ no) return 0 ;;
     *) return 1 ;;

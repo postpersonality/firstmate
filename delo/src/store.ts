@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { goalInput, goalPatch, actions, actionInput, personalLine } from './model.ts';
+import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, phase } from './model.ts';
 import type { Goal, Action } from './model.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
-import { overview, pinRefusal } from './overview.ts';
+import { overview, pinRefusal, caseOf } from './overview.ts';
 
 const sections = ['Обложка', 'Зачем', 'Критерий готовности', 'Контекст', 'Ограничения'];
 
@@ -17,7 +17,9 @@ function section(body: string, heading: string) {
   return body.slice(headings[start].index + headings[start][0].length, headings[start + 1]?.index).trim();
 }
 
+// A дело's `Источник:` lines come before its brief.
 function managedBody(body: string) {
+  body = body.replace(/^(?:Источник: .*\n)+/, '');
   return /^## Зачем\s*(?:\r?\n|$)/.test(body) && /^## Зачем\s*(?:\r?\n|$)[\s\S]*^## Критерий готовности\s*(?:\r?\n|$)[\s\S]*^## Контекст\s*(?:\r?\n|$)[\s\S]*^## Ограничения\s*(?:\r?\n|$)/m.test(body);
 }
 
@@ -49,6 +51,10 @@ export function composeBody(body: string, sources: string[], personal: boolean) 
   const own = body.split('\n').filter(l => l !== personalLine).join('\n');
   return [...sources.filter(l => !own.includes(l)), own, personal ? personalLine : ''].filter(Boolean).join('\n');
 }
+const sourceLine = 'Источник: ';
+const caseBody = (c: { why: string; doneWhen: string; context: string; constraints: string[]; sources: string[] }) =>
+  [...c.sources.map(s => `${sourceLine}${s}`), '## Зачем', c.why, '## Критерий готовности', c.doneWhen, '## Контекст', c.context, '## Ограничения', ...c.constraints.map(s => `- ${s}`)].join('\n');
+const lines = (value: string) => value.split('\n').map(l => l.trim()).filter(Boolean);
 const isPersonal = (body: string) => body.split('\n').some(l => l.trim() === personalLine);
 const field = (v: unknown) => typeof v === 'string' && v && v !== '-' ? v : undefined;
 const held = (task: FirstmateTask) => task.held === 'yes' || task.held === true;
@@ -64,9 +70,65 @@ export class Store {
   create(input: unknown): Goal {
     const data = goalInput.parse(input);
     const { title, sources } = titleSources(data.title);
-    const task = this.firstmate.add(undefined, title, composeBody(data.body, sources, data.personal), { kind: data.kind, repo: data.repo, blockedBy: data.blockedBy });
+    if (data.caseId) { const c = this.firstmate.show(data.caseId); if (c.kind !== 'program' || c.state === 'done') throw new Error('Такого открытого дела нет'); }
+    const body = [data.caseId ? `Дело: ${data.caseId}` : '', composeBody(data.body, sources, data.personal)].filter(Boolean).join('\n');
+    const task = this.firstmate.add(undefined, title, body, { kind: data.kind, repo: data.repo, blockedBy: data.blockedBy });
     if (data.holdUntil) this.firstmate.hold(task.id, `Отложено до ${data.holdUntil}`, 'parked', data.holdUntil);
     return this.get(task.id);
+  }
+
+  // A дело is a program row put In flight at once: it never gets a worker, so it stays there until closed.
+  createCase(input: unknown) {
+    const data = caseInput.parse(input);
+    const { title, sources } = titleSources(data.title);
+    const body = caseBody({ ...data, constraints: lines(data.constraints).map(l => l.replace(/^- /, '')), sources: [...sources.map(l => l.slice(sourceLine.length)), ...lines(data.sources).map(l => l.replace(/^Источник:\s*/, ''))] });
+    const task = this.firstmate.add(undefined, title, body, { kind: 'program' });
+    this.firstmate.start(task.id);
+    return this.getCase(task.id);
+  }
+
+  // A closed дело leaves the backlog for the archive after done_keep closures; its page then reads it from there, read-only.
+  getCase(caseId: string) {
+    let task: FirstmateTask; let archived = false;
+    try { task = this.firstmate.show(caseId); }
+    catch (error: any) { if (!/NOT_FOUND/.test(`${error.code} ${error.stdout} ${error.message}`)) throw error; task = this.firstmate.show(caseId, true); archived = true; }
+    if (task.kind !== 'program') throw new Error('Это не дело');
+    const goal = this.get(caseId, task);
+    const entry = (t: FirstmateTask) => ({ id: t.id, title: t.title, phase: phase(t), links: nativeLinks(t) });
+    const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(entry);
+    const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(entry);
+    const sources = goal.body.split('\n').filter(l => l.startsWith(sourceLine)).map(l => l.slice(sourceLine.length).trim());
+    return { ...goal, archived, sources, tasks, earlier, links: [...new Set([...sources, ...goal.links, ...[...tasks, ...earlier].flatMap(t => t.links)])] };
+  }
+
+  // Q40В: open tasks close only after the warning that lists them is confirmed; each gets the task «Закрыть» note for firstmate.
+  closeCase(caseId: string, input: unknown) {
+    const { confirmed } = closeCaseInput.parse(input);
+    const c = this.getCase(caseId);
+    if (c.archived || c.state === 'done') throw new Error('Дело уже закрыто');
+    const open = c.tasks.filter(t => t.phase !== 'done');
+    const unconfirmed = open.filter(t => !confirmed.includes(t.id));
+    if (unconfirmed.length) throw new Error(`Не подтверждено закрытие задач: ${unconfirmed.map(t => t.title).join(', ')}`);
+    const notes = open.map(t => this.firstmate.note(`Дело: закрой задачу ${t.id}`, this.requestId('close', t.id)));
+    this.firstmate.done(caseId);
+    return { notes, case: this.getCase(caseId) };
+  }
+
+  reopenCase(caseId: string) {
+    const c = this.getCase(caseId);
+    if (c.archived || c.state !== 'done') throw new Error('Вернуть можно только закрытое дело из бэклога');
+    this.firstmate.reopen(caseId); this.firstmate.start(caseId);
+    return this.getCase(caseId);
+  }
+
+  // Q42А: an archived дело is not returned; «Продолжить» opens a new дело with its title, brief and sources.
+  closedCases() { return this.firstmate.archive().filter(t => t.kind === 'program').map(t => ({ id: t.id, title: t.title, closed: field(t.closed) })); }
+  continueCase(caseId: string) {
+    const old = this.getCase(caseId);
+    if (!old.archived) throw new Error('Продолжить можно только дело из архива');
+    const task = this.firstmate.add(undefined, old.title, caseBody(old), { kind: 'program' });
+    this.firstmate.start(task.id);
+    return this.getCase(task.id);
   }
 
   get(goalId: string, task = this.firstmate.show(goalId)): Goal {
@@ -156,7 +218,7 @@ export class Store {
   }
 
   overview() {
-    return overview(this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh'));
+    return overview(this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh'), this.firstmate.archive());
   }
 
   // Pinning is the backlog row's priority: 0 puts it in focus, 2 is the backlog default.

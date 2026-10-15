@@ -1,10 +1,12 @@
+import { phase, type Phase } from './model.ts';
 // Main screen from the Firstmate snapshots: sections follow fm-bearings.v1, row fields come from fm-fleet-snapshot.v1.
 export type Row = {
   id: string; title: string; kind?: string; repo?: string; pinned: boolean; open: boolean; task: boolean; personal: boolean;
   reason?: string; current?: string; noWorker?: boolean; blockedBy?: string; prUrl?: string; reportPath?: string; owner?: string;
 };
 export type Group = { repo: string; rows: Row[] };
-export type Overview = { generated: string; focus: Row[]; waiting: Group[]; working: Group[]; next: Group[]; done: Group[]; kinds: string[]; repos: string[] };
+export type CaseRow = Row & { counts: Record<Phase, number> };
+export type Overview = { generated: string; cases: CaseRow[]; focus: Row[]; waiting: Group[]; working: Group[]; next: Group[]; done: Group[]; kinds: string[]; repos: string[] };
 
 export const focusLimit = 3;
 export const noRepo = 'Без проекта';
@@ -17,7 +19,10 @@ export function groupByRepo(rows: Row[]): Group[] {
   return [...groups].map(([repo, rows]) => ({ repo, rows })).sort((a, b) => Number(a.repo === noRepo) - Number(b.repo === noRepo) || a.repo.localeCompare(b.repo));
 }
 
-export function overview(bearings: any, fleet: any): Overview {
+// A task belongs to a дело when the first line of its body is `Дело: <id>`.
+export const caseOf = (lines: unknown) => { const first = Array.isArray(lines) ? lines[0] : typeof lines === 'string' ? lines.split('\n')[0] : undefined; return typeof first === 'string' ? /^Дело: (\S+)$/.exec(first.trim())?.[1] : undefined; };
+
+export function overview(bearings: any, fleet: any, archive: any[] = []): Overview {
   const records = new Map<string, any>((fleet.backlog?.records ?? []).map((r: any) => [r.id, r]));
   const workers = new Map<string, any>((fleet.tasks ?? []).map((t: any) => [t.id, t]));
   const row = (id: string, title: string | undefined, extra: Partial<Row> = {}): Row => {
@@ -40,8 +45,13 @@ export function overview(bearings: any, fleet: any): Overview {
   const done = (bearings.landed ?? []).map((l: any) => row(l.id, l.what, { owner: l.owner }));
   const all = [...waiting, ...working, ...next, ...done];
   const focus = [...records.values()].filter(pinned).map(r => row(r.id, r.title));
+  // Open program rows sit in no Bearings section, so «Дела» reads them from the fleet records and counts their tasks there and in the archive.
+  const members = [...[...records.values()].map(r => [caseOf(r.body_lines), phase(r)]), ...archive.map(t => [caseOf(t.body), 'done'])];
+  const cases = [...records.values()].filter(r => r.kind === 'program' && r.state !== 'done').map(r => ({
+    ...row(r.id, r.title), counts: Object.fromEntries((['working', 'waiting', 'next', 'done'] as const).map(p => [p, members.filter(([c, m]) => c === r.id && m === p).length])) as Record<Phase, number>,
+  }));
   return {
-    generated: bearings.generated, focus,
+    generated: bearings.generated, cases, focus,
     waiting: groupByRepo(waiting), working: groupByRepo(working), next: groupByRepo(next), done: groupByRepo(done),
     kinds: [...new Set(all.map(r => r.kind).filter((k): k is string => !!k))].sort(),
     repos: [...new Set([...records.values()].map(r => value(r.repo)).filter((k): k is string => !!k))].sort(),

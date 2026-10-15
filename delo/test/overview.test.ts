@@ -35,6 +35,13 @@ test('sections follow bearings, orphan In flight rows join «В работе» w
   assert.deepEqual(view.repos, ['delo', 'fm']);
 });
 
+test('«Дела» lists open program rows with task counts from the records and the archive', () => {
+  const records = [record('c1', { kind: 'program', state: 'in_flight' }), record('c0', { kind: 'program', state: 'done' }), record('w', { state: 'in_flight', body_lines: ['Дело: c1'] }),
+    record('q', { hold_kind: 'captain', body_lines: ['Дело: c1'] }), record('n', { body_lines: ['Дело: c1', 'текст'] }), record('d', { state: 'done', body_lines: ['Дело: c1'] }), record('x', { body_lines: ['Не дело: c1'] })];
+  const view = overview({}, { backlog: { records } }, [{ id: 'a', body: 'Дело: c1\nтекст' }, { id: 'b', body: 'Дело: c0' }]);
+  assert.deepEqual(view.cases.map(r => [r.id, r.counts]), [['c1', { working: 1, waiting: 1, next: 1, done: 2 }]]);
+});
+
 test('a row whose body has a line equal to «Личное» is personal', () => {
   const fleet = { backlog: { records: [record('mine', { body_lines: ['Описание', 'Личное'] }), record('work', { body_lines: ['Личное дело соседа'] })] } };
   const view = overview({ gates: [{ id: 'mine' }, { id: 'work' }] }, fleet);

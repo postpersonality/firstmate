@@ -227,6 +227,53 @@ test_wrapper_refuses_add_start() {
   pass "fm-tasks-axi.sh refuses add --start while plain add and start <id> pass through"
 }
 
+# The archive tasks-axi itself writes under a home's done_keep stays readable
+# through the wrapper, with each row's body, closed date, and links, and archive
+# mode never runs anything that could change the archive.
+test_wrapper_reads_the_archive_read_only() {
+  local dir out rc before today
+  dir=$(make_split wrapper-archive)
+  printf 'backend = "markdown"\n\n[markdown]\npath = "data/backlog.md"\narchive = "data/done-archive.md"\ndone_keep = 1\n' \
+    > "$dir/home/.tasks.toml"
+  out=$(wrapper_from_code "$dir" archive list --fields body,closed,links 2>&1) \
+    || fail "archive list without an archive failed: $out"
+  assert_contains "$out" "0 tasks" "an absent archive did not read as empty"
+
+  printf 'ARCHIVE-BODY-MARKER\n' > "$dir/code/archive-body.md"
+  wrapper_from_code "$dir" add arch-1 "archived task" --body-file archive-body.md >/dev/null \
+    || fail "add arch-1 failed"
+  wrapper_from_code "$dir" "done" arch-1 --pr https://github.com/o/r/pull/7 \
+    --report data/arch-1/report.md >/dev/null || fail "done arch-1 failed"
+  wrapper_from_code "$dir" add arch-2 "newer task" >/dev/null || fail "add arch-2 failed"
+  wrapper_from_code "$dir" "done" arch-2 >/dev/null || fail "done arch-2 failed"
+  assert_grep "arch-1" "$dir/home/data/done-archive.md" "done_keep = 1 did not archive the older row"
+  assert_no_grep "arch-1" "$dir/home/data/backlog.md" "the archived row stayed in the backlog"
+
+  before=$(cat "$dir/home/data/done-archive.md")
+  today=$(date +%Y-%m-%d)
+  out=$(wrapper_from_code "$dir" archive list --fields body,closed,links 2>&1) \
+    || fail "archive list failed: $out"
+  assert_contains "$out" "arch-1" "archive list missed the archived row"
+  assert_contains "$out" "ARCHIVE-BODY-MARKER" "archive list lost the row body"
+  assert_contains "$out" "$today" "archive list lost the closed date"
+  assert_contains "$out" "pr:https://github.com/o/r/pull/7" "archive list lost the PR link"
+  assert_contains "$out" "report:data/arch-1/report.md" "archive list lost the report link"
+  assert_not_contains "$out" "arch-2" "archive list showed a row that is still in the backlog"
+  out=$(wrapper_from_code "$dir" archive show arch-1 --full 2>&1) || fail "archive show failed: $out"
+  assert_contains "$out" "ARCHIVE-BODY-MARKER" "archive show lost the row body"
+  assert_contains "$out" "closed: $today" "archive show lost the closed date"
+
+  out=$(wrapper_from_code "$dir" archive "done" arch-1 2>&1)
+  rc=$?
+  expect_code 2 "$rc" "archive done"
+  assert_contains "$out" "read-only" "the archive mutation refusal did not explain itself"
+  out=$(wrapper_from_code "$dir" archive update arch-1 --title renamed 2>&1)
+  rc=$?
+  expect_code 2 "$rc" "archive update"
+  assert_equals "$before" "$(cat "$dir/home/data/done-archive.md")" "archive mode changed the archive"
+  pass "fm-tasks-axi.sh reads a tasks-axi archive with bodies, closed dates, and links, and refuses archive mutations"
+}
+
 test_wrapper_single_home() {
   local dir
   dir="$TMP_ROOT/single-wrapper"
@@ -248,6 +295,7 @@ if [ "$HAVE_TASKS_AXI" = 1 ]; then
   test_wrapper_overrides_ambient_file
   test_wrapper_refusals
   test_wrapper_refuses_add_start
+  test_wrapper_reads_the_archive_read_only
   test_wrapper_single_home
 else
   echo "skip: tasks-axi not found; home-addressing cases not run"

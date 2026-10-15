@@ -2,6 +2,7 @@
 # fm-tasks-axi.sh - run tasks-axi against THIS home's backlog from any working directory.
 #
 # Usage: fm-tasks-axi.sh [<tasks-axi command> [args...]]
+#        fm-tasks-axi.sh archive <list|show> [args...]
 #        fm-tasks-axi.sh --help
 #
 # Every routine firstmate backlog read or mutation goes through this command
@@ -17,6 +18,16 @@
 # `show` (including `view`) and `list` decode stored captain-hold reasons
 # through bin/fm-hold-reason-lib.sh, which owns the field-only decoding contract.
 # Decoded reasons use quoted strings so embedded line breaks remain intact.
+#
+# `archive list` and `archive show` read this home's Done archive, read-only,
+# with the ordinary list and show flags (for example `--fields body,closed,links`
+# or `--full`). A markdown backlog only: the archive is the root `.tasks.toml`
+# `[markdown] archive` path, else `done-archive.md` beside the backlog. The
+# wrapper copies it into a private temporary directory, rewrites every
+# `## Archived <date>` heading into the standard In flight / Queued / Done
+# sections there, and runs tasks-axi on that copy alone, so nothing the reader
+# does can reach the real archive or backlog. An absent archive reads as an
+# empty one. Every other command in archive mode is refused.
 #
 # Why it exists: a bare `tasks-axi` resolves the tracked `.tasks.toml` paths
 # against its working directory, so from the code root it forks the queue
@@ -45,6 +56,8 @@
 #     the task record, status file, and inbox that go with the row - which such
 #     a row would lack, counting as live work nobody is doing that nothing
 #     later would notice (`start <id>` stays a documented direct transition);
+#   - `archive` with any command but `list` or `show`, or on a home whose
+#     backlog is not markdown;
 #   - a data directory that cannot be resolved, or whose backend configuration
 #     cannot be read (bin/fm-tasks-axi-lib.sh owns that diagnostic);
 #   - a markdown `<data>/backlog.md` that is itself a symlink, because the
@@ -84,6 +97,16 @@ case "${1:-}" in
     exit 0
     ;;
 esac
+
+ARCHIVE=0
+if [ "${1:-}" = archive ]; then
+  case "${2:-}" in
+    list|show) ;;
+    *) fail "archive mode is read-only and runs only list or show, not '${2:-}'" ;;
+  esac
+  ARCHIVE=1
+  shift
+fi
 
 CALLER_DIR=$(pwd)
 
@@ -144,6 +167,44 @@ else
 fi
 
 cd "$FM_BACKLOG_AXI_ROOT" || fail "cannot enter the backlog root $FM_BACKLOG_AXI_ROOT"
+
+# shortcut: reads only the root .tasks.toml, not ~/.tasks-axi/config.toml; extend if a home sets its archive there.
+archive_path() {
+  local configured=
+  if [ -f .tasks.toml ]; then
+    configured=$(LC_ALL=C awk '
+      { line=$0; sub(/[[:space:]]*#.*/, "", line); sub(/^[[:space:]]+/, "", line); sub(/[[:space:]]+$/, "", line) }
+      line ~ /^\[[^]]+\]$/ { section=line; next }
+      section == "[markdown]" && line ~ /^archive[[:space:]]*=/ {
+        sub(/^archive[[:space:]]*=[[:space:]]*/, "", line)
+        if (line ~ /^".*"$/ || line ~ /^\047.*\047$/) print substr(line, 2, length(line) - 2)
+        exit
+      }
+    ' .tasks.toml)
+  fi
+  case "$configured" in
+    '') printf '%s/done-archive.md' "$(dirname "$FM_BACKLOG_AXI_FILE")" ;;
+    /*) printf '%s' "$configured" ;;
+    *) printf '%s/%s' "$FM_BACKLOG_AXI_ROOT" "$configured" ;;
+  esac
+}
+
+if [ "$ARCHIVE" = 1 ]; then
+  [ -n "$FM_BACKLOG_AXI_FILE" ] || fail "archive mode reads a markdown archive, and this home's backlog adapter is not markdown"
+  ARCHIVE_FILE=$(archive_path)
+  ARCHIVE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-tasks-axi-archive.XXXXXX") || fail "cannot create a temporary directory for the archive copy"
+  trap 'rm -rf "$ARCHIVE_DIR"' EXIT
+  {
+    printf '## In flight\n\n## Queued\n\n## Done\n\n'
+    if [ -f "$ARCHIVE_FILE" ]; then
+      sed '/^## Archived /d' "$ARCHIVE_FILE"
+    fi
+  } > "$ARCHIVE_DIR/backlog.md" || fail "cannot read the archive at $ARCHIVE_FILE"
+  cd "$ARCHIVE_DIR" || fail "cannot enter the archive copy"
+  set -o pipefail
+  TASKS_AXI_BACKEND=markdown TASKS_AXI_FILE="$ARCHIVE_DIR/backlog.md" tasks-axi ${ARGS[@]+"${ARGS[@]}"} | fm_hold_reason_decode_stream
+  exit $?
+fi
 case "${1:-}" in
   show|view|list)
     set -o pipefail

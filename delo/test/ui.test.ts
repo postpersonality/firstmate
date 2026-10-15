@@ -35,12 +35,13 @@ test('browser app uses the real router for goal forms, the card and task actions
     await until(() => window.document.querySelector('main h1'));
     assert.equal(window.document.title, 'Дело — что происходит');
     assert.equal(window.document.getElementById('sidebar'), null);
-    assert.deepEqual([...window.document.querySelectorAll('main h2')].map(h => h.firstChild?.textContent?.trim()), ['В фокусе', 'Ждёт меня', 'В работе', 'Дальше', 'Сделано']);
+    assert.deepEqual([...window.document.querySelectorAll('main h2')].map(h => h.firstChild?.textContent?.trim()), ['Дела', 'В фокусе', 'Ждёт меня', 'В работе', 'Дальше', 'Сделано']);
     window.document.getElementById('new-goal')?.click();
+    assert.equal(window.document.getElementById('dialog-title')?.textContent, 'Новая задача');
     assert.equal(window.document.querySelector('[name=repository]'), null, 'goal creation has no launch folder');
     assert.equal(window.document.querySelector('[name=areas]'), null);
     assert.equal(window.document.getElementById('inbox-button'), null);
-    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'personal', 'kind', 'repo', 'body', 'blockedBy', 'holdUntil']);
+    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'personal', 'caseId', 'kind', 'repo', 'body', 'blockedBy', 'holdUntil']);
     (window.document.querySelector('[name=title]') as HTMLInputElement).value = 'UI цель';
     (window.document.querySelector('[name=body]') as HTMLTextAreaElement).value = 'Описание из формы';
     (window.document.querySelector('[name=personal]') as HTMLInputElement).checked = true;
@@ -71,8 +72,9 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.match(window.document.querySelector(`[data-id="${nativeId}"]`)?.closest('.row')?.textContent ?? '', /личное/);
     assert.ok([...(window.document.getElementById('kind') as HTMLSelectElement).options].some(o => o.textContent === 'Личное'));
     (window.document.querySelector(`[data-action="pin"][data-id="${nativeId}"]`) as HTMLButtonElement).click();
-    await until(() => window.document.querySelector('main h2')?.textContent?.includes('1'));
-    assert.match(window.document.querySelector('main section')?.textContent ?? '', /UI цель/, 'a pinned row shows in focus');
+    const focus = () => window.document.querySelectorAll('main section')[1];
+    await until(() => focus()?.querySelector('h2')?.textContent?.includes('1'));
+    assert.match(focus()?.textContent ?? '', /UI цель/, 'a pinned row shows in focus');
     assert.equal(window.location.hash, '', 'the pin button does not open the task');
     assert.equal((window.document.querySelector(`main section a[href="#${nativeId}"]`) as HTMLAnchorElement | null)?.textContent, 'UI цель', 'a row opens the goal card');
     (window.document.querySelector(`main section a[href="#${nativeId}"]`)?.closest('.row')?.querySelector('small') as HTMLElement).click();
@@ -88,6 +90,17 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.match(readFileSync(join(store.firstmate.home, 'data', 'backlog.md'), 'utf8'), /Ответ из карточки/);
     store.firstmate.start(nativeId);
     assert.deepEqual(await buttons(goal.id), ['close'], 'an In flight row is closed by a note for firstmate');
+    window.document.getElementById('new-case')?.click();
+    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'sources', 'why', 'doneWhen', 'context', 'constraints']);
+    (window.document.querySelector('[name=title]') as HTMLInputElement).value = 'UI дело';
+    (window.document.querySelector('[name=why]') as HTMLTextAreaElement).value = 'Собрать задачи';
+    (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await until(() => window.document.querySelector('main h1')?.textContent === 'UI дело');
+    const caseId = decodeURIComponent(window.location.hash.slice('#case:'.length));
+    assert.deepEqual([store.firstmate.show(caseId).kind, store.firstmate.show(caseId).state, store.getCase(caseId).why], ['program', 'in_flight', 'Собрать задачи']);
+    window.location.hash = ''; await until(() => window.document.querySelector(`main a[href="#case:${caseId}"]`));
+    window.document.getElementById('new-goal')?.click();
+    assert.deepEqual([...window.document.querySelectorAll('[name=caseId] option')].map(o => o.textContent), ['Без дела', 'UI дело'], '«Новая задача» offers the open дела');
   } finally {
     dom.window.close();
     rmSync(root, { recursive: true, force: true });

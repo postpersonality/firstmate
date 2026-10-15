@@ -43,17 +43,18 @@ export class Firstmate {
     finally { file.cleanup(); }
   }
 
-  show(id: string) {
-    return (decode(this.call(['show', id, '--full'])) as { task: FirstmateTask }).task;
+  // archive reads the done archive through the wrapper's read-only archive mode.
+  show(id: string, archive = false) {
+    return (decode(this.call([...(archive ? ['archive'] : []), 'show', id, '--full'])) as { task: FirstmateTask }).task;
   }
 
-  list(state?: FirstmateState) {
-    const fields = 'body,created,closed,held,hold_reason,hold_kind,hold_until,links';
-    const output = decode(this.call(['list', ...(state ? ['--state', state] : []), '--fields', fields]));
-    // An empty backlog reports tasks as a sentence, not a list.
-    const tasks = (output as { tasks?: unknown }).tasks;
+  private tasks(args: string[]) {
+    // An empty backlog or archive reports tasks as a sentence, not a list.
+    const tasks = (decode(this.call(args)) as { tasks?: unknown }).tasks;
     return (Array.isArray(tasks) ? tasks : []) as FirstmateTask[];
   }
+  list(state?: FirstmateState) { return this.tasks(['list', ...(state ? ['--state', state] : []), '--fields', 'body,created,closed,held,hold_reason,hold_kind,hold_until,links']); }
+  archive() { return this.tasks(['archive', 'list', '--fields', 'body,closed,links']); }
 
   update(id: string, patch: { title?: string; body?: string; kind?: string; repo?: string; archiveBody?: boolean }) {
     const args = ['update', id];

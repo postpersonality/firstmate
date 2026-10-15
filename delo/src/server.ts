@@ -36,6 +36,17 @@ export function router(store: Store) {
         return send(store.act(taskId, act[2] as Action, await req.json()));
       }
       if (req.method === 'POST' && url.pathname === '/api/goals') return send(store.create(await req.json()), 201);
+      if (req.method === 'POST' && url.pathname === '/api/cases') return send(store.createCase(await req.json()), 201);
+      if (req.method === 'GET' && url.pathname === '/api/cases') return send(store.closedCases());
+      const caseRoute = /^\/api\/cases\/([^/]+)(?:\/(close|reopen|continue))?$/.exec(url.pathname);
+      if (caseRoute) {
+        const caseId = decodeURIComponent(caseRoute[1]); id.parse(caseId);
+        if (req.method === 'GET' && !caseRoute[2]) return send(store.getCase(caseId));
+        if (req.method === 'POST' && caseRoute[2] === 'close') return send(store.closeCase(caseId, await req.json()));
+        if (req.method === 'POST' && caseRoute[2] === 'reopen') return send(store.reopenCase(caseId));
+        if (req.method === 'POST' && caseRoute[2] === 'continue') return send(store.continueCase(caseId), 201);
+        return send({ error: 'Метод не поддерживается' }, 405);
+      }
       const route = /^\/api\/goals\/([^/]+)$/.exec(url.pathname);
       if (!route) return send({ error: 'Не найдено' }, 404);
       const goalId = decodeURIComponent(route[1]); id.parse(goalId);
