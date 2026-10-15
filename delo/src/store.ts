@@ -86,6 +86,8 @@ const lines = (value: string) => value.split('\n').map(l => l.trim()).filter(Boo
 const isPersonal = (body: string) => body.split('\n').some(l => l.trim() === personalLine);
 const field = (v: unknown) => typeof v === 'string' && v && v !== '-' ? v : undefined;
 const held = (task: FirstmateTask) => task.held === 'yes' || task.held === true;
+const cut = (value: unknown) => typeof value === 'string' && value.includes('\n... (truncated,');
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Every card and row comes from the Firstmate backlog; Delo keeps no data of its own.
 export class Store {
@@ -134,8 +136,8 @@ export class Store {
     if (task.kind !== 'program') throw new Error('Это не дело');
     const goal = this.get(caseId, task);
     const entry = (t: FirstmateTask) => ({ id: t.id, title: t.title, phase: phase(t), links: nativeLinks(t), report: hasReport(t) });
-    const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(entry);
-    const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(entry);
+    const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
+    const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t, true)));
     const sources = goal.body.split('\n').filter(l => l.startsWith(sourceLine)).map(l => l.slice(sourceLine.length).trim());
     return { ...goal, archived, sources, tasks, earlier, links: [...new Set([...sources, ...goal.links, ...[...tasks, ...earlier].flatMap(t => t.links)])] };
   }
@@ -170,7 +172,18 @@ export class Store {
     return this.getCase(task.id);
   }
 
+  // A list row cut by tasks-axi is read again in full; a closed row's title drops the trailing link the backlog line carries.
+  private whole(task: FirstmateTask, archive = false): FirstmateTask {
+    const full = cut(task.title) || cut(task.body) ? this.firstmate.show(task.id, archive) : task;
+    if (full.state !== 'done') return full;
+    const trailing = nativeLinks(full).map(link => new RegExp(`\\s+(?:-\\s+)?${escapeRegExp(link)}$`));
+    let title = full.title, before;
+    do { before = title; for (const link of trailing) title = title.replace(link, ''); } while (title !== before);
+    return { ...full, title };
+  }
+
   get(goalId: string, task = this.firstmate.show(goalId)): Goal {
+    task = this.whole(task);
     const body = task.body || '';
     const managed = managedBody(body);
     return {
@@ -186,7 +199,7 @@ export class Store {
   list(): Goal[] {
     const seen = new Set<string>();
     return this.firstmate.list().filter(task => task.id && !seen.has(task.id) && seen.add(task.id))
-      .map(task => this.get(task.id, task.body?.includes('\n... (truncated,') ? this.firstmate.show(task.id) : task));
+      .map(task => this.get(task.id, task));
   }
 
   update(goalId: string, input: unknown): Goal {

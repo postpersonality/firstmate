@@ -235,3 +235,28 @@ test('«Новый агент» writes the дело, executor, interactive and f
     assert.throws(() => store.newAgent(c.id, { direction }), /только в открытом деле/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('a дело task shows its full title, and a closed task loses its trailing links, in the backlog and the archive', async () => {
+  const { Store } = await import('../src/store.ts');
+  const root = mkdtempSync(join(tmpdir(), 'delo-titles-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root, { doneKeep: 1 }) });
+    const fm = store.firstmate.home;
+    const env = { ...process.env }; for (const name of Object.keys(env)) if (name.startsWith('FM_')) delete env[name]; env.FM_HOME = fm;
+    const axi = (...args: string[]) => run(join(fm, 'bin', 'fm-tasks-axi.sh'), args, fm, 45000, env);
+    const title = 'Перепиши в отчёт строку «Метка брифа: …» из раздела брифа дела в своих инструкциях.';
+    assert.ok(title.length > 80);
+    const c = store.createCase({ title: 'Дело с длинными задачами' });
+    const open = store.create({ title, caseId: c.id }).id;
+    const closed = store.create({ title, caseId: c.id }).id;
+    const titles = () => Object.fromEntries([...store.getCase(c.id).tasks, ...store.getCase(c.id).earlier].map(t => [t.id, t.title]));
+    assert.deepEqual(titles(), { [open]: title, [closed]: title });
+    axi('done', closed, '--pr', 'https://github.com/o/r/pull/7', '--report', `data/${closed}/report.md`);
+    assert.equal(store.get(closed).title, title);
+    assert.deepEqual(titles(), { [open]: title, [closed]: title });
+    store.act(store.create({ title: 'Без дела' }).id, 'close', {});
+    assert.match(readFileSync(join(fm, 'data', 'done-archive.md'), 'utf8'), new RegExp(`${closed} - .*report\\.md`), 'the closed task moved to the archive with its report path');
+    assert.deepEqual(store.getCase(c.id).earlier.map(t => [t.id, t.title]), [[closed, title]]);
+    assert.equal(store.getCase(c.id).tasks.find(t => t.id === open)?.title, title);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
