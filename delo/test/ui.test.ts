@@ -40,7 +40,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal(window.document.querySelector('[name=repository]'), null, 'goal creation has no launch folder');
     assert.equal(window.document.querySelector('[name=areas]'), null);
     assert.equal(window.document.getElementById('inbox-button'), null);
-    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'kind', 'repo', 'body', 'blockedBy', 'holdUntil', 'personal']);
+    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'personal', 'kind', 'repo', 'body', 'blockedBy', 'holdUntil']);
     (window.document.querySelector('[name=title]') as HTMLInputElement).value = 'UI цель';
     (window.document.querySelector('[name=body]') as HTMLTextAreaElement).value = 'Описание из формы';
     (window.document.querySelector('[name=personal]') as HTMLInputElement).checked = true;
@@ -73,7 +73,10 @@ test('browser app uses the real router for goal forms, the card and task actions
     (window.document.querySelector(`[data-action="pin"][data-id="${nativeId}"]`) as HTMLButtonElement).click();
     await until(() => window.document.querySelector('main h2')?.textContent?.includes('1'));
     assert.match(window.document.querySelector('main section')?.textContent ?? '', /UI цель/, 'a pinned row shows in focus');
+    assert.equal(window.location.hash, '', 'the pin button does not open the task');
     assert.equal((window.document.querySelector(`main section a[href="#${nativeId}"]`) as HTMLAnchorElement | null)?.textContent, 'UI цель', 'a row opens the goal card');
+    (window.document.querySelector(`main section a[href="#${nativeId}"]`)?.closest('.row')?.querySelector('small') as HTMLElement).click();
+    await until(() => window.location.hash === `#${nativeId}`);
     const buttons = async (hash: string) => { window.location.hash = hash; window.dispatchEvent(new window.HashChangeEvent('hashchange')); await new Promise(resolve => setTimeout(resolve, 60)); return [...window.document.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action')); };
     const env = { ...process.env }; for (const name of Object.keys(env)) if (name.startsWith('FM_')) delete env[name]; env.FM_HOME = store.firstmate.home;
     run(join(store.firstmate.home, 'bin', 'fm-captain-hold.sh'), ['hold', 'ui-call', '--title', 'Вопрос капитану', '--reason', 'Нужен выбор'], store.firstmate.home, 45000, env);

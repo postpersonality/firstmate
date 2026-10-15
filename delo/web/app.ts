@@ -29,7 +29,7 @@ const personalLine = 'Личное';
 const personalBox = (on = false) => `<label class="checkbox"><input type="checkbox" name="personal" ${on ? 'checked' : ''}> Личное</label>`;
 function newGoal() {
   const repos = view?.repos ?? [];
-  modal('Завести дело', `${field('title', 'Название', '', false, true)}<label>Вид<select name="kind"><option value="ship">ship</option><option value="scout">scout</option></select></label><label>Проект<input name="repo" list="repo-list" maxlength="500"><datalist id="repo-list">${repos.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>${field('body', 'Описание', '', true)}${field('blockedBy', 'После задачи (id)')}<label>Отложить до<input type="date" name="holdUntil"></label>${personalBox()}`, async f => {
+  modal('Завести дело', `${field('title', 'Название', '', false, true)}${personalBox()}<label>Вид<select name="kind"><option value="ship">ship</option><option value="scout">scout</option></select></label><label>Проект<input name="repo" list="repo-list" maxlength="500"><datalist id="repo-list">${repos.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>${field('body', 'Описание', '', true)}${field('blockedBy', 'После задачи (id)')}<label>Отложить до<input type="date" name="holdUntil"></label>`, async f => {
     const g = await api<Goal>('/api/goals', { title: f.get('title'), kind: f.get('kind'), repo: f.get('repo'), body: f.get('body'), blockedBy: f.get('blockedBy'), holdUntil: f.get('holdUntil'), personal: f.has('personal') });
     location.hash = g.id; await reload();
   }, 'Завести дело');
@@ -55,7 +55,7 @@ function row(r: Row, inFocus = false) {
   const marks = [r.kind ? badge(r.kind) : '', r.personal ? badge('личное') : '', r.pinned && !inFocus ? badge('В фокусе') : '', r.noWorker ? badge('нет исполнителя') : ''].join('');
   const detail = [r.id, r.reason || r.current].filter(Boolean).join(' · ');
   const pin = r.open ? `<button class="quiet" data-action="pin" data-id="${esc(r.id)}" data-on="${r.pinned ? '' : '1'}">${r.pinned ? 'Открепить' : 'Закрепить'}</button>` : '';
-  return `<div class="row${r.task ? '' : ' warning'}"><div class="row-content"><strong>${r.task ? `<a href="#${encodeURIComponent(r.id)}">${esc(r.title)}</a>` : esc(r.title)}</strong> ${marks}<small>${esc(detail)}</small></div>${pin}</div>`;
+  return `<div class="row${r.task ? ' go' : ' warning'}"><div class="row-content"><strong>${r.task ? `<a href="#${encodeURIComponent(r.id)}">${esc(r.title)}</a>` : esc(r.title)}</strong> ${marks}<small>${esc(detail)}</small></div>${pin}</div>`;
 }
 function renderOverview() {
   current = undefined; document.title = 'Дело — что происходит';
@@ -105,7 +105,8 @@ $('dialog-form').onsubmit = async event => { event.preventDefault(); $('dialog-s
 $('main').onclick = async event => {
   const taskButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-task-action]');
   if (taskButton && current) { taskButton.disabled = true; try { await taskAction(current, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } finally { taskButton.disabled = false; } return; }
-  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]'); if (!button) return;
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
+  if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, input, select, textarea, label')) go.querySelector('a')?.click(); return; }
   try { if (button.dataset.action === 'new') return newGoal(); if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }
     if (button.dataset.action === 'pin') { button.disabled = true; view = await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); renderOverview(); return; } await goalAction(button.dataset.action!); }
   catch (e: any) { message(e.message, true); } finally { button.disabled = false; }

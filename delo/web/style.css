@@ -11,3 +11,6 @@ dialog{border:1px solid #d0d6c5;border-radius:12px;max-width:660px;width:calc(10
 .input-choice{display:flex;gap:8px}.input-choice input{flex:1;min-width:0}.input-choice select{max-width:50%}
 @media(max-width:620px){.input-choice{flex-direction:column}.input-choice select{max-width:100%}}
 .row.warning{border-color:#e0c98f;background:#fbf4e1}.row-content .badge{margin-left:6px}
+/* Firefox has no pseudo-element for the date picker button, so RTL moves it left there; Chromium needs the order. */
+#dialog-body input[name=holdUntil]{direction:rtl;text-align:left}#dialog-body input[name=holdUntil]::-webkit-calendar-picker-indicator{order:-1;margin-right:8px}
+.row.go{cursor:pointer}
