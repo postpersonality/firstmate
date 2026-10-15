@@ -52,19 +52,20 @@ export function router(store: Store, opener = 'xdg-open') {
         await new Promise((resolve, reject) => child.once('spawn', resolve).once('error', error => reject(new Error(`Не удалось открыть отчёт в приложении: ${error.message}`))));
         child.unref(); return send({ ok: true });
       }
-      const caseRoute = /^\/api\/cases\/([^/]+)(?:\/(close|reopen|continue))?$/.exec(url.pathname);
+      const caseRoute = /^\/api\/cases\/([^/]+)(?:\/(close|reopen|continue|agent))?$/.exec(url.pathname);
       if (caseRoute) {
         const caseId = decodeURIComponent(caseRoute[1]); id.parse(caseId);
         if (req.method === 'GET' && !caseRoute[2]) return send(store.getCase(caseId));
         if (req.method === 'POST' && caseRoute[2] === 'close') return send(store.closeCase(caseId, await req.json()));
         if (req.method === 'POST' && caseRoute[2] === 'reopen') return send(store.reopenCase(caseId));
         if (req.method === 'POST' && caseRoute[2] === 'continue') return send(store.continueCase(caseId), 201);
+        if (req.method === 'POST' && caseRoute[2] === 'agent') return send(store.newAgent(caseId, await req.json()), 201);
         return send({ error: 'Метод не поддерживается' }, 405);
       }
       const route = /^\/api\/goals\/([^/]+)$/.exec(url.pathname);
       if (!route) return send({ error: 'Не найдено' }, 404);
       const goalId = decodeURIComponent(route[1]); id.parse(goalId);
-      if (req.method === 'GET') return send({ ...store.get(goalId), inbox: store.inbox(goalId) });
+      if (req.method === 'GET') return send({ ...store.get(goalId), inbox: store.inbox(goalId), worker: store.worker(goalId) });
       if (req.method === 'PATCH') return send(store.update(goalId, await req.json()));
       return send({ error: 'Метод не поддерживается' }, 405);
     } catch (error: any) { return send({ error: error instanceof ZodError ? error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : error.message }, ['Цель не найдена', 'Отчёт не найден'].includes(error.message) ? 404 : 400); }

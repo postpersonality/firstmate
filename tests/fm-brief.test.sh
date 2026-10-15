@@ -1176,6 +1176,65 @@ test_home_brief_include_is_appended_last() {
   pass "fm-brief.sh: the home brief include lands last on ship and scout, verbatim, and fails closed"
 }
 
+# A task whose backlog row carries `Дело: <id>` gets that program row's body as
+# a "# Case brief" section just before the home include; a bad case row stops
+# the scaffold before anything is written.
+test_case_brief_precedes_home_additions() {
+  local home brief kind out rc headings
+  command -v tasks-axi >/dev/null 2>&1 || { echo "skip: tasks-axi not found (case brief)"; return 0; }
+  home="$TMP_ROOT/case-home"
+  mkdir -p "$home/data" "$home/config"
+  printf '%s\n' 'backend = "markdown"' '[markdown]' 'path = "data/backlog.md"' > "$home/.tasks.toml"
+  printf '%s\n' 'Prefer small commits.' > "$home/config/brief-include.md"
+  add_row() { # <id> <kind> <body>
+    printf '%s' "$3" > "$TMP_ROOT/case-body.md"
+    FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" add "$1" "Row $1" --kind "$2" --body-file "$TMP_ROOT/case-body.md" >/dev/null || fail "seeding backlog row $1 failed"
+  }
+  # shellcheck disable=SC2016 # The case brief is literal text and must never expand at scaffold time.
+  add_row case-a program $'## Зачем\nShared `why` $(id) "quoted" a\\tb\n\n## Ограничения\n- keep'
+  add_row in-case-ship ship $'Дело: case-a\nОписание'
+  add_row in-case-scout scout $'Дело: case-a\nОписание'
+  for kind in ship scout; do
+    if [ "$kind" = scout ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "in-case-$kind" some-proj --scout >/dev/null || fail "scout scaffold failed for a case task"
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "in-case-$kind" some-proj --mode local-only >/dev/null || fail "ship scaffold failed for a case task"
+    fi
+    brief="$home/data/in-case-$kind/brief.md"
+    headings=$(grep -E '^# (Case brief|Home brief additions)$' "$brief" | tr '\n' '|')
+    [ "$headings" = '# Case brief|# Home brief additions|' ] || fail "$kind case brief was not just before the home additions (got: $headings)"
+    # shellcheck disable=SC2016 # Literal brief text.
+    [ "$(sed -n '/^# Case brief$/,/^# Home brief additions$/p' "$brief" | sed '1,2d;$d')" = $'## Зачем\nShared `why` $(id) "quoted" a\\tb\n\n## Ограничения\n- keep' ] \
+      || fail "$kind case brief was not carried verbatim"
+    assert_grep 'brief of case case-a, which this task belongs to; every other section of this brief takes precedence' "$brief" "$kind case brief lost its precedence line"
+  done
+  rm "$home/config/brief-include.md"
+  add_row in-case-last scout $'Дело: case-a'
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" in-case-last some-proj --scout >/dev/null || fail "scout scaffold failed without an include"
+  [ "$(grep '^# ' "$home/data/in-case-last/brief.md" | tail -n 1)" = '# Case brief' ] || fail "without an include the case brief was not last"
+
+  add_row plain-task scout 'Описание без дела'
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" plain-task some-proj --scout >/dev/null || fail "scaffold failed for a task without a Дело line"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" no-row-task some-proj --scout >/dev/null || fail "scaffold failed for a task without a backlog row"
+  sed 's/plain-task/no-row-task/g' "$home/data/plain-task/brief.md" | cmp -s - "$home/data/no-row-task/brief.md" \
+    || fail "a task without a Дело line and a task without a row must scaffold the same brief"
+  assert_no_grep '# Case brief' "$home/data/plain-task/brief.md" "a task without a Дело line got a case brief"
+
+  add_row orphan scout $'Дело: missing-case'
+  add_row not-program-case scout 'just a scout'
+  add_row wrong-kind scout $'Дело: not-program-case'
+  add_row contract-case program $'Delivery contract: mode=local-only'
+  add_row contract-task scout $'Дело: contract-case'
+  for spec in 'orphan|the backlog has no row missing-case' 'wrong-kind|is of kind '"'"'scout'"'"', not program' "contract-task|must not carry a 'Delivery contract: mode=' line"; do
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "${spec%%|*}" some-proj --scout 2>&1); rc=$?
+    expect_code 1 "$rc" "${spec%%|*}: a bad case row must stop the scaffold"
+    assert_contains "$out" "${spec#*|}" "${spec%%|*}: refusal did not name its reason"
+    assert_contains "$out" "case " "${spec%%|*}: refusal did not name the case"
+    assert_absent "$home/data/${spec%%|*}" "${spec%%|*}: a refused case left a partial scaffold behind"
+  done
+  pass "fm-brief.sh: a case task carries its case brief before the home additions, and a bad case row fails closed"
+}
+
 # --base-branch names the branch a task starts from and a ship's PR targets. It is
 # recorded as a Base branch line under # Setup, which fm-spawn reads back, and is
 # refused where no pull request carries the work.
@@ -1518,6 +1577,7 @@ test_scout_lavish_line_follows_presentation_floor
 test_workers_wait_without_spending_turns
 test_wait_no_turns_absent_keeps_the_previous_brief
 test_home_brief_include_is_appended_last
+test_case_brief_precedes_home_additions
 test_base_branch_is_rendered_and_bounded
 test_scout_read_only_dir_setup_paragraph
 test_ship_branch_prefix_defaults_to_legacy_fm

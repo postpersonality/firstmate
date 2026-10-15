@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -116,4 +116,52 @@ test('browser app uses the real router for goal forms, the card and task actions
     dom.window.close();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('«Новый агент» appears only on an open дело, defaults its form, switches an interactive run to codex, and the task page shows the running executor', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-ui-agent-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) }); const handle = router(store);
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: 'http://localhost:4317/', runScripts: 'outside-only' });
+  const { window } = dom; const document = window.document;
+  window.setInterval = (() => 0) as typeof window.setInterval;
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  (window as any).fetch = async (input: string, init: RequestInit = {}) => handle(new Request(new URL(String(input), window.location.href), init));
+  const until = async (check: () => unknown) => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 25)); assert.ok(check()); };
+  const open = async (hash: string, ready: () => unknown) => { window.location.hash = hash; await until(ready); };
+  const input = (name: string) => document.querySelector(`#dialog-body [name=${name}]`) as HTMLInputElement;
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    await until(() => document.querySelector('main h1'));
+    const folder = join(root, 'product'); mkdirSync(folder);
+    const c = store.createCase({ title: 'Дело с агентом', why: 'Причина', doneWhen: 'Готово', context: '', constraints: '', sources: '' });
+    store.update(c.id, { folder });
+
+    await open(`case:${c.id}`, () => document.querySelector('[data-action="agent-case"]'));
+    (document.querySelector('[data-action="agent-case"]') as HTMLButtonElement).click();
+    await until(() => input('direction'));
+    assert.equal(input('direction').value, 'Разбери текущее дело по ориентировке и прикреплённым материалам. Прочитай источники, необходимые для понимания задания. Если задание понятно, приступай к работе. Если сведений недостаточно, задай уточняющий вопрос.');
+    assert.deepEqual([input('kind').value, input('harness').value, input('folder').value], ['scout', '', folder]);
+    assert.deepEqual([...document.querySelectorAll('#dialog-body [name=harness] option')].map(o => o.textContent), ['как решит firstmate', 'claude', 'codex', 'opencode', 'pi', 'grok', 'kimi', 'gemini', 'agy']);
+    assert.equal((document.getElementById('agent-repo') as HTMLElement).style.display, 'none', 'Проект is for ship only');
+    input('kind').value = 'ship'; input('kind').dispatchEvent(new window.Event('change'));
+    assert.equal((document.getElementById('agent-repo') as HTMLElement).style.display, '');
+    input('kind').value = 'scout'; input('kind').dispatchEvent(new window.Event('change'));
+    input('interactive').checked = true; input('interactive').dispatchEvent(new window.Event('change'));
+    assert.equal(input('harness').value, 'codex');
+    document.getElementById('dialog-form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await until(() => /Новый агент: задача/.test(document.querySelector('.message')?.textContent ?? ''));
+    const task = store.getCase(c.id).tasks[0]!;
+    assert.match(document.querySelector('.message')!.textContent!, new RegExp(`задача ${task.id}\\. Заметка для firstmate: отправлена`));
+    assert.equal(store.firstmate.show(task.id).body, `Дело: ${c.id}\nИсполнитель: codex\nИнтерактивно\nПапка: ${folder}\n\n${input('direction').value}`);
+
+    mkdirSync(join(store.firstmate.home, 'state'), { recursive: true });
+    writeFileSync(join(store.firstmate.home, 'state', `${task.id}.meta`), 'harness=claude\nkind=scout\n');
+    await open(task.id, () => document.getElementById('executor'));
+    assert.equal(document.getElementById('executor')!.textContent, 'Исполнитель: codex · работает: claude');
+
+    store.closeCase(c.id, { confirmed: [task.id] });
+    await open(`case:${c.id}`, () => document.querySelector('[data-action="reopen-case"]'));
+    assert.equal(document.querySelector('[data-action="agent-case"]'), null, 'a closed дело has no «Новый агент»');
+  } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
 });

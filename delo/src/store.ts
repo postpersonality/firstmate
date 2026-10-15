@@ -2,7 +2,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, phase, id } from './model.ts';
+import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, phase, id } from './model.ts';
 import type { Goal, Action } from './model.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
 import { overview, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
@@ -66,12 +66,19 @@ export function composeBody(body: string, sources: string[], personal: boolean, 
   let lines = body ? body.split('\n').filter(l => l !== personalLine) : [];
   if (folderOf(lines.join('\n')) !== folder) {
     lines = lines.filter(l => !l.startsWith(folderLine));
-    const at = lines.findIndex(l => !/^(?:Дело|Источник): /.test(l));
+    const at = lines.findIndex(l => !/^(?:(?:Дело|Источник|Исполнитель): |Интерактивно$)/.test(l));
     if (folder) lines.splice(at < 0 ? lines.length : at, 0, `${folderLine}${folder}`);
   }
   const own = lines.join('\n');
   return [...sources.filter(l => !own.includes(l)), own, personal ? personalLine : ''].filter(Boolean).join('\n');
 }
+// A task of a дело names it, the chosen executor and interactive work in its first lines; firstmate reads them when it starts the task.
+// bin/fm-brief.sh's header owns the `Дело: <id>` line format.
+const harnessLine = 'Исполнитель: ';
+const interactiveLine = 'Интерактивно';
+export const harnessOf = (body: string) => body.split('\n').find(l => l.startsWith(harnessLine))?.slice(harnessLine.length).trim() ?? '';
+// The title is the direction's first sentence, cut to the title limit.
+export const firstSentence = (text: string) => (/^.*?[.!?…](?=\s|$)/.exec(text.trim().split('\n')[0])?.[0] ?? text.trim().split('\n')[0]).slice(0, 500);
 const sourceLine = 'Источник: ';
 const caseBody = (c: { why: string; doneWhen: string; context: string; constraints: string[]; sources: string[] }) =>
   [...c.sources.map(s => `${sourceLine}${s}`), '## Зачем', c.why, '## Критерий готовности', c.doneWhen, '## Контекст', c.context, '## Ограничения', ...c.constraints.map(s => `- ${s}`)].join('\n');
@@ -106,6 +113,17 @@ export class Store {
     const task = this.firstmate.add(undefined, title, body, { kind: 'program' });
     this.firstmate.start(task.id);
     return this.getCase(task.id);
+  }
+
+  // «Новый агент»: a task of an open дело through the ordinary create path, then the ordinary start request for firstmate.
+  newAgent(caseId: string, input: unknown) {
+    const data = agentInput.parse(input);
+    const c = this.getCase(caseId);
+    if (c.archived || c.state === 'done') throw new Error('Новый агент запускается только в открытом деле');
+    const head = [data.harness ? `${harnessLine}${data.harness}` : '', data.interactive ? interactiveLine : ''].filter(Boolean);
+    const task = this.create({ title: firstSentence(data.direction), kind: data.kind, repo: data.kind === 'ship' ? data.repo : '', caseId, folder: data.folder, body: [...head, '', data.direction.trim()].join('\n') });
+    const started = this.act(task.id, 'start', {});
+    return { note: started.note, ready: started.ready, task: this.get(task.id) };
   }
 
   // A closed дело leaves the backlog for the archive after done_keep closures; its page then reads it from there, read-only.
@@ -161,7 +179,7 @@ export class Store {
       holdKind: field(task.hold_kind), inFlight: task.state === 'in_flight',
       why: managed ? section(body, 'Зачем') : '', doneWhen: managed ? section(body, 'Критерий готовности') : '', context: managed ? section(body, 'Контекст') : body,
       constraints: managed ? section(body, 'Ограничения').split('\n').filter(s => s.startsWith('- ')).map(s => s.slice(2)) : [],
-      links: nativeLinks(task), report: hasReport(task), folder: folderOf(body),
+      links: nativeLinks(task), report: hasReport(task), folder: folderOf(body), harness: harnessOf(body),
     };
   }
 
@@ -246,6 +264,12 @@ export class Store {
     if (!task || !hasReport(task)) throw missing();
     const path = join(this.firstmate.home, reportPath(taskId));
     try { return { path, title: task.title, text: readFileSync(path, 'utf8') }; } catch { throw missing(); }
+  }
+
+  // The executor actually running a task, from the fleet snapshot's worker record.
+  worker(taskId: string) {
+    const record = (this.firstmate.snapshot('fm-fleet-snapshot.sh').tasks ?? []).find((t: any) => t.id === taskId);
+    return record ? { harness: field(record.harness) ?? '' } : undefined;
   }
 
   // Suggestions for the folder field: every folder an open backlog task names.

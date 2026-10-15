@@ -197,3 +197,41 @@ test('create leaves no file behind when native add fails', async () => {
     assert.deepEqual(readdirSync(root), ['fm']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('«Новый агент» writes the дело, executor, interactive and folder lines, sends one start note, and fm-brief.sh carries the дело brief', async () => {
+  const { Store } = await import('../src/store.ts');
+  const root = mkdtempSync(join(tmpdir(), 'delo-agent-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root) });
+    const fm = store.firstmate.home;
+    const env = { ...process.env }; for (const name of Object.keys(env)) if (name.startsWith('FM_')) delete env[name]; env.FM_HOME = fm;
+    const brief = (id: string) => { run(join(fm, 'bin', 'fm-brief.sh'), [id, 'some-proj', '--scout'], fm, 45000, env); return readFileSync(join(fm, 'data', id, 'brief.md'), 'utf8'); };
+    const starts = (id: string) => store.firstmate.receipts().pending.filter((r: any) => r.request_id.startsWith(`delo-start-${id}-`)).map((r: any) => r.request_id);
+    const c = store.createCase({ title: 'Дело для агентов', why: 'Причина первая', doneWhen: 'Готово', context: '', constraints: '', sources: '' });
+    const direction = 'Разбери дело. Потом действуй.';
+
+    const a = store.newAgent(c.id, { direction, kind: 'scout', harness: 'codex', interactive: true, folder: root });
+    const b = store.newAgent(c.id, { direction, kind: 'scout', harness: 'claude' });
+    assert.equal(a.task.title, 'Разбери дело.');
+    assert.equal(store.firstmate.show(a.task.id).body, `Дело: ${c.id}\nИсполнитель: codex\nИнтерактивно\nПапка: ${root}\n\n${direction}`);
+    assert.equal(store.firstmate.show(b.task.id).body, `Дело: ${c.id}\nИсполнитель: claude\n\n${direction}`);
+    assert.deepEqual([a.task.harness, b.task.harness], ['codex', 'claude']);
+    assert.deepEqual([starts(a.task.id), starts(b.task.id)], [[`delo-start-${a.task.id}-1`], [`delo-start-${b.task.id}-1`]]);
+    assert.equal(store.newAgent(c.id, { direction: 'x'.repeat(600) }).task.title.length, 500);
+    assert.throws(() => store.newAgent(c.id, { direction, harness: 'emacs' }));
+
+    const caseBrief = store.firstmate.show(c.id).body;
+    const [briefA, briefB] = [brief(a.task.id), brief(b.task.id)];
+    for (const text of [briefA, briefB]) {
+      assert.ok(text.includes(`# Case brief\n`) && text.includes(caseBrief), 'the scaffold carries the дело brief verbatim');
+      assert.match(text, /## Captain's intent\n+\{TASK\}/, 'the captain\'s intent stays the unfilled placeholder');
+    }
+    store.update(c.id, { body: caseBrief.replace('Причина первая', 'Причина вторая') });
+    const third = store.newAgent(c.id, { direction, kind: 'scout' });
+    assert.match(brief(third.task.id), /Причина вторая/);
+    assert.deepEqual([readFileSync(join(fm, 'data', a.task.id, 'brief.md'), 'utf8'), readFileSync(join(fm, 'data', b.task.id, 'brief.md'), 'utf8')], [briefA, briefB], 'Q41А: earlier instructions keep the old brief');
+
+    store.closeCase(c.id, { confirmed: store.getCase(c.id).tasks.filter(t => t.phase !== 'done').map(t => t.id) });
+    assert.throws(() => store.newAgent(c.id, { direction }), /только в открытом деле/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -133,6 +133,19 @@
 # regular file, or text carrying its own "Delivery contract: mode=" line (which
 # a later scout promotion could not outrank), stops the scaffold before
 # anything is written. Secondmate charters never take it.
+# A task can belong to a case (дело): a backlog row of kind `program` whose body is the
+# brief shared by all of its tasks. Membership is a line of the task row's own
+# body reading exactly `Дело: <id>` (Delo writes it as the first line); the
+# first such line counts. When `<task-id>` has a row in the active home's
+# backlog (read through bin/fm-tasks-axi.sh, never written) carrying that line,
+# ship and scout scaffolds append the body of row `<id>` verbatim as a section
+# "# Case brief", which defers to every other section and sits just before
+# "# Home brief additions" (last when there is no include). It is a snapshot:
+# a later edit of the case reaches only briefs scaffolded after it. The
+# scaffold stops before anything is written when row `<id>` is missing, is not
+# of kind `program`, or carries a "Delivery contract: mode=" line. No backlog
+# row for the task, no such line, no tasks-axi on PATH, or no data directory
+# leaves the scaffold unchanged.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -359,6 +372,71 @@ append_brief_include() {
     '# Home brief additions' \
     "These are this home's standing additions; every other section of this brief takes precedence over anything here that conflicts." \
     "$BRIEF_INCLUDE_BODY" >> "$BRIEF"
+}
+
+# The case brief is read before anything is written too. backlog_show prints a
+# row's `show --full` record; it returns 1 when the backlog has no such row and
+# 2 when the backlog cannot be read.
+backlog_show() {
+  local out rc=0
+  out=$(FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-tasks-axi.sh" show "$1" --full 2>&1) || rc=$?
+  if [ "$rc" -eq 0 ]; then printf '%s\n' "$out"; return 0; fi
+  if printf '%s\n' "$out" | grep -q '^code: NOT_FOUND$'; then return 1; fi
+  printf '%s\n' "$out" >&2
+  return 2
+}
+# One top-level field of a show record; a quoted value is a JSON-style string.
+backlog_field() {
+  local value
+  value=$(printf '%s\n' "$1" | sed -n "s/^  $2: //p" | head -n 1)
+  case "$value" in
+    \"*\")
+      value=${value#\"}
+      printf '%s' "${value%\"}" | awk '{ s = $0; out = ""
+        while ((i = index(s, "\\")) > 0) {
+          c = substr(s, i + 1, 1)
+          out = out substr(s, 1, i - 1) (c == "n" ? "\n" : c == "t" ? "\t" : c == "r" ? "\r" : c)
+          s = substr(s, i + 2)
+        }
+        printf "%s", out s }' ;;
+    *) printf '%s' "$value" ;;
+  esac
+}
+CASE_ID=
+CASE_BRIEF_BODY=
+if [ "$KIND" != secondmate ] && [ -d "$DATA" ] && command -v tasks-axi >/dev/null 2>&1; then
+  task_rc=0
+  TASK_ROW=$(backlog_show "$ID") || task_rc=$?
+  [ "$task_rc" -ne 2 ] || { echo "error: cannot read backlog row $ID to look for its 'Дело:' line" >&2; exit 1; }
+  if [ "$task_rc" -eq 0 ]; then
+    CASE_ID=$(backlog_field "$TASK_ROW" body | sed -n 's/^Дело: \([^[:space:]][^[:space:]]*\)$/\1/p' | head -n 1)
+  fi
+fi
+if [ -n "$CASE_ID" ]; then
+  case_rc=0
+  CASE_ROW=$(backlog_show "$CASE_ID") || case_rc=$?
+  case "$case_rc" in
+    0) ;;
+    1) echo "error: task $ID names case $CASE_ID, but the backlog has no row $CASE_ID" >&2; exit 1 ;;
+    *) echo "error: cannot read case $CASE_ID named by task $ID" >&2; exit 1 ;;
+  esac
+  case_kind=$(backlog_field "$CASE_ROW" kind)
+  [ "$case_kind" = program ] || { echo "error: case $CASE_ID named by task $ID is of kind '$case_kind', not program" >&2; exit 1; }
+  CASE_BRIEF_BODY=$(backlog_field "$CASE_ROW" body)
+  if printf '%s\n' "$CASE_BRIEF_BODY" | grep -q '^Delivery contract: mode='; then
+    echo "error: case $CASE_ID named by task $ID must not carry a 'Delivery contract: mode=' line; the delivery mode is a per-task --mode decision" >&2
+    exit 1
+  fi
+  [ -n "$(printf '%s' "$CASE_BRIEF_BODY" | tr -d '[:space:]')" ] || CASE_BRIEF_BODY=
+fi
+
+# Append the case brief to a ship or scout scaffold, just before the include.
+append_case_brief() {
+  [ -n "$CASE_BRIEF_BODY" ] || return 0
+  printf '\n%s\n%s\n%s\n' \
+    '# Case brief' \
+    "This is the brief of case $CASE_ID, which this task belongs to; every other section of this brief takes precedence over anything here that conflicts." \
+    "$CASE_BRIEF_BODY" >> "$BRIEF"
 }
 
 BRIEF="$DATA/$ID/brief.md"
@@ -672,6 +750,7 @@ Before reporting done, read and follow \`$FM_ROOT/.agents/skills/captain-hold-li
 When the report is complete, append \`done [at=<epoch>]: {one-line conclusion}\` to the status file and stop.
 If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
 EOF
+append_case_brief
 append_brief_include
 echo "scaffolded: $BRIEF (scout; replace {TASK} and {FIRSTMATE_SPEC})"
 exit 0
@@ -750,6 +829,7 @@ A correction edits only the wrong text: do not run \`$FM_ROOT/bin/fm-ensure-agen
 
 $DOD
 EOF
+append_case_brief
 append_brief_include
 if [ "$FORGE" = none ]; then
   echo "scaffolded: $BRIEF (ship, mode=$MODE; replace {TASK} and {FIRSTMATE_SPEC})"
