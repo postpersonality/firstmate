@@ -11,6 +11,10 @@ export type Overview = { generated: string; cases: CaseRow[]; focus: Row[]; wait
 export const focusLimit = 3;
 export const noRepo = 'Без проекта';
 const value = (v: unknown) => typeof v === 'string' && v && v !== '-' ? v : undefined;
+// A task's own report is its backlog link `report:data/<id>/report.md`; any other report link stays plain text.
+export const reportPath = (id: string) => `data/${id}/report.md`;
+export const linkEntries = (links: unknown): unknown[] => Array.isArray(links) ? links : typeof links === 'string' && links !== 'none' ? links.split(',') : [];
+export const hasReport = (task: { id: string; links?: unknown }) => linkEntries(task.links).includes(`report:${reportPath(task.id)}`);
 export const pinned = (record: any) => String(record?.priority) === '0' && record?.state !== 'done';
 
 export function groupByRepo(rows: Row[]): Group[] {

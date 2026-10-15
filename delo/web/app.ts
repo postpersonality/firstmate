@@ -1,13 +1,16 @@
 import type { Goal } from '../src/model.ts';
 import type { Overview, Row, CaseRow } from '../src/overview.ts';
 type ViewGoal = Goal & { inbox?: { requests: { requestId: string; at: string; state: string; acknowledged: boolean; reply: unknown }[]; ready?: any } };
-type CaseTask = { id: string; title: string; phase: keyof typeof phaseLabels; links: string[] };
+type CaseTask = { id: string; title: string; phase: keyof typeof phaseLabels; links: string[]; report: boolean };
 type ViewCase = Goal & { archived: boolean; sources: string[]; tasks: CaseTask[]; earlier: CaseTask[] };
 const phaseLabels = { working: 'в работе', waiting: 'ждёт меня', next: 'дальше', done: 'сделано' };
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const date = (s: string) => s ? new Date(s).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 const badge = (title: string) => `<span class="badge">${esc(title)}</span>`;
+// Only a task's own `data/<id>/report.md` link opens as «Отчёт»; other refs stay as they are.
+const ownReport = (taskId: string) => `data/${taskId}/report.md`;
+const reportAnchor = (taskId: string) => `<a class="report-link" href="#report:${encodeURIComponent(taskId)}">Отчёт</a>`;
 const closed = (g: Goal) => g.state === 'done' || g.state === 'dropped';
 const field = (name: string, label: string, value = '', multiline = false, required = false) => `<label>${esc(label)}${multiline ? `<textarea name="${name}" ${required ? 'required' : ''}>${esc(value)}</textarea>` : `<input name="${name}" value="${esc(value)}" ${required ? 'required' : ''} maxlength="500">`}</label>`;
 let csrf = ''; let view: Overview | undefined;
@@ -65,7 +68,7 @@ function row(r: Row, inFocus = false) {
   const marks = [r.kind ? badge(r.kind) : '', r.personal ? badge('личное') : '', r.pinned && !inFocus ? badge('В фокусе') : '', r.noWorker ? badge('нет исполнителя') : ''].join('');
   const detail = [r.id, r.reason || r.current].filter(Boolean).join(' · ');
   const pin = r.open ? `<button class="quiet" data-action="pin" data-id="${esc(r.id)}" data-on="${r.pinned ? '' : '1'}">${r.pinned ? 'Открепить' : 'Закрепить'}</button>` : '';
-  return `<div class="row${r.task ? ' go' : ' warning'}"><div class="row-content"><strong>${r.task ? `<a href="#${encodeURIComponent(r.id)}">${esc(r.title)}</a>` : esc(r.title)}</strong> ${marks}<small>${esc(detail)}</small></div>${pin}</div>`;
+  return `<div class="row${r.task ? ' go' : ' warning'}"><div class="row-content"><strong>${r.task ? `<a href="#${encodeURIComponent(r.id)}">${esc(r.title)}</a>` : esc(r.title)}</strong> ${marks}<small>${esc(detail)}${r.reportPath === ownReport(r.id) ? ` · ${reportAnchor(r.id)}` : ''}</small></div>${pin}</div>`;
 }
 function caseRow(c: CaseRow) {
   return `<div class="row go"><div class="row-content"><strong><a href="#case:${encodeURIComponent(c.id)}">${esc(c.title)}</a></strong><small>${esc(Object.entries(phaseLabels).map(([k, l]) => `${l} ${c.counts[k as keyof typeof phaseLabels]}`).join(' · '))}</small></div></div>`;
@@ -83,9 +86,9 @@ function renderOverview() {
   $('kind').onchange = () => { kind = ($('kind') as HTMLSelectElement).value; renderOverview(); };
 }
 
-function link(ref: string) {
+function link(ref: string, report?: string) {
   const http = /^https?:\/\//.test(ref);
-  return `<div class="row"><div class="row-content"><strong>${http ? `<a href="${esc(ref)}" target="_blank" rel="noopener noreferrer">${esc(ref)}</a>` : esc(ref)}</strong></div></div>`;
+  return `<div class="row"><div class="row-content"><strong>${report && ref === ownReport(report) ? reportAnchor(report) : http ? `<a href="${esc(ref)}" target="_blank" rel="noopener noreferrer">${esc(ref)}</a>` : esc(ref)}</strong></div></div>`;
 }
 function requests(g: ViewGoal) {
   const items = g.inbox?.requests ?? []; const ready = g.inbox?.ready;
@@ -94,22 +97,33 @@ function requests(g: ViewGoal) {
 }
 function renderGoal(g: ViewGoal) {
   current = g; document.title = `${g.title} — Дело`;
-  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(g.id)}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p class="muted">${esc(g.why || 'Зачем нужна цель, пока не записано')}</p>${requests(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${g.actions.map(a => `<button data-task-action="${a}">${actionLabels[a]}</button>`).join('')}</div></div><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(link).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section><section class="section"><div class="section-heading"><h2>Бриф</h2></div><details class="brief-box"><summary>Зачем, критерий готовности и контекст</summary><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl>${closed(g) ? '<p class="disabled-note">Бриф заморожен после закрытия цели.</p>' : ''}</details></section>`;
+  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(g.id)}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p class="muted">${esc(g.why || 'Зачем нужна цель, пока не записано')}</p>${requests(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${g.actions.map(a => `<button data-task-action="${a}">${actionLabels[a]}</button>`).join('')}</div></div><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section><section class="section"><div class="section-heading"><h2>Бриф</h2></div><details class="brief-box"><summary>Зачем, критерий готовности и контекст</summary><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl>${closed(g) ? '<p class="disabled-note">Бриф заморожен после закрытия цели.</p>' : ''}</details></section>`;
 }
 
 const brief = (g: Goal) => `<div class="brief-box"><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl></div>`;
-const linkList = (refs: string[]) => refs.map(ref => /^https?:\/\//.test(ref) ? `<a href="${esc(ref)}" target="_blank" rel="noopener noreferrer">${esc(ref)}</a>` : esc(ref)).join(' · ');
-const caseTask = (t: CaseTask, live: boolean) => `<div class="row${live ? ' go' : ''}"><div class="row-content"><strong>${live ? `<a href="#${encodeURIComponent(t.id)}">${esc(t.title)}</a>` : esc(t.title)}</strong><small>${esc(t.id)} · ${esc(phaseLabels[t.phase])}${t.links.length ? ' · ' : ''}${linkList(t.links)}</small></div></div>`;
+const linkList = (refs: string[], report?: string) => refs.map(ref => report && ref === ownReport(report) ? reportAnchor(report) : /^https?:\/\//.test(ref) ? `<a href="${esc(ref)}" target="_blank" rel="noopener noreferrer">${esc(ref)}</a>` : esc(ref)).join(' · ');
+const caseTask = (t: CaseTask, live: boolean) => `<div class="row${live ? ' go' : ''}"><div class="row-content"><strong>${live ? `<a href="#${encodeURIComponent(t.id)}">${esc(t.title)}</a>` : esc(t.title)}</strong><small>${esc(t.id)} · ${esc(phaseLabels[t.phase])}${t.links.length ? ' · ' : ''}${linkList(t.links, t.report ? t.id : undefined)}</small></div></div>`;
 function renderCase(c: ViewCase) {
   current = c; document.title = `${c.title} — Дело`;
   const open = !c.archived && c.state !== 'done';
   const buttons = open ? '<button data-action="edit">Править</button><button data-action="close-case">Закрыть дело</button>' : c.archived ? '<button data-action="continue-case">Продолжить</button>' : '<button data-action="reopen-case">Вернуть</button>';
   const groups = Object.entries(phaseLabels).map(([key, label]) => ({ label, rows: c.tasks.filter(t => t.phase === key) })).filter(g => g.rows.length);
-  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Дело · ${esc(c.id)}${c.archived ? ' · в архиве' : c.state === 'done' ? ' · закрыто' : ''}</p><h1>${esc(c.title)}</h1><p class="muted">${esc(c.why || 'Зачем нужно дело, пока не записано')}</p></div><div class="actions">${buttons}</div></div><section class="section"><div class="section-heading"><h2>Бриф</h2></div>${brief(c)}${open ? '' : '<p class="disabled-note">Бриф заморожен после закрытия дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Задачи</h2></div>${groups.length ? groups.map(g => `<p class="eyebrow">${esc(g.label)}</p><div class="rows">${g.rows.map(t => caseTask(t, true)).join('')}</div>`).join('') : '<p class="muted">В бэклоге нет задач этого дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Закрыты раньше</h2></div>${c.earlier.length ? `<div class="rows">${c.earlier.map(t => caseTask(t, false)).join('')}</div>` : '<p class="muted">В архиве нет задач этого дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${c.links.length ? `<div class="rows">${c.links.map(link).join('')}</div>` : '<p class="muted">У дела и его задач нет ссылок.</p>'}</section>`;
+  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Дело · ${esc(c.id)}${c.archived ? ' · в архиве' : c.state === 'done' ? ' · закрыто' : ''}</p><h1>${esc(c.title)}</h1><p class="muted">${esc(c.why || 'Зачем нужно дело, пока не записано')}</p></div><div class="actions">${buttons}</div></div><section class="section"><div class="section-heading"><h2>Бриф</h2></div>${brief(c)}${open ? '' : '<p class="disabled-note">Бриф заморожен после закрытия дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Задачи</h2></div>${groups.length ? groups.map(g => `<p class="eyebrow">${esc(g.label)}</p><div class="rows">${g.rows.map(t => caseTask(t, true)).join('')}</div>`).join('') : '<p class="muted">В бэклоге нет задач этого дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Закрыты раньше</h2></div>${c.earlier.length ? `<div class="rows">${c.earlier.map(t => caseTask(t, false)).join('')}</div>` : '<p class="muted">В архиве нет задач этого дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${c.links.length ? `<div class="rows">${c.links.map(ref => link(ref)).join('')}</div>` : '<p class="muted">У дела и его задач нет ссылок.</p>'}</section>`;
 }
 function renderClosed(list: { id: string; title: string; closed?: string }[]) {
   current = undefined; document.title = 'Закрытые дела — Дело';
   $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Архив Firstmate</p><h1>Закрытые дела</h1></div></div>${list.length ? `<div class="rows">${list.map(c => `<div class="row go"><div class="row-content"><strong><a href="#case:${encodeURIComponent(c.id)}">${esc(c.title)}</a></strong><small>${esc([c.id, c.closed].filter(Boolean).join(' · '))}</small></div></div>`).join('')}</div>` : '<p class="muted">В архиве нет закрытых дел.</p>'}`;
+}
+
+function renderReport(taskId: string, r: { path: string; title: string; text: string }) {
+  current = undefined; document.title = `Отчёт: ${r.title} — Дело`;
+  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Отчёт · ${esc(taskId)}</p><h1>${esc(r.title)}</h1></div></div><section class="section"><p class="report-path"><code id="report-path">${esc(r.path)}</code> <button class="quiet" data-action="copy-path">Копировать путь</button></p><pre class="report-text">${esc(r.text)}</pre></section>`;
+}
+// Without the Clipboard API the path is selected, so Ctrl+C copies it.
+async function copyPath() {
+  const path = $('report-path');
+  try { await navigator.clipboard.writeText(path.textContent ?? ''); message('Путь скопирован.'); }
+  catch { const range = document.createRange(); range.selectNodeContents(path); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range); message('Не удалось скопировать: путь выделен, скопируйте его сами.', true); }
 }
 
 async function goalAction(action: string) {
@@ -134,6 +148,8 @@ async function navigate() {
   if (!goalId) return renderOverview();
   try {
     if (goalId === ':closed') return renderClosed(await api('/api/cases'));
+    const reportId = /^report:(.+)$/.exec(goalId)?.[1];
+    if (reportId) return renderReport(reportId, await api(`/api/reports/${encodeURIComponent(reportId)}`));
     const caseId = /^case:(.+)$/.exec(goalId)?.[1];
     const goal = caseId ? undefined : await api<ViewGoal>(`/api/goals/${encodeURIComponent(goalId)}`);
     if (goal && goal.kind !== 'program') return renderGoal(goal);
@@ -153,7 +169,7 @@ $('main').onclick = async event => {
   if (taskButton && current) { taskButton.disabled = true; try { await taskAction(current, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } finally { taskButton.disabled = false; } return; }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
   if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, input, select, textarea, label')) go.querySelector('a')?.click(); return; }
-  try { if (button.dataset.action === 'new') return newGoal(); if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }
+  try { if (button.dataset.action === 'new') return newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }
     if (button.dataset.action === 'pin') { button.disabled = true; view = await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); renderOverview(); return; } if (button.dataset.action!.endsWith('-case') && current) return await caseAction(current as ViewCase, button.dataset.action!); await goalAction(button.dataset.action!); }
   catch (e: any) { message(e.message, true); } finally { button.disabled = false; }
 };

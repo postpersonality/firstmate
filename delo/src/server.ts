@@ -38,6 +38,8 @@ export function router(store: Store) {
       if (req.method === 'POST' && url.pathname === '/api/goals') return send(store.create(await req.json()), 201);
       if (req.method === 'POST' && url.pathname === '/api/cases') return send(store.createCase(await req.json()), 201);
       if (req.method === 'GET' && url.pathname === '/api/cases') return send(store.closedCases());
+      const report = /^\/api\/reports\/([^/]+)$/.exec(url.pathname);
+      if (req.method === 'GET' && report) { let taskId = ''; try { taskId = decodeURIComponent(report[1]); } catch { /* A malformed id is just not found. */ } return send(store.report(taskId)); }
       const caseRoute = /^\/api\/cases\/([^/]+)(?:\/(close|reopen|continue))?$/.exec(url.pathname);
       if (caseRoute) {
         const caseId = decodeURIComponent(caseRoute[1]); id.parse(caseId);
@@ -53,7 +55,7 @@ export function router(store: Store) {
       if (req.method === 'GET') return send({ ...store.get(goalId), inbox: store.inbox(goalId) });
       if (req.method === 'PATCH') return send(store.update(goalId, await req.json()));
       return send({ error: 'Метод не поддерживается' }, 405);
-    } catch (error: any) { return send({ error: error instanceof ZodError ? error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : error.message }, error.message === 'Цель не найдена' ? 404 : 400); }
+    } catch (error: any) { return send({ error: error instanceof ZodError ? error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : error.message }, ['Цель не найдена', 'Отчёт не найден'].includes(error.message) ? 404 : 400); }
   };
 }
 

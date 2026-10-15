@@ -1,9 +1,10 @@
-import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, phase } from './model.ts';
+import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, phase, id } from './model.ts';
 import type { Goal, Action } from './model.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
-import { overview, pinRefusal, caseOf } from './overview.ts';
+import { overview, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
 
 const sections = ['Обложка', 'Зачем', 'Критерий готовности', 'Контекст', 'Ограничения'];
 
@@ -24,8 +25,7 @@ function managedBody(body: string) {
 }
 
 function nativeLinks(task: FirstmateTask): string[] {
-  const entries = Array.isArray(task.links) ? task.links : typeof task.links === 'string' && task.links !== 'none' ? task.links.split(',') : [];
-  return entries.flatMap((entry: any) => {
+  return linkEntries(task.links).flatMap((entry: any) => {
     const value = typeof entry === 'string' ? entry.replace(/^(?:pr|report|doc):/, '') : entry?.url;
     return typeof value === 'string' && value ? [value] : [];
   });
@@ -94,7 +94,7 @@ export class Store {
     catch (error: any) { if (!/NOT_FOUND/.test(`${error.code} ${error.stdout} ${error.message}`)) throw error; task = this.firstmate.show(caseId, true); archived = true; }
     if (task.kind !== 'program') throw new Error('Это не дело');
     const goal = this.get(caseId, task);
-    const entry = (t: FirstmateTask) => ({ id: t.id, title: t.title, phase: phase(t), links: nativeLinks(t) });
+    const entry = (t: FirstmateTask) => ({ id: t.id, title: t.title, phase: phase(t), links: nativeLinks(t), report: hasReport(t) });
     const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(entry);
     const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(entry);
     const sources = goal.body.split('\n').filter(l => l.startsWith(sourceLine)).map(l => l.slice(sourceLine.length).trim());
@@ -140,7 +140,7 @@ export class Store {
       holdKind: field(task.hold_kind), inFlight: task.state === 'in_flight',
       why: managed ? section(body, 'Зачем') : '', doneWhen: managed ? section(body, 'Критерий готовности') : '', context: managed ? section(body, 'Контекст') : body,
       constraints: managed ? section(body, 'Ограничения').split('\n').filter(s => s.startsWith('- ')).map(s => s.slice(2)) : [],
-      links: nativeLinks(task),
+      links: nativeLinks(task), report: hasReport(task),
     };
   }
 
@@ -215,6 +215,16 @@ export class Store {
       .filter(r => [`delo-start-${taskId}-`, `delo-close-${taskId}-`].some(p => r.request_id?.startsWith(p)))
       .map(r => ({ requestId: r.request_id, at: r.at, state: r.state, acknowledged: !!r.acknowledged, reply: r.reply ?? null }));
     return { requests, ready: requests.some(r => r.state === 'pending') ? this.firstmate.ready() : undefined };
+  }
+
+  // Q34А: a backlog or archived task's own report, read-only; the path comes from the validated id, never from the link text.
+  report(taskId: string) {
+    const missing = () => new Error('Отчёт не найден');
+    if (!id.safeParse(taskId).success) throw missing();
+    const task = [...this.firstmate.list(), ...this.firstmate.archive()].find(t => t.id === taskId);
+    if (!task || !hasReport(task)) throw missing();
+    const path = join(this.firstmate.home, reportPath(taskId));
+    try { return { path, title: task.title, text: readFileSync(path, 'utf8') }; } catch { throw missing(); }
   }
 
   overview() {

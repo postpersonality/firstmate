@@ -53,7 +53,7 @@ test('a дело gathers its tasks from the backlog and the archive, closes only
     assert.match(section('Задачи').textContent!, /Вторая задача/);
     assert.match(section('Закрыты раньше').textContent!, /Первая задача/);
     assert.ok(section('Закрыты раньше').querySelector('a[href="https://github.com/o/r/pull/7"]'), 'an archived task keeps its PR link');
-    assert.match(section('Закрыты раньше').textContent!, new RegExp(`data/${first}/report.md`));
+    assert.ok(section('Закрыты раньше').querySelector(`a[href="#report:${first}"]`), 'a task with its own report links to it as «Отчёт»');
     assert.deepEqual([...section('Ссылки').querySelectorAll('.row')].map(r => r.textContent), ['https://example.com/spec', 'https://example.com/extra', 'https://github.com/o/r/pull/7', `data/${first}/report.md`]);
 
     (document.querySelector('[data-action="close-case"]') as HTMLButtonElement).click();
