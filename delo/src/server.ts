@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { stripTypeScriptTypes } from 'node:module';
 import { randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { z, ZodError } from 'zod';
 import type { Store } from './store.ts';
 import { id, type Action } from './model.ts';
@@ -10,7 +11,8 @@ import { id, type Action } from './model.ts';
 const web = fileURLToPath(new URL('../web/', import.meta.url));
 const send = (data: unknown, status = 200) => Response.json(data, { status });
 
-export function router(store: Store) {
+// Tests pass a stub opener so no real desktop app starts.
+export function router(store: Store, opener = 'xdg-open') {
   const csrf = randomBytes(24).toString('hex');
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
@@ -40,7 +42,16 @@ export function router(store: Store) {
       if (req.method === 'GET' && url.pathname === '/api/cases') return send(store.closedCases());
       if (req.method === 'GET' && url.pathname === '/api/folders') return send(store.folders());
       const report = /^\/api\/reports\/([^/]+)$/.exec(url.pathname);
-      if (req.method === 'GET' && report) { let taskId = ''; try { taskId = decodeURIComponent(report[1]); } catch { /* A malformed id is just not found. */ } return send(store.report(taskId)); }
+      const reportOpen = /^\/api\/reports\/([^/]+)\/open$/.exec(url.pathname);
+      if ((req.method === 'GET' && report) || (req.method === 'POST' && reportOpen)) {
+        let taskId = ''; try { taskId = decodeURIComponent((report ?? reportOpen)![1]); } catch { /* A malformed id is just not found. */ }
+        const found = store.report(taskId);
+        if (report) return send(found);
+        // Q36Б: only a listed task's own report path is opened, detached and without a shell.
+        const child = spawn(opener, [found.path], { detached: true, stdio: 'ignore' });
+        await new Promise((resolve, reject) => child.once('spawn', resolve).once('error', error => reject(new Error(`Не удалось открыть отчёт в приложении: ${error.message}`))));
+        child.unref(); return send({ ok: true });
+      }
       const caseRoute = /^\/api\/cases\/([^/]+)(?:\/(close|reopen|continue))?$/.exec(url.pathname);
       if (caseRoute) {
         const caseId = decodeURIComponent(caseRoute[1]); id.parse(caseId);

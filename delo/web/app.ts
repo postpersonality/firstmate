@@ -121,7 +121,7 @@ function renderClosed(list: { id: string; title: string; closed?: string }[]) {
 
 function renderReport(taskId: string, r: { path: string; title: string; text: string }) {
   current = undefined; document.title = `Отчёт: ${r.title} — Дело`;
-  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Отчёт · ${esc(taskId)}</p><h1>${esc(r.title)}</h1></div></div><section class="section"><p class="report-path"><code id="report-path">${esc(r.path)}</code> <button class="quiet" data-action="copy-path">Копировать путь</button></p><pre class="report-text">${esc(r.text)}</pre></section>`;
+  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Отчёт · ${esc(taskId)}</p><h1>${esc(r.title)}</h1></div></div><section class="section"><p class="report-path"><code id="report-path">${esc(r.path)}</code> <button class="quiet" data-action="copy-path">Копировать путь</button> <button class="quiet" data-action="open-report" data-id="${esc(taskId)}">Открыть в приложении</button></p><pre class="report-text">${esc(r.text)}</pre></section>`;
 }
 // Without the Clipboard API the path is selected, so Ctrl+C copies it.
 async function copyPath() {
@@ -176,7 +176,7 @@ $('main').onclick = async event => {
   if (taskButton && current) { taskButton.disabled = true; try { await taskAction(current, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } finally { taskButton.disabled = false; } return; }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
   if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, input, select, textarea, label')) go.querySelector('a')?.click(); return; }
-  try { if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }
+  try { if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'open-report') { button.disabled = true; await api(`/api/reports/${encodeURIComponent(button.dataset.id!)}/open`, {}); return; } if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }
     if (button.dataset.action === 'pin') { button.disabled = true; view = await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); renderOverview(); return; } if (button.dataset.action!.endsWith('-case') && current) return await caseAction(current as ViewCase, button.dataset.action!); await goalAction(button.dataset.action!); }
   catch (e: any) { message(e.message, true); } finally { button.disabled = false; }
 };
