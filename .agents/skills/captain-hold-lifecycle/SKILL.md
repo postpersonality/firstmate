@@ -48,6 +48,7 @@ Use the existing `complete` gate for this outcome review as well as the captain-
 Classify each remaining step by who must act next: worker work belongs in the ready queue or its actual running task; an already authorized activation/delivery owned by firstmate must be handled in the accepting turn.
 Name the latter as a firstmate action at the gate before acting, so an interrupted or refused handoff retains its task reference and owner, then re-run the gate after handling it.
 A firstmate action merely marked In flight or parked for firstmate's own next move is still owed.
+A ready `kind=firstmate` task met at queue intake is such an owed action, never dispatch work: handle it in that turn or record its real gate.
 Record a real captain, external, dated, or task-dependency gate when one exists, including an explicit user stop, missing paid/network/destructive authority, an executing job's completion condition, or independent work already running.
 Do not invent an external condition or activate an action just to pass the gate; a failed check requires handling the named work or correcting its disposition from evidence.
 After acceptance, re-evaluate ready work under the existing lifecycle.
