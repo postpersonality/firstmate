@@ -773,6 +773,19 @@ devin is verified for crewmate and scout launches only; a secondmate is refused 
 
 Its private worker config disables Claude Code imports (including the captain's hooks) and, unless the home sets `config/keep-ai-trailers` (see "Commit attribution"), Devin commit attribution without editing user or project config; [`fm-devin-config.sh`](../bin/fm-devin-config.sh) owns these enforced settings and [Devin verification](verification/devin.md) owns the live evidence and observed model availability.
 
+### DeepSeek Harness workers
+
+`dsh` runs local crewmate/scout work on Linux with Herdr through an ACP terminal bridge.
+An installed official `@deepseek-ai/dsh` version `0.1.5-rc.1` must be available as `dsh` on PATH, or selected by `FM_DSH_BIN=/absolute/path/to/entrypoint` when invoking `fm-spawn`.
+The bridge reads the existing `DSH_HOME` or `~/.dsh` native settings and credentials through readonly providers and stores runtime state in the task's private generation directory.
+Select a native `provider/model` with `--model`; omission preserves the native default, including any native error from that route.
+Requested effort is applied only when the selected model advertises it.
+An existing corporate or other configured provider does not require a DeepSeek-official API key merely because the harness is DSH.
+Credentials supplied only to the invoking shell still need the ordinary worker-reachable authentication surface; no secret is placed in the staged launch command.
+
+Primary, secondmate, remote, other backends, and other DSH versions are refused or unsupported; no automatic install or settings migration is performed.
+[DSH verification](verification/dsh.md) owns the version evidence, live guard, and compatibility boundary.
+
 ### Verification and primary supervision
 
 New harnesses get verified through a supervised trial task before joining the set.
@@ -1160,7 +1173,7 @@ Typed resolution additively recognizes `gemini` because AGENTS.md section 4 veri
 | Harness | Provider declaration on the opted-in resolver path |
 | --- | --- |
 | `claude`, `codex`, `grok`, `kimi`, `cursor`, `agy`, `muse` | The resolver has an authoritative single-provider mapping. |
-| Every other verified harness | Must declare `provider` explicitly; this includes multi-provider `pi`, `pi-signed`, `omp`, and `opencode`, and unmapped `gemini`, `rovo`, and `devin`; omission is an actionable configuration error before any request. |
+| Every other verified harness | Must declare `provider` explicitly; this includes multi-provider `pi`, `pi-signed`, `omp`, and `opencode`, and unmapped `gemini`, `rovo`, `devin`, and `dsh`; omission is an actionable configuration error before any request. |
 
 This single-provider table is separate from the frozen legacy mapping used by `fm-quota-choose.sh`, so additions cannot alter no-key routing.
 

@@ -373,7 +373,7 @@ EOF
   # cannot represent unambiguously.
   while IFS= read -r pid; do
     [ -n "$pid" ] || continue
-    if fm_gemini_pid_is_gemini "$pid"; then
+    if fm_gemini_pid_is_gemini "$pid" || fm_dsh_pid_matches "$pid"; then
       printf 'alive'
       return 0
     fi

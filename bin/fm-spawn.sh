@@ -1108,6 +1108,12 @@ spawn_remote_secondmate() {
       [ -n "$effort" ] || effort=-
     fi
   fi
+  if [ "$harness" = dsh ]; then
+    fm_lock_release "$registry_lock" || true
+    fm_lock_release "$SPAWN_TASK_LOCK" || true
+    echo "error: dsh supports local crewmate/scout work only; remote secondmates are unsupported" >&2
+    return 1
+  fi
   # A remote second mate always runs on Herdr: its server belongs to the host's
   # own GUI login session, so the endpoint outlives every SSH connection that
   # supervises it. bin/fm-remote-doctor.sh gates that host on the same
@@ -2009,7 +2015,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   }
 elif [ "$KIND" = secondmate ]; then
   case "${POS[1]:-}" in
-  '' | claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin)
+  '' | claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin | dsh)
     ARG3=${POS[1]:-}
     ;;
   *' '*)
@@ -2135,6 +2141,7 @@ launch_template() {
   local harness=$1 kind=${2:-ship}
   # shellcheck disable=SC2016  # single quotes are deliberate: $(cat ...) expands in the crewmate pane, not here
   case "$harness" in
+  dsh) printf '%s' '__DSHCOMMAND__ __MODELFLAG____EFFORTFLAG__' ;;
   # CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false disables claude's interactive
   # predicted-next-prompt ghost text, which renders as dim/faint text inside an
   # otherwise-empty composer and would otherwise read like real typed input when
@@ -2457,7 +2464,7 @@ esac
 # docs/supervision-protocols/ carries no agy wake protocol (agy 1.2.0).
 # devin has none either: only its worker lifecycle hooks are verified, and
 # docs/supervision-protocols/ carries no devin wake protocol (devin 3000.11.1).
-if [ "$KIND" = secondmate ] && { [ "$HARNESS" = muse ] || [ "$HARNESS" = gemini ] || [ "$HARNESS" = agy ] || [ "$HARNESS" = devin ]; }; then
+if [ "$KIND" = secondmate ] && { [ "$HARNESS" = muse ] || [ "$HARNESS" = gemini ] || [ "$HARNESS" = agy ] || [ "$HARNESS" = devin ] || [ "$HARNESS" = dsh ]; }; then
   echo "error: $HARNESS is a verified crewmate/scout adapter only and cannot run a secondmate; it has no primary supervision protocol. Select a harness verified for secondmates." >&2
   exit 1
 fi
@@ -2486,6 +2493,20 @@ if [ "$KIND" != secondmate ]; then
 fi
 
 case "$HARNESS" in
+dsh)
+  if [ "$BACKEND" != herdr ] || [ "$(uname -s)" != Linux ]; then
+    echo "error: dsh is verified only for local Linux Herdr workers; this backend/platform is unsupported" >&2
+    exit 1
+  fi
+  DSH_BIN=$(resolve_pi_executable "${FM_DSH_BIN:-dsh}") || {
+    echo "error: official dsh executable not found; put dsh on PATH or set FM_DSH_BIN to its installed entrypoint" >&2
+    exit 1
+  }
+  DSH_NODE=$(node -p 'process.execPath' 2>/dev/null) || { echo "error: dsh requires Node" >&2; exit 1; }
+  "$DSH_NODE" "$FM_ROOT/bin/fm-dsh-worker.mjs" --check --dsh-bin "$DSH_BIN" >/dev/null || exit 1
+  DSH_CONFIG_HOME=${DSH_HOME:-${HOME:?}/.dsh}
+  DSH_HERDR_BIN=$(command -v herdr) || exit 1
+  ;;
 devin)
   DEVIN_BIN=$(command -v devin) || {
     echo "error: devin executable not found on PATH" >&2
@@ -2769,7 +2790,7 @@ model_flag_for_harness() {
   local harness=$1 model=$2
   [ -n "$model" ] && [ "$model" != default ] || return 0
   case "$harness" in
-  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin)
+  claude | codex | opencode | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin | dsh)
     printf -- '--model %s ' "$(shell_quote "$model")"
     ;;
   esac
@@ -2779,6 +2800,9 @@ effort_flag_for_harness() {
   local harness=$1 effort=$2 model=${3:-}
   [ -n "$effort" ] && [ "$effort" != default ] || return 0
   case "$harness" in
+  dsh)
+    printf -- '--effort %s ' "$(shell_quote "$effort")"
+    ;;
   claude)
     case "$effort" in
     low | medium | high | xhigh | max) printf -- '--effort %s ' "$(shell_quote "$effort")" ;;
@@ -4744,7 +4768,7 @@ if [ "$KIND" != secondmate ]; then
     }
     [ "$RELAUNCH" -ne 1 ] || RELAUNCH_REPLACEMENT_BUSY_GEN=$BUSY_GEN
     ;;
-  gemini | devin)
+  gemini | devin | dsh)
     if [ "$RAW_LAUNCH" -eq 0 ]; then
       BUSY_GEN=$("$FM_ROOT/bin/fm-busy-event.sh" arm "$STATE_REAL" "$ID") || {
         echo "error: failed to arm the busy-state contract for $ID" >&2
@@ -5351,6 +5375,15 @@ MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 # A pinned Pi launch confines Pi's model lookup to the declared provider.
 [ -z "$WORKER_ACCOUNT_PROVIDER" ] || MODELFLAG="--provider $(shell_quote "$WORKER_ACCOUNT_PROVIDER") $MODELFLAG"
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL") || exit 1
+if [ "$HARNESS" = dsh ] && [ "$RAW_LAUNCH" -eq 0 ]; then
+  # Use the backend owner's session-selected compatible client for reports,
+  # including a reactive protocol-mismatch retry during endpoint provisioning.
+  if [ "${FM_BACKEND_HERDR_CLIENT_SESSION:-}" = "${T%%:*}" ]; then
+    DSH_HERDR_BIN=$(resolve_pi_executable "$(fm_backend_herdr_bin)") || exit 1
+  fi
+  DSH_COMMAND="$(shell_quote "$DSH_NODE") $(shell_quote "$FM_ROOT/bin/fm-dsh-worker.mjs") --dsh-bin $(shell_quote "$DSH_BIN") --config-home $(shell_quote "$DSH_CONFIG_HOME") --cwd $sq_worktree --state $(shell_quote "$STATE_REAL") --id $(shell_quote "$ID") --gen $(shell_quote "$BUSY_GEN") --brief $sq_brief --runtime-home $(shell_quote "$TASK_TMP/dsh.$BUSY_GEN") --herdr-bin $(shell_quote "$DSH_HERDR_BIN") --herdr-session $(shell_quote "${T%%:*}") --herdr-pane $(shell_quote "${T#*:}")"
+  LAUNCH=${LAUNCH//__DSHCOMMAND__/$DSH_COMMAND}
+fi
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
 # Relaunch session continuity. Computed here, where the adopted endpoint (T) is
@@ -5675,6 +5708,23 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
+if [ "$HARNESS" = dsh ] && [ "$RAW_LAUNCH" -eq 0 ]; then
+  dsh_ready=0
+  for _ in $(seq 1 100); do
+    if [ -f "$STATE_REAL/$ID.dsh-ready" ] &&
+      jq -e --arg gen "$BUSY_GEN" --arg cwd "$WT" '.gen == $gen and .cwd == $cwd' "$STATE_REAL/$ID.dsh-ready" >/dev/null 2>&1 &&
+      [ "$(fm_backend_agent_state "$BACKEND" "$T")" = alive ]; then
+      dsh_ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [ "$dsh_ready" != 1 ]; then
+    printf '%s\n' "$(status_stamp_line 'failed: DSH did not confirm its generation-bound initial prompt and live process')" >> "$STATE/$ID.status"
+    echo "error: DSH readiness failed; inspect $T; the worker was not admitted" >&2
+    exit 1
+  fi
+fi
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
     kimi_spawn_fail "$KIMI_READY_FAILURE_DETAIL"
