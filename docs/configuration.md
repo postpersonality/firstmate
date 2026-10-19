@@ -776,14 +776,16 @@ Its private worker config disables Claude Code imports (including the captain's 
 ### DeepSeek Harness workers
 
 `dsh` runs local crewmate/scout work on Linux with Herdr through an ACP terminal bridge.
-An installed official `@deepseek-ai/dsh` version `0.1.5-rc.1` must be available as `dsh` on PATH, or selected by `FM_DSH_BIN=/absolute/path/to/entrypoint` when invoking `fm-spawn`.
-The bridge reads the existing `DSH_HOME` or `~/.dsh` native settings and credentials through readonly providers and stores runtime state in the task's private generation directory.
+An installed official `@deepseek-ai/dsh` version `0.2.1-rc.2` must be available as `dsh` on PATH, or selected by `FM_DSH_BIN=/absolute/path/to/entrypoint` when invoking `fm-spawn`; the previously verified `0.1.5-rc.1` remains compatible.
+The bridge uses the existing `DSH_HOME` or `~/.dsh` as its configuration source and stores runtime state in the task's private generation directory.
+For 0.2 it stages legacy settings and native ACP/home profile overrides privately, waits for the native legacy import, and reads credentials from the original native provider under write-denying protection.
+It never starts the 0.2 runtime in the source home or upgrades the source settings.
 Select a native `provider/model` with `--model`; omission preserves the native default, including any native error from that route.
 Requested effort is applied only when the selected model advertises it.
 An existing corporate or other configured provider does not require a DeepSeek-official API key merely because the harness is DSH.
 Credentials supplied only to the invoking shell still need the ordinary worker-reachable authentication surface; no secret is placed in the staged launch command.
 
-Primary, secondmate, remote, other backends, and other DSH versions are refused or unsupported; no automatic install or settings migration is performed.
+Primary, secondmate, remote, other backends, and other DSH versions are refused or unsupported; no automatic installation or user-store migration is performed.
 [DSH verification](verification/dsh.md) owns the version evidence, live guard, and compatibility boundary.
 
 ### Verification and primary supervision

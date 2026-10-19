@@ -7,6 +7,7 @@ import { makeDshFixture } from './fm-dsh-fixture.mjs';
 const [root, lab] = process.argv.slice(2);
 const worker = join(root, 'bin/fm-dsh-worker.mjs');
 const fake = makeDshFixture(lab);
+const modernFake = makeDshFixture(join(lab, 'modern-package'), '0.2.1-rc.2');
 const herdr = join(lab, 'herdr');
 writeFileSync(herdr, `#!/usr/bin/env node
 import {appendFileSync} from 'node:fs';
@@ -14,21 +15,29 @@ appendFileSync(process.env.DSH_HERDR_LOG,JSON.stringify(process.argv.slice(2))+'
 console.log(JSON.stringify({result:{}}));
 `);
 chmodSync(herdr,0o755);
-function makeCase(name, extra = []) {
+function makeCase(name, extra = [], modern = false) {
   const dir = join(lab, name), state = join(dir, 'state'), cwd = join(dir, 'cwd'), config = join(dir, 'config');
   for (const path of [state, cwd, config]) mkdirSync(path, { recursive: true });
+  if (modern) {
+    // JSON is a YAML subset; the fixture's parser covers only this test input.
+    writeFileSync(join(config, 'settings.yaml'), 'null');
+    mkdirSync(join(config, 'profiles/acp'), { recursive: true });
+    writeFileSync(join(config, 'cordis.patch.yml'), '[{"id":"native-home-override","disabled":true}]');
+    writeFileSync(join(config, 'profiles/acp/cordis.patch.yml'), '[{"id":"acp","config":{"provider":"litellm","model":"test"}}]');
+    writeFileSync(join(config, 'profiles/acp/package.json'), JSON.stringify({ private: true, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'] } } }));
+  }
   const brief = join(dir, 'brief.md');
   writeFileSync(brief, 'Runtime fixture: INITIAL_BRIEF');
   const arm = spawnSync('bash', [join(root, 'bin/fm-busy-event.sh'), 'arm', state, 'case'], { encoding: 'utf8' });
   assert.equal(arm.status, 0, arm.stderr);
   const gen = arm.stdout.trim(), log = join(dir, 'rpc.jsonl'), herdrLog=join(dir,'herdr.jsonl');
-  const child = spawn(process.execPath, [worker, '--dsh-bin', fake, '--config-home', config, '--runtime-home', join(dir, 'runtime'), '--cwd', cwd, '--state', state, '--id', 'case', '--gen', gen, '--brief', brief, '--model', 'litellm/test', '--effort', 'low', '--herdr-bin',herdr,'--herdr-session','fm-lab-fixture','--herdr-pane','w1:p2', ...extra], { env: { ...process.env, DSH_FIXTURE_LOG: log, DSH_HERDR_LOG:herdrLog, CLAUDECODE:'1', FM_SUPERVISION_ACTOR:'branch', FM_SUPERVISION_PRIMARY_HARNESS:'codex' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [worker, '--dsh-bin', modern ? modernFake : fake, '--config-home', config, '--runtime-home', join(dir, 'runtime'), '--cwd', cwd, '--state', state, '--id', 'case', '--gen', gen, '--brief', brief, '--model', 'litellm/test', '--effort', 'low', '--herdr-bin',herdr,'--herdr-session','fm-lab-fixture','--herdr-pane','w1:p2', ...extra], { env: { ...process.env, DSH_FIXTURE_LOG: log, DSH_HERDR_LOG:herdrLog, CLAUDECODE:'1', FM_SUPERVISION_ACTOR:'branch', FM_SUPERVISION_PRIMARY_HARNESS:'codex' }, stdio: ['pipe', 'pipe', 'pipe'] });
   let output = '', error = '';
   child.stdout.on('data', b => { output += b; });
   child.stderr.on('data', b => { error += b; });
   let exited = false;
   const exit = new Promise(resolve => child.on('close', code => { exited = true; resolve(code); }));
-  return { child, exit, state, cwd, gen, log, herdrLog, output: () => output, error: () => error, exited: () => exited };
+  return { child, exit, state, cwd, gen, log, herdrLog, config, runtime: join(dir, 'runtime'), output: () => output, error: () => error, exited: () => exited };
 }
 async function until(predicate, detail) {
   for (let i = 0; i < 120; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 50)); }
@@ -114,9 +123,25 @@ try {
   assert(!existsSync(join(initialError.state,'case.dsh-ready')),'a user-message echo must not admit a failed initial prompt');
   console.log('ok - initial vendor failure after a user-message echo never publishes readiness');
 
+  const modern = makeCase('modern', [], true); running.push(modern);
+  await until(() => modern.output().includes('ACK ') || modern.exited(), 'DSH 0.2 handshake was not bounded');
+  assert(!modern.exited(), modern.error());
+  assert(existsSync(join(modern.runtime, 'settings.yaml.imported')), 'ACP raced the native legacy import');
+  assert.equal(readFileSync(join(modern.config, 'settings.yaml'), 'utf8'), 'null');
+  assert(!existsSync(join(modern.config, 'settings.yaml.imported')), 'native source legacy settings were renamed');
+  for (const relative of ['cordis.patch.yml', 'profiles/acp/cordis.patch.yml', 'profiles/acp/package.json']) {
+    assert.equal(readFileSync(join(modern.runtime, relative), 'utf8'), readFileSync(join(modern.config, relative), 'utf8'));
+  }
+  assert(!existsSync(join(modern.config, 'profiles/acp/cordis.yml')), 'native source profile was provisioned');
+  modern.child.stdin.write('modern-steer\n');
+  await until(() => modern.output().includes('ACK modern-steer'), 'DSH 0.2 steering failed');
+  modern.child.stdin.write('/exit\n');
+  assert.equal(await modern.exit, 0, modern.error());
+  console.log('ok - DSH 0.2 accepts ACP and stages native profile overrides without provisioning the source home');
+
   const metaPath=join(dirname(dirname(fake)),'package.json');
   const meta=JSON.parse(readFileSync(metaPath,'utf8'));
-  writeFileSync(metaPath,JSON.stringify({...meta,version:'0.2.1-rc.2'}));
+  writeFileSync(metaPath,JSON.stringify({...meta,version:'0.3.0'}));
   const refused=spawnSync(process.execPath,[worker,'--check','--dsh-bin',fake],{encoding:'utf8'});
   assert.notEqual(refused.status,0);
   assert.match(refused.stderr,/unsupported DSH runtime/);

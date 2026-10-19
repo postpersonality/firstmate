@@ -2458,7 +2458,7 @@ Its native App Server peer and watcher-close process are deterministic fixtures;
 
 ## DeepSeek Harness (DSH)
 
-[DSH verification](dsh.md) maintains the 2026-10-19 Linux Herdr worker result for official DSH 0.1.5-rc.1 and its process, composer, steering, busy, and lifecycle guards.
+[DSH verification](dsh.md) maintains the 2026-10-19 Linux Herdr worker result for official DSH 0.2.1-rc.2 and its process, composer, steering, busy, and lifecycle guards.
 
 ## Oh My Pi (omp)
 

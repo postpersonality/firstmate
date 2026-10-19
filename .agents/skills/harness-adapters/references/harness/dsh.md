@@ -2,7 +2,7 @@
 
 The worker adapter uses the official `@deepseek-ai/dsh` ACP profile through `bin/fm-dsh-worker.mjs`.
 It is separate from selecting a DeepSeek model in another harness.
-The supported runtime is Linux, DSH 0.1.5-rc.1, and the Herdr backend; portable tmux checks cover the shared process/composer owners.
+The supported runtime is Linux with Herdr and official DSH 0.2.1-rc.2 or 0.1.5-rc.1; portable tmux checks cover the shared process/composer owners.
 Primary, secondmate, remote, and other DSH versions are unsupported.
 [Maintained verification](../../../../../docs/verification/dsh.md) owns the commands and version evidence.
 
@@ -11,7 +11,7 @@ Primary, secondmate, remote, and other DSH versions are unsupported.
 | Contract | Behavior |
 |---|---|
 | Executable | `FM_DSH_BIN` selects an existing official entrypoint; otherwise `dsh` must be on PATH. The spawn owner runs a read-only version preflight before provisioning. |
-| Native configuration | The existing `DSH_HOME` or `~/.dsh` settings and credentials are read by native providers under a mutation-denying preload. The ACP runtime home is private to the task generation. No auth value is copied into the launch command or patch. |
+| Native configuration | The source is the existing `DSH_HOME` or `~/.dsh`. For 0.2, legacy settings and native ACP/home profile overrides are staged at 0600 in the private generation home; the native importer finishes there before ACP initialization. The credential document stays at its native source under a mutation-denying preload and is never copied. Launch arguments and the bridge overlay contain only paths and route ids. |
 | Models | Firstmate passes `provider/model`; the ACP model option must advertise the selection. Omission preserves the native route. Provider/account changes require the ordinary dispatch authority; no official-provider fallback is invented. |
 | Effort | The requested value is applied only when the selected model advertises it in `reasoning_effort`; otherwise it is recorded and omitted with a notice. |
 | Busy | `dsh-acp` opens on an outstanding prompt and settles to `unknown` on completion/cancellation/failure. The existing generation-bound writer and classifier own the record. Prompt settlement only touches the turn-ended notification; it never declares task done. |
@@ -23,8 +23,9 @@ Primary, secondmate, remote, and other DSH versions are unsupported.
 
 ## Limits
 
-DSH 0.2 changes settings persistence and may migrate an existing 0.1 home.
-The version preflight refuses it rather than modifying that home.
+DSH 0.2 changes settings persistence; only the staged legacy copy may be migrated, and the native source home is never opened as its runtime home.
+Versions other than 0.2.1-rc.2 and 0.1.5-rc.1 are refused.
+Custom profile dependencies outside the installed official composition and relative external configuration includes have not been verified.
 An existing credential provider can be usable without a model-level quota record; that uncertainty is not an authentication failure.
 No default quota-provider mapping is inferred from the DSH name.
 Native vendor error details are withheld because they can contain authentication headers; the bridge prints the ACP error code and exits unsuccessfully.

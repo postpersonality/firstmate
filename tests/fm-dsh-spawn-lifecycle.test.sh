@@ -9,7 +9,7 @@ fm_live_gate default-on FM_DSH_SPAWN_LIFECYCLE herdr jq node git
 . "$ROOT/tests/dsh-herdr-fixture.sh"
 export FM_DSH_BIN DSH_HOME="$LAB/native-config"
 mkdir -p "$DSH_HOME"
-FM_DSH_BIN=$(node "$ROOT/tests/assets/fm-dsh-fixture.mjs" "$LAB")
+FM_DSH_BIN=$(node "$ROOT/tests/assets/fm-dsh-fixture.mjs" "$LAB" 0.2.1-rc.2)
 printf '# Task\nInitial fixture brief.\n' > "$FM_HOME/data/$ID/brief.md"
 "$LAB_HELPER" provision "$SESSION"
 export PATH="$LAB/fakebin:$ORIGINAL_PATH" HERDR_SESSION="$SESSION"

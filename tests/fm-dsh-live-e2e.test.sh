@@ -10,8 +10,24 @@ fm_live_gate opt-in FM_DSH_LIVE_E2E herdr jq node git
 [ "$(uname -s)" = Linux ] || { echo 'skip: Linux DSH worker adapter only'; exit 0; }
 : "${FM_DSH_BIN:?set FM_DSH_BIN to the native DSH entrypoint}"
 : "${FM_DSH_LIVE_MODEL:?set FM_DSH_LIVE_MODEL to an existing provider/model}"
+DSH_CONFIG_SOURCE=${DSH_HOME:-${HOME:?}/.dsh}
 # shellcheck source=tests/dsh-herdr-fixture.sh
 . "$ROOT/tests/dsh-herdr-fixture.sh"
+source_store_snapshot() {
+  node --input-type=module - "$DSH_CONFIG_SOURCE" <<'JS'
+import { statSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+const home = process.argv[2];
+console.log(JSON.stringify(Object.fromEntries(['settings.yaml','settings.yaml.imported','.credentials.yaml','cordis.patch.yml','profiles/acp/package.json','profiles/acp/cordis.patch.yml'].map(name => {
+  const path = join(home, name);
+  if (!existsSync(path)) return [name, null];
+  const st = statSync(path);
+  return [name, {ino:st.ino, size:st.size, mtimeMs:st.mtimeMs, mode:st.mode}];
+}))));
+JS
+}
+SOURCE_BEFORE=$(source_store_snapshot)
+printf '# native DSH %s\n' "$(node "$FM_DSH_BIN" --version)"
 cat > "$FM_HOME/data/$ID/brief.md" <<EOF
 # Task
 Work by yourself, do not delegate. Use bash to write pwd to '$FM_HOME/data/$ID/cwd-proof' and calculate 12345+67890 into '$FM_HOME/data/$ID/sum-proof'. Then wait for steering. Never inspect environment, credentials, profiles, other projects, or personal files. Your only inbox is '$FM_HOME/state/$ID.inbox': on a doorbell read its .msg files in order, follow each message exactly, then move each into handled/. Reply briefly.
@@ -20,6 +36,7 @@ EOF
 export PATH="$LAB/fakebin:$ORIGINAL_PATH" HERDR_SESSION="$SESSION"
 FM_SPAWN_NO_GUARD=1 "$ROOT/bin/fm-spawn.sh" "$ID" "$LAB/project" --harness dsh --model "$FM_DSH_LIVE_MODEL" --effort low --scout --backend herdr >"$LAB/spawn.out" 2>"$LAB/spawn.err" || { cat "$LAB/spawn.err"; exit 1; }
 TARGET=$(sed -n 's/^window=//p' "$FM_HOME/state/$ID.meta")
+FIRST_GEN=$(cat "$FM_HOME/state/$ID.busy-gen")
 # shellcheck source=bin/fm-backend.sh
 . "$ROOT/bin/fm-backend.sh"
 fm_backend_source herdr
@@ -37,13 +54,17 @@ wait_file "$FM_HOME/data/$ID/sum-proof"
 for _ in $(seq 1 20); do [ "$(fm_backend_composer_state herdr "$TARGET")" != empty ] || break; sleep 0.5; done
 [ "$(fm_backend_composer_state herdr "$TARGET")" = empty ]
 echo 'ok - real DSH canonical supervised launch, cwd, model tool and Herdr liveness/composer'
+DSH_TEST_PHASE=first-durable-steer
 "$ROOT/bin/fm-send.sh" "$ID" "Use bash to write STEER_OK to '$FM_HOME/data/$ID/steer-proof'." >/dev/null 2>"$LAB/send.err"
 wait_file "$FM_HOME/data/$ID/steer-proof"
+DSH_TEST_PHASE=first-steer-content
 [ "$(cat "$FM_HOME/data/$ID/steer-proof")" = STEER_OK ]
-[ -f "$FM_HOME/state/$ID.inbox/handled/001.msg" ]
+DSH_TEST_PHASE=first-steer-acknowledgement
+wait_file "$FM_HOME/state/$ID.inbox/handled/001.msg"
 echo 'ok - real DSH fm-send durable inbox delivery and acknowledgement'
 # A durable steer must preserve a real draft and remain unread until the
 # existing inbox ring owner is explicitly allowed to ring again.
+DSH_TEST_PHASE=draft-deferral
 fm_backend_herdr_send_literal "$TARGET" DRAFT
 [ "$(fm_backend_composer_state herdr "$TARGET")" = pending ]
 "$ROOT/bin/fm-send.sh" "$ID" "Use bash to write DRAFT_OK to '$FM_HOME/data/$ID/draft-proof'." >/dev/null 2>"$LAB/send.err"
@@ -80,3 +101,17 @@ echo 'ok - real DSH draft deferral, steering during busy, control cancellation a
 for _ in $(seq 1 30); do [ "$(fm_backend_agent_state herdr "$TARGET")" = alive ] || break; sleep 1; done
 [ "$(fm_backend_agent_state herdr "$TARGET")" = dead ]
 echo 'ok - real DSH session close and EOF leave the pane shell alive'
+printf 'PRESERVE\n' > "$LAB/worktree/relaunch-sentinel.txt"
+rm -f "$FM_HOME/data/$ID/cwd-proof" "$FM_HOME/data/$ID/sum-proof"
+DSH_TEST_PHASE=native-relaunch
+"$ROOT/bin/fm-control.sh" "$ID" relaunch --note "Runtime verification only: repeat the initial cwd/sum bash proof, preserve relaunch-sentinel.txt, then wait. Do not inspect environment, auth, profiles or other files; do not delegate." >"$LAB/relaunch.out" 2>"$LAB/relaunch.err" || { cat "$LAB/relaunch.err"; exit 1; }
+wait_file "$FM_HOME/data/$ID/sum-proof"
+[ "$(tr -d '[:space:]' < "$FM_HOME/data/$ID/sum-proof")" = 80235 ]
+[ "$(tr -d '\r\n' < "$FM_HOME/data/$ID/cwd-proof")" = "$LAB/worktree" ]
+[ "$(cat "$FM_HOME/state/$ID.busy-gen")" != "$FIRST_GEN" ]
+[ "$(cat "$LAB/worktree/relaunch-sentinel.txt")" = PRESERVE ]
+[ "$(fm_backend_agent_state herdr "$TARGET")" = alive ]
+"$ROOT/bin/fm-control.sh" "$ID" exit >"$LAB/exit.out" 2>"$LAB/exit.err" || { cat "$LAB/exit.err"; exit 1; }
+[ "$(fm_backend_agent_state herdr "$TARGET")" = dead ]
+[ "$(source_store_snapshot)" = "$SOURCE_BEFORE" ]
+echo 'ok - real DSH fresh-generation relaunch repeats model tools, preserves dirty work and leaves native store metadata unchanged'

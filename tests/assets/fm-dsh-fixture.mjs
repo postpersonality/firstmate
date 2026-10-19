@@ -2,16 +2,39 @@ import { mkdirSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Deterministic ACP peer for transport/terminal tests; never model evidence.
-export function makeDshFixture(lab) {
+export function makeDshFixture(lab, version = '0.1.5-rc.1') {
 const fakeRoot=join(lab,'@deepseek-ai/dsh');
 mkdirSync(join(fakeRoot,'lib'),{recursive:true});
-writeFileSync(join(fakeRoot,'package.json'),JSON.stringify({name:'@deepseek-ai/dsh',version:'0.1.5-rc.1',type:'module'}));
+writeFileSync(join(fakeRoot,'package.json'),JSON.stringify({name:'@deepseek-ai/dsh',version,type:'module'}));
+const credentialRoot=join(fakeRoot,'../dsh-credentials-local/lib');
+mkdirSync(credentialRoot,{recursive:true});
+writeFileSync(join(credentialRoot,'index.js'),'export default class Credentials {}\n');
+const settingsRoot=join(fakeRoot,'../dsh-settings/lib');
+mkdirSync(settingsRoot,{recursive:true});
+writeFileSync(join(settingsRoot,'index.js'),`import {rename} from 'node:fs/promises';
+export default class Settings {
+  static imported=false;
+  async importLegacyDocument() {
+    await new Promise(resolve=>setTimeout(resolve,200));
+    await rename(process.env.DSH_HOME+'/settings.yaml',process.env.DSH_HOME+'/settings.yaml.imported');
+    Settings.imported=true;
+  }
+}
+`);
+mkdirSync(join(fakeRoot,'node_modules/yaml'),{recursive:true});
+writeFileSync(join(fakeRoot,'node_modules/yaml/index.js'),'exports.parse = JSON.parse;\n');
 const fake=join(fakeRoot,'lib/bin.js');
 writeFileSync(fake, `#!/usr/bin/env node
 import { createInterface } from 'node:readline';
-import { appendFileSync, readFileSync } from 'node:fs';
-if (process.argv.includes('--version')) { console.log('0.1.5-rc.1'); process.exit(0); }
+import { appendFileSync, readFileSync, existsSync } from 'node:fs';
+if (process.argv.includes('--version')) { console.log('${version}'); process.exit(0); }
 let prompt;
+let migration;
+if ('${version}'==='0.2.1-rc.2' && existsSync(process.env.DSH_HOME+'/settings.yaml')) {
+  const {default:Settings}=await import('../../dsh-settings/lib/index.js');
+  migration=new Settings();
+  void migration.importLegacyDocument().catch(()=>process.exit(9));
+}
 if(process.env.DSH_FIXTURE_LOG) appendFileSync(process.env.DSH_FIXTURE_LOG,JSON.stringify({fixtureEnvironment:{branchPinPresent:Boolean(process.env.FM_SUPERVISION_ACTOR||process.env.FM_SUPERVISION_PRIMARY_HARNESS),claudeMarkerPresent:Boolean(process.env.CLAUDECODE)}})+'\\n');
 const patch=JSON.parse(readFileSync(process.argv[process.argv.indexOf('--patch')+1],'utf8'));
 const initial=patch.find(row=>row.id==='acp')?.config || {provider:'litellm',model:'test'};
@@ -28,7 +51,8 @@ createInterface({input:process.stdin}).on('line',line=>{
     if(m.result.outcome?.optionId!=='native-once-82') process.exit(8);
     const id=prompt;prompt=undefined;reply(id,{stopReason:'end_turn'});return;
   }
-  if(m.method==='initialize') reply(m.id,{protocolVersion:1,agentInfo:{name:'fixture'},agentCapabilities:{sessionCapabilities:{close:{}}}});
+  if(m.method==='initialize' && migration && !migration.constructor.imported) send({id:m.id,error:{code:-32603,message:'configuration import is still pending'}});
+  else if(m.method==='initialize') reply(m.id,{protocolVersion:1,agentInfo:{name:'fixture'},agentCapabilities:{sessionCapabilities:{close:{}}}});
   else if(m.method==='session/new') reply(m.id,{sessionId:'fixture-session',configOptions:[
     {id:'model',currentValue:current,options:[{group:'litellm',options:modelOptions}]},
     {id:'reasoning_effort',currentValue:'low',options:[{value:'low'},{value:'high'}]}
@@ -62,4 +86,4 @@ process.stdin.on('end',()=>process.exit(0));
 chmodSync(fake, 0o755);
 return fake;
 }
-if(process.argv[1]?.endsWith('/fm-dsh-fixture.mjs')) console.log(makeDshFixture(process.argv[2]));
+if(process.argv[1]?.endsWith('/fm-dsh-fixture.mjs')) console.log(makeDshFixture(process.argv[2], process.argv[3]));

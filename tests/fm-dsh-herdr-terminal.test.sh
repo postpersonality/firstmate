@@ -25,7 +25,7 @@ cleanup() {
 trap cleanup EXIT
 mkdir -p "$LAB/shim" "$LAB/state" "$LAB/cwd" "$LAB/config"
 NODE=$(node -p 'process.execPath')
-FAKE=$("$NODE" "$ROOT/tests/assets/fm-dsh-fixture.mjs" "$LAB")
+FAKE=$("$NODE" "$ROOT/tests/assets/fm-dsh-fixture.mjs" "$LAB" 0.2.1-rc.2)
 # Embed only public task paths; this shim also runs from inside the pane, where
 # controller exports are not guaranteed to be present in the server environment.
 {

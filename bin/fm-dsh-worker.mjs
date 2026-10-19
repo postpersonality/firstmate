@@ -3,7 +3,7 @@
 // Usage: fm-dsh-worker.mjs --dsh-bin PATH --cwd DIR --state DIR --id ID
 //          --gen TOKEN --brief FILE --runtime-home DIR [--config-home DIR]
 //          [--model PROVIDER/MODEL] [--effort LEVEL]
-// The runtime home is task-private; the native 0.1.5 settings/credential files
+// The runtime home is task-private; native settings/credential files
 // are read by their own providers under a mutation-denying preload. No secret
 // values are copied into the generated patch, command line, or diagnostics.
 // Ctrl+C (and manual Escape) cancels the owned ACP prompt; /exit closes it.
@@ -85,6 +85,7 @@ function request(method, params, timeout = 45000) {
       reject(new Error(`ACP timeout: ${method}`));
     }, timeout) : undefined;
     pending.set(id, {
+      method,
       resolve: value => { clearTimeout(timer); resolve(value); },
       reject: error => { clearTimeout(timer); reject(error); },
     });
@@ -103,7 +104,7 @@ function receiveMessage(line) {
     if (!item) return;
     pending.delete(message.id);
     // Vendor errors may contain HTTP headers or configuration. Never relay them.
-    if (message.error) item.reject(new Error(`ACP request failed (code ${Number(message.error.code) || 'unknown'})`));
+    if (message.error) item.reject(new Error(`ACP ${item.method} request failed (code ${Number(message.error.code) || 'unknown'})`));
     else item.resolve(message.result);
   } else if (message.method === 'session/request_permission') {
     const option = message.params?.options?.find(item => item.kind === 'allow_once');
@@ -189,9 +190,10 @@ try {
   const binary = realpathSync(args['dsh-bin']);
   const packageRoot = dirname(dirname(binary));
   const metadata = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  if (metadata.name !== '@deepseek-ai/dsh' || metadata.version !== '0.1.5-rc.1') {
-    throw new Error('unsupported DSH runtime; verified native configuration requires @deepseek-ai/dsh 0.1.5-rc.1');
+  if (metadata.name !== '@deepseek-ai/dsh' || !['0.1.5-rc.1', '0.2.1-rc.2'].includes(metadata.version)) {
+    throw new Error('unsupported DSH runtime; supported package versions are 0.1.5-rc.1 and 0.2.1-rc.2');
   }
+  const modern = metadata.version === '0.2.1-rc.2';
   const probe = spawnSync(process.execPath, [binary, '--version'], { encoding: 'utf8', timeout: 10000 });
   if (probe.status !== 0 || probe.stdout.trim() !== metadata.version) throw new Error('DSH version probe failed');
   if (args.check) { console.log(`@deepseek-ai/dsh ${metadata.version}`); process.exit(0); }
@@ -211,6 +213,17 @@ try {
     }
   }
   mkdirSync(args['runtime-home'], { recursive: true, mode: 0o700 });
+  if (modern) {
+    // Let 0.2 import only a private copy, never rename the user's legacy file.
+    // Native profile layers keep their order; no credentials document is copied.
+    for (const relative of ['settings.yaml', 'cordis.patch.yml', 'profiles/acp/package.json', 'profiles/acp/cordis.patch.yml']) {
+      const source = join(args['config-home'], relative);
+      if (!existsSync(source)) continue;
+      const target = join(args['runtime-home'], relative);
+      mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+      atomic(target, readFileSync(source));
+    }
+  }
   let selected;
   const settings = join(args['config-home'], 'settings.yaml');
   if (existsSync(settings)) {
@@ -233,13 +246,16 @@ try {
   if (initialSelection) patch.push({ id: 'acp', config: initialSelection });
   const credential = join(args['config-home'], '.credentials.yaml');
   const nativeFiles = existsSync(settings) || existsSync(credential);
-  if (existsSync(settings)) patch.push({ id: 'settings', config: { path: settings, watch: false } });
+  if (!modern && existsSync(settings)) patch.push({ id: 'settings', config: { path: settings, watch: false } });
   if (existsSync(credential)) patch.push({ id: 'credentials', config: { path: credential, watch: false } });
   const patchPath = join(args['runtime-home'], 'firstmate.patch.yml');
   // JSON is YAML-compatible and contains paths/route ids only, never config values.
   atomic(patchPath, `${JSON.stringify(patch)}\n`);
-  const launch = nativeFiles ? ['--import', join(root, 'fm-dsh-readonly.mjs'), binary] : [binary];
+  const launch = nativeFiles || modern ? ['--import', join(root, 'fm-dsh-readonly.mjs'), binary] : [binary];
   const env = { ...process.env, DSH_HOME: args['runtime-home'], DSH_PERMISSION_MODE: 'danger-full-access', FM_DSH_PACKAGE_ROOT: packageRoot };
+  delete env.FM_DSH_LEGACY_IMPORT_READY;
+  const imported = modern && existsSync(settings) ? join(args['runtime-home'], `firstmate.settings.${process.pid}.ready`) : undefined;
+  if (imported) env.FM_DSH_LEGACY_IMPORT_READY = imported;
   for (const key of ['CLAUDECODE', 'PI_CODING_AGENT', 'FM_PI_HARNESS', 'FM_OMP_HARNESS', 'GROK_AGENT', 'GEMINI_CLI', 'CURSOR_AGENT', 'CURSOR_INVOKED_AS', 'FM_SUPERVISION_ACTOR', 'FM_SUPERVISION_PRIMARY_HARNESS']) delete env[key];
   readinessTimer = setTimeout(() => { if (!started && !shuttingDown) void fatal(new Error('initial prompt was not observed before the readiness deadline')); }, 90000);
   child = spawn(process.execPath, [...launch, '--profile', 'acp', '--patch', patchPath], { cwd: args.cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -257,6 +273,12 @@ try {
   // Deliberately drain without forwarding: native plugin errors can include secrets.
   child.stderr.resume();
   readline.createInterface({ input: child.stdout }).on('line', receive);
+  if (imported) {
+    for (let i = 0; i < 300 && !existsSync(imported) && !childExited && !shuttingDown; i++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (!existsSync(imported)) throw new Error('native DSH settings import did not complete');
+  }
   await request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'firstmate', version: '1' } });
   session = await request('session/new', { cwd: args.cwd, mcpServers: [] });
   if (!session?.sessionId || !Array.isArray(session.configOptions)) throw new Error('invalid DSH session response');

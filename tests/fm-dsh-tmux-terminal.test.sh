@@ -22,7 +22,7 @@ cleanup() {
 trap cleanup EXIT
 mkdir -p "$LAB/cwd" "$LAB/config"
 NODE=$(node -p 'process.execPath')
-FAKE=$("$NODE" "$ROOT/tests/assets/fm-dsh-fixture.mjs" "$LAB")
+FAKE=$("$NODE" "$ROOT/tests/assets/fm-dsh-fixture.mjs" "$LAB" 0.2.1-rc.2)
 printf 'INITIAL_BRIEF\n' > "$LAB/brief"
 GEN=$("$ROOT/bin/fm-busy-event.sh" arm "$FM_HOME/state" fixture)
 tmux new-session -d -s dsh -n worker -c "$LAB/cwd" "$NODE" "$ROOT/bin/fm-dsh-worker.mjs" --dsh-bin "$FAKE" --config-home "$LAB/config" --runtime-home "$LAB/runtime" --cwd "$LAB/cwd" --state "$FM_HOME/state" --id fixture --gen "$GEN" --brief "$LAB/brief"

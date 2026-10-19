@@ -18,7 +18,19 @@ cleanup() {
   [ "$rc" = 0 ] || printf 'not ok - DSH test phase: %s\n' "${DSH_TEST_PHASE:-setup/lifecycle}" >&2
   if [ -n "${FM_DSH_LIVE_EVIDENCE:-}" ]; then
     mkdir -p "$FM_DSH_LIVE_EVIDENCE"
-    cp "$LAB/shim.log" "$LAB/spawn.out" "$LAB/spawn.err" "$LAB/exit.out" "$LAB/exit.err" "$LAB/interrupt.out" "$LAB/interrupt.err" "$FM_DSH_LIVE_EVIDENCE/" 2>/dev/null || true
+    cp "$LAB/shim.log" "$LAB/spawn.out" "$LAB/spawn.err" "$LAB/send.err" "$LAB/exit.out" "$LAB/exit.err" "$LAB/interrupt.out" "$LAB/interrupt.err" "$LAB/relaunch.out" "$LAB/relaunch.err" "$FM_DSH_LIVE_EVIDENCE/" 2>/dev/null || true
+    node --input-type=module - "$FM_HOME" "$ID" "${DSH_TEST_PHASE:-setup/lifecycle}" > "$FM_DSH_LIVE_EVIDENCE/proofs.json" <<'JS' || true
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+const [home, id, phase] = process.argv.slice(2);
+const files = Object.fromEntries(['cwd-proof','sum-proof','steer-proof','draft-proof','busy-proof','tool.pid','running','after'].map(name => {
+  const path = join(home, 'data', id, name);
+  return [name, existsSync(path) ? readFileSync(path, 'utf8') : null];
+}));
+const inbox = join(home, 'state', id + '.inbox');
+const messages = dir => existsSync(dir) ? readdirSync(dir).filter(name => name.endsWith('.msg')) : [];
+console.log(JSON.stringify({phase, files, pending:messages(inbox), handled:messages(join(inbox,'handled'))}, null, 2));
+JS
     if [ -f "$LAB/pane" ]; then
       env PATH="$ORIGINAL_PATH" "$LAB_HELPER" run "$SESSION" pane read "$(cat "$LAB/pane")" --source recent --lines 80 > "$FM_DSH_LIVE_EVIDENCE/viewport.txt" 2>&1 || true
     fi
