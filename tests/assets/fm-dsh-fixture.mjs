@@ -27,7 +27,13 @@ const fake=join(fakeRoot,'lib/bin.js');
 writeFileSync(fake, `#!/usr/bin/env node
 import { createInterface } from 'node:readline';
 import { appendFileSync, readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 if (process.argv.includes('--version')) { console.log('${version}'); process.exit(0); }
+// Match the verified vendor boundary; local evidence can use its real export.
+const {scrubbedParentEnv} = process.env.DSH_FIXTURE_SCRUB_MODULE
+  ? await import(pathToFileURL(process.env.DSH_FIXTURE_SCRUB_MODULE))
+  : {scrubbedParentEnv:()=>Object.fromEntries(Object.entries(process.env).filter(([key])=>!/KEY|PASSWORD|SECRET|TOKEN|^DSH_/i.test(key)))};
 let prompt;
 let migration;
 if ('${version}'==='0.2.1-rc.2' && existsSync(process.env.DSH_HOME+'/settings.yaml')) {
@@ -66,6 +72,10 @@ createInterface({input:process.stdin}).on('line',line=>{
     }
     if(text==='CRASH') process.exit(7);
     if(text==='ERROR') { send({id:m.id,error:{code:-32001,message:'SECRET_VENDOR_HEADER'}}); return; }
+    if(text==='GIT_ENV') {
+      const result=spawnSync('bash',[process.env.DSH_FIXTURE_GIT_SCRIPT],{env:scrubbedParentEnv(),encoding:'utf8'});
+      appendFileSync(process.env.DSH_FIXTURE_LOG,JSON.stringify({fixtureGit:{status:result.status,stdout:result.stdout,stderr:result.stderr}})+'\\n');
+    }
     if(prompt) { send({id:m.id,error:{code:-32602,message:'concurrent prompt'}}); return; }
     prompt=m.id;
     if(text==='PERMISSION') {

@@ -6,6 +6,8 @@
 // The runtime home is task-private; native settings/credential files
 // are read by their own providers under a mutation-denying preload. No secret
 // values are copied into the generated patch, command line, or diagnostics.
+// Counted Git config is carried through Git's quoted parameter environment:
+// DSH's native child scrub drops GIT_CONFIG_KEY_n but keeps count/value names.
 // Ctrl+C (and manual Escape) cancels the owned ACP prompt; /exit closes it.
 // Herdr reporting requires --herdr-bin PATH --herdr-session NAME --herdr-pane ID.
 // Canonical spawn supplies the exact recorded endpoint, never a default session.
@@ -253,6 +255,25 @@ try {
   atomic(patchPath, `${JSON.stringify(patch)}\n`);
   const launch = nativeFiles || modern ? ['--import', join(root, 'fm-dsh-readonly.mjs'), binary] : [binary];
   const env = { ...process.env, DSH_HOME: args['runtime-home'], DSH_PERMISSION_MODE: 'danger-full-access', FM_DSH_PACKAGE_ROOT: packageRoot };
+  if (env.GIT_CONFIG_COUNT !== undefined) {
+    const count = Number(env.GIT_CONFIG_COUNT);
+    if (!/^(?:[ \t\r\n\v\f]*[+-]?\d+)?$/.test(env.GIT_CONFIG_COUNT) || !Number.isInteger(count) || count < 0 || count > 2147483647) {
+      throw new Error('invalid GIT_CONFIG_COUNT');
+    }
+    const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
+    const parameters = [];
+    for (let i = 0; i < count; i++) {
+      const key = env[`GIT_CONFIG_KEY_${i}`], value = env[`GIT_CONFIG_VALUE_${i}`];
+      if (key === undefined || value === undefined) throw new Error('incomplete counted Git configuration');
+      parameters.push(`${quote(key)}=${quote(value)}`);
+      delete env[`GIT_CONFIG_KEY_${i}`];
+      delete env[`GIT_CONFIG_VALUE_${i}`];
+    }
+    // Git applies existing -c parameters after counted entries, including duplicates.
+    if (env.GIT_CONFIG_PARAMETERS) parameters.push(env.GIT_CONFIG_PARAMETERS);
+    env.GIT_CONFIG_PARAMETERS = parameters.join(' ');
+    delete env.GIT_CONFIG_COUNT;
+  }
   delete env.FM_DSH_LEGACY_IMPORT_READY;
   const imported = modern && existsSync(settings) ? join(args['runtime-home'], `firstmate.settings.${process.pid}.ready`) : undefined;
   if (imported) env.FM_DSH_LEGACY_IMPORT_READY = imported;

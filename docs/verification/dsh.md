@@ -56,6 +56,7 @@ These results establish the compatibility boundary below; they do not verify ano
 |---|---|
 | ACP launch and discovery | Native 0.2 initialize/new, correct cwd, advertised corporate model selection, refreshed reasoning options, real bash result `80235`. |
 | Native configuration | Legacy settings migrate only inside the private runtime home after native profile overrides are staged. A delayed-import regression requires the bridge to wait before initialize; the credential provider refuses source-store writes. The real guard compares source file metadata before launch and after relaunch. |
+| Git environment | The worker regression runs real Bash/Git after a credential-name scrub and verifies counted configuration, quoting, duplicate precedence, contributor hook chaining, AI trailer stripping, public author identity, and withheld secret variables. Invalid or incomplete counted configuration refuses launch without printing its values. |
 | External task paths | Native model read/wrote task files and read/actioned a steering inbox outside the worktree, acknowledging by moving the message to `handled/`. |
 | Supervised delivery | Canonical `fm-spawn` establishes generation-bound readiness and process liveness; ordinary `fm-send` uses the existing durable inbox, including draft deferral and a steer delivered during a running tool. |
 | Busy | The fixture opens an actual pending ACP request and checks `busy dsh-acp`; completion/cancellation yields `unknown dsh-acp`, never task completion. Retired-generation writes and submissions are refused. |
@@ -83,6 +84,14 @@ Custom profile dependencies outside the installed official composition and relat
 Re-verify the readonly providers, import ordering, protocol fixtures, native model/auth path, and both terminal/control guards before widening this version boundary.
 Native ACP keeps a configured current model in its options even if provider enumeration is unavailable; an advertised option is a native selection surface, not proof of authentication or quota.
 Unadvertised explicit selections are refused, and an unsupported effort is recorded and omitted without changing the provider or inventing a quota mapping.
+
+The Git environment regression also passed on 2026-10-19 using the installed DSH `0.2.1-rc.2` native `scrubbedParentEnv` export instead of the portable peer's filter.
+To repeat against an installed package, set `DSH_FIXTURE_SCRUB_MODULE` to its `@deepseek-ai/dsh-subprocess/lib/index.js` and run `bash bin/fm-test-run.sh --jobs 1 tests/fm-dsh-worker.test.sh`.
+The observed result was:
+
+```text
+ok - DSH child Git preserves counted config, quoting, precedence, contributor hooks and identity while secrets stay filtered
+```
 
 Native bash `run_in_background` jobs have a separate job-cancellation contract; the foreground cancellation guard explicitly sets `run_in_background=false` and `timeoutMs=60000`.
 An unread durable steer can be read again after interruption until its acknowledgement move; cancellation never fabricates that acknowledgement.

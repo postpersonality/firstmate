@@ -15,7 +15,7 @@ appendFileSync(process.env.DSH_HERDR_LOG,JSON.stringify(process.argv.slice(2))+'
 console.log(JSON.stringify({result:{}}));
 `);
 chmodSync(herdr,0o755);
-function makeCase(name, extra = [], modern = false) {
+function makeCase(name, extra = [], modern = false, env = {}) {
   const dir = join(lab, name), state = join(dir, 'state'), cwd = join(dir, 'cwd'), config = join(dir, 'config');
   for (const path of [state, cwd, config]) mkdirSync(path, { recursive: true });
   if (modern) {
@@ -31,7 +31,7 @@ function makeCase(name, extra = [], modern = false) {
   const arm = spawnSync('bash', [join(root, 'bin/fm-busy-event.sh'), 'arm', state, 'case'], { encoding: 'utf8' });
   assert.equal(arm.status, 0, arm.stderr);
   const gen = arm.stdout.trim(), log = join(dir, 'rpc.jsonl'), herdrLog=join(dir,'herdr.jsonl');
-  const child = spawn(process.execPath, [worker, '--dsh-bin', modern ? modernFake : fake, '--config-home', config, '--runtime-home', join(dir, 'runtime'), '--cwd', cwd, '--state', state, '--id', 'case', '--gen', gen, '--brief', brief, '--model', 'litellm/test', '--effort', 'low', '--herdr-bin',herdr,'--herdr-session','fm-lab-fixture','--herdr-pane','w1:p2', ...extra], { env: { ...process.env, DSH_FIXTURE_LOG: log, DSH_HERDR_LOG:herdrLog, CLAUDECODE:'1', FM_SUPERVISION_ACTOR:'branch', FM_SUPERVISION_PRIMARY_HARNESS:'codex' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [worker, '--dsh-bin', modern ? modernFake : fake, '--config-home', config, '--runtime-home', join(dir, 'runtime'), '--cwd', cwd, '--state', state, '--id', 'case', '--gen', gen, '--brief', brief, '--model', 'litellm/test', '--effort', 'low', '--herdr-bin',herdr,'--herdr-session','fm-lab-fixture','--herdr-pane','w1:p2', ...extra], { env: { ...process.env, DSH_FIXTURE_LOG: log, DSH_HERDR_LOG:herdrLog, CLAUDECODE:'1', FM_SUPERVISION_ACTOR:'branch', FM_SUPERVISION_PRIMARY_HARNESS:'codex', ...env }, stdio: ['pipe', 'pipe', 'pipe'] });
   let output = '', error = '';
   child.stdout.on('data', b => { output += b; });
   child.stderr.on('data', b => { error += b; });
@@ -138,6 +138,64 @@ try {
   modern.child.stdin.write('/exit\n');
   assert.equal(await modern.exit, 0, modern.error());
   console.log('ok - DSH 0.2 accepts ACP and stages native profile overrides without provisioning the source home');
+
+  const gitDir = join(lab, "git env's space"), hooks = join(gitDir, 'strip hooks'), script = join(gitDir, 'probe.sh');
+  mkdirSync(gitDir);
+  const gitValue = "space 'quote' \\ slash\nnext line";
+  writeFileSync(script, `#!/usr/bin/env bash
+set -eu
+git rev-parse --is-inside-work-tree
+git config --get-all fixture.value
+git config --get fixture.empty
+test -z "\${FIXTURE_API_KEY+x}\${FIXTURE_SECRET+x}"
+git -c commit.gpgsign=false commit -q --allow-empty --trailer 'Co-authored-by: Cursor <cursoragent@cursor.com>' -m 'fixture commit'
+git log -1 --format='%an <%ae>'
+`);
+  const gitEnv = makeCase('git-env', [], true, {
+    GIT_CONFIG_COUNT:'4', GIT_CONFIG_KEY_0:'core.hooksPath', GIT_CONFIG_VALUE_0:hooks,
+    GIT_CONFIG_KEY_1:'fixture.value', GIT_CONFIG_VALUE_1:gitValue,
+    GIT_CONFIG_KEY_2:'fixture.value', GIT_CONFIG_VALUE_2:'counted second',
+    GIT_CONFIG_KEY_3:'fixture.empty', GIT_CONFIG_VALUE_3:'',
+    GIT_CONFIG_PARAMETERS:"'fixture.value'='parameters last'",
+    GIT_AUTHOR_NAME:'Example Contributor', GIT_AUTHOR_EMAIL:'contributor@example.com',
+    GIT_COMMITTER_NAME:'Example Contributor', GIT_COMMITTER_EMAIL:'contributor@example.com',
+    FIXTURE_API_KEY:'never-forward', FIXTURE_SECRET:'never-forward', DSH_FIXTURE_GIT_SCRIPT:script,
+  }); running.push(gitEnv);
+  assert.equal(spawnSync('git',['init','-q',gitEnv.cwd]).status,0);
+  const projectHooks = join(gitEnv.cwd, '.githooks');
+  mkdirSync(projectHooks);
+  writeFileSync(join(projectHooks, 'pre-commit'), '#!/bin/sh\nprintf hooked > contributor-hook-ran\n');
+  chmodSync(join(projectHooks, 'pre-commit'), 0o755);
+  assert.equal(spawnSync('git',['-C',gitEnv.cwd,'config','core.hooksPath','.githooks']).status,0);
+  const install = spawnSync('bash',[join(root,'bin/fm-git-strip-ai-trailers.sh'),'install',hooks,gitEnv.cwd],{encoding:'utf8'});
+  assert.equal(install.status,0,install.stderr);
+  await until(() => existsSync(join(gitEnv.state,'case.turn-ended')), 'Git probe session did not start');
+  gitEnv.child.stdin.write('GIT_ENV\n');
+  await until(() => gitEnv.output().includes('ACK GIT_ENV'), 'Git probe did not settle');
+  gitEnv.child.stdin.write('/exit\n');
+  assert.equal(await gitEnv.exit,0,gitEnv.error());
+  const probe = readFileSync(gitEnv.log,'utf8').trim().split('\n').map(JSON.parse).find(m=>m.fixtureGit).fixtureGit;
+  assert.equal(probe.status,0,probe.stderr);
+  assert.equal(probe.stdout,`true\n${gitValue}\ncounted second\nparameters last\n\nExample Contributor <contributor@example.com>\n`);
+  assert(existsSync(join(gitEnv.cwd,'contributor-hook-ran')), 'contributor hook was skipped');
+  const body=spawnSync('git',['-C',gitEnv.cwd,'log','-1','--format=%B'],{encoding:'utf8'});
+  assert.equal(body.status,0,body.stderr);
+  assert(!body.stdout.includes('cursoragent@cursor.com'), 'AI trailer reached the commit');
+  console.log('ok - DSH child Git preserves counted config, quoting, precedence, contributor hooks and identity while secrets stay filtered');
+
+  for (const [name, env] of Object.entries({
+    count: {GIT_CONFIG_COUNT:'1x'},
+    key: {GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:undefined,GIT_CONFIG_VALUE_0:'PRIVATE_CONFIG_VALUE'},
+    value: {GIT_CONFIG_COUNT:'1',GIT_CONFIG_KEY_0:'fixture.value',GIT_CONFIG_VALUE_0:undefined},
+  })) {
+    const invalid = makeCase(`git-invalid-${name}`, [], true, env); running.push(invalid);
+    await until(() => invalid.exited() || invalid.output().includes('ACK '), 'invalid Git config was not bounded');
+    assert(invalid.exited(), 'incomplete or invalid Git config was silently accepted');
+    assert.notEqual(await invalid.exit,0);
+    assert.match(invalid.error(),/invalid GIT_CONFIG_COUNT|incomplete counted Git configuration/);
+    assert(!invalid.error().includes('PRIVATE_CONFIG_VALUE'));
+    assert(!existsSync(join(invalid.state,'case.dsh-ready')));
+  }
 
   const metaPath=join(dirname(dirname(fake)),'package.json');
   const meta=JSON.parse(readFileSync(metaPath,'utf8'));
