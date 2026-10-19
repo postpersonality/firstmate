@@ -35,8 +35,8 @@ It never reads report bodies, review artifacts, terminal output, or chat.
 | --- | --- | --- |
 | `hold` | Creates or reuses a task and holds it for the captain. | [Creating a hold](#creating-a-hold-hold) |
 | `answer` | Records the captain's exact words and resolves the call. | [Answering a call](#answering-a-call-answer) |
-| `complete` | Records the reviewed captain-held task ids in the originating task's metadata. | [Recording a reviewed inventory](#recording-a-reviewed-inventory-complete) |
-| `verify` | Read-only check that scout teardown runs before removing source state. | [Checking before scout teardown](#checking-before-scout-teardown-verify) |
+| `complete` | Records the outcome disposition and reviewed captain-held task ids. | [Recording a reviewed inventory](#recording-a-reviewed-inventory-complete) |
+| `verify` | Read-only completion check before teardown removes source state. | [Checking before teardown](#checking-before-teardown-verify) |
 | `open` | Read-only check of whether a row is still an open captain call. | [Cleanup never closes a captain call](#cleanup-never-closes-a-captain-call) |
 | `answers` | Channel-agnostic entry point for keyed answers. | [Answer-time resolution](#answer-time-resolution) |
 | `bind`, `unbind`, `binding` | Record that a captured-answer source feeds the keyed-answer intake. | [Source bindings](#source-bindings) |
@@ -117,9 +117,12 @@ With a non-empty inventory, `complete` appends a `captain-held [key=<key>]` tran
 The event names the reviewed inventory.
 `bin/fm-classify-lib.sh` recognizes it as closing the live status copy without claiming that the captain has answered it.
 
-### Checking before scout teardown (`verify`)
+### Checking before teardown (`verify`)
 
-Scout teardown calls the read-only `verify` subcommand after checking for the report and before removing any source state.
+Scout teardown and new ship teardown call the read-only `verify` subcommand before removing source state.
+The outcome review and continuation record are owned by `bin/fm-captain-hold.sh --help`; the procedure is owned by the [lifecycle skill](../.agents/skills/captain-hold-lifecycle/SKILL.md#outcome-review).
+`tests/fm-captain-hold-lifecycle.test.sh` covers milestone continuation, firstmate-owned action acceptance, retained ownership, genuine gates, archive retention, replay and worker replacement.
+`tests/fm-backlog-atomicity.test.sh` checks that firstmate-owned tasks refuse worker dispatch before resources are created.
 `verify` checks three things:
 
 - The recorded attestation exists.

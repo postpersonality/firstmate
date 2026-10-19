@@ -181,6 +181,7 @@ test_wrapper_refusals() {
   local dir out rc before
   dir=$(make_split wrapper-refuse)
   before=$(cat "$dir/home/data/backlog.md")
+  wrapper_from_code "$dir" hold --help >/dev/null || fail "hold help tried to read a task id"
   out=$(wrapper_from_code "$dir" add r-1 "explicit" --file "$dir/home/data/backlog.md" 2>&1)
   rc=$?
   expect_code 2 "$rc" "--file"
@@ -286,6 +287,61 @@ test_wrapper_single_home() {
   pass "fm-tasks-axi.sh keeps the single-home layout addressing its own code-root backlog"
 }
 
+test_wrapper_close_obeys_the_live_outcome_gate() {
+  local dir id=sample-outcome out
+  dir=$(make_split wrapper-outcome)
+  wrapper_from_code "$dir" add "$id" "Requested working result" >/dev/null || fail "could not file outcome"
+  wrapper_from_code "$dir" start "$id" >/dev/null || fail "could not start outcome"
+  printf 'kind=ship\nspawn_gen=fixture\ncompletion_required=1\n' > "$dir/home/state/$id.meta"
+  mv "$dir/home/state/$id.meta" "$dir/home/state/$id.saved"
+  ln -s "$dir/home/state/$id.saved" "$dir/home/state/$id.meta"
+  if wrapper_from_code "$dir" "done" "$id" > "$dir/unsafe.out" 2>&1; then
+    fail "unsafe metadata bypassed the live outcome guard"
+  fi
+  rm "$dir/home/state/$id.meta"
+  mv "$dir/home/state/$id.saved" "$dir/home/state/$id.meta"
+  for out in "done" close; do
+    if wrapper_from_code "$dir" "$out" "$id" > "$dir/close.out" 2>&1; then
+      fail "$out closed a live outcome without review"
+    fi
+    assert_grep 'outcome review' "$dir/close.out" "close failed outside the outcome gate"
+  done
+  out=$(wrapper_from_code "$dir" show "$id")
+  assert_contains "$out" 'state: in_flight' "a refused close changed task state"
+  FM_HOME="$dir/home" "$ROOT/bin/fm-captain-hold.sh" complete "$id" --none --fulfilled >/dev/null \
+    || fail "explicit fulfillment was rejected"
+  wrapper_from_code "$dir" "done" "$id" >/dev/null || fail "reviewed outcome could not close"
+  out=$(wrapper_from_code "$dir" show "$id")
+  assert_contains "$out" 'state: done' "reviewed close did not land"
+  pass "the normal done and close interfaces enforce live outcome review"
+}
+
+test_wrapper_outcome_guards_keep_caller_relative_roots() {
+  local dir id=relative-outcome out
+  dir=$(make_split wrapper-relative-outcome)
+  mkdir -p "$dir/code/records/data" "$dir/code/records/state"
+  (
+    cd "$dir/code" || exit 1
+    export FM_HOME="$dir/home" FM_DATA_OVERRIDE=records/data FM_STATE_OVERRIDE=records/state
+    "$WRAPPER" add "$id" "Requested result" >/dev/null || exit 1
+    "$WRAPPER" start "$id" >/dev/null || exit 1
+    printf 'kind=ship\nspawn_gen=fixture\ncompletion_required=1\n' > "records/state/$id.meta"
+    if "$WRAPPER" "done" "$id" > "$dir/refused.out" 2>&1; then
+      fail "relative state addressing skipped the outcome guard"
+    fi
+    assert_grep 'outcome review' "$dir/refused.out" "relative close failed outside the gate"
+    "$ROOT/bin/fm-captain-hold.sh" complete "$id" --none --fulfilled >/dev/null || exit 1
+    "$WRAPPER" "done" "$id" >/dev/null || exit 1
+    "$WRAPPER" add relative-action "Coordinator action" --kind firstmate >/dev/null || exit 1
+    if "$WRAPPER" hold relative-action --kind future --reason "my own later move" > "$dir/hold.out" 2>&1; then
+      fail "relative data addressing hid a firstmate action"
+    fi
+    out=$("$WRAPPER" show "$id") || exit 1
+    assert_contains "$out" 'state: done' "relative reviewed close missed its task"
+  ) || fail "caller-relative lifecycle guard failed"
+  pass "lifecycle guards keep caller-relative data and state roots across backlog cd"
+}
+
 test_guard_reports_regular_code_root_backlog
 test_guard_reports_foreign_link_and_archive
 test_guard_silent_for_single_home
@@ -295,6 +351,8 @@ if [ "$HAVE_TASKS_AXI" = 1 ]; then
   test_wrapper_overrides_ambient_file
   test_wrapper_refusals
   test_wrapper_refuses_add_start
+  test_wrapper_close_obeys_the_live_outcome_gate
+  test_wrapper_outcome_guards_keep_caller_relative_roots
   test_wrapper_reads_the_archive_read_only
   test_wrapper_single_home
 else

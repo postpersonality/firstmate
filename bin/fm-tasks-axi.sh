@@ -56,6 +56,9 @@
 #     the task record, status file, and inbox that go with the row - which such
 #     a row would lack, counting as live work nobody is doing that nothing
 #     later would notice (`start <id>` stays a documented direct transition);
+#   - closing a live completion_required=1 task before its outcome review;
+#   - holding a kind=firstmate action behind an undated future/parked/load
+#     wait instead of a captain, external, date or dependency gate;
 #   - `archive` with any command but `list` or `show`, or on a home whose
 #     backlog is not markdown;
 #   - a data directory that cannot be resolved, or whose backend configuration
@@ -166,6 +169,10 @@ else
   unset TASKS_AXI_FILE
 fi
 
+# Lifecycle checks below run after this cd; freeze caller-relative roots first.
+DATA=$(fm_backlog_data_absolute "$DATA") || fail "cannot resolve data directory $DATA"
+TASK_STATE=${FM_STATE_OVERRIDE:-$FM_HOME/state}
+case "$TASK_STATE" in /*) ;; *) TASK_STATE="$CALLER_DIR/$TASK_STATE" ;; esac
 cd "$FM_BACKLOG_AXI_ROOT" || fail "cannot enter the backlog root $FM_BACKLOG_AXI_ROOT"
 
 # shortcut: reads only the root .tasks.toml, not ~/.tasks-axi/config.toml; extend if a home sets its archive there.
@@ -212,4 +219,47 @@ case "${1:-}" in
     exit $?
     ;;
 esac
+case "${1:-}" in
+  done|close)
+    case "${2:-}" in
+      ''|*[!A-Za-z0-9._-]*) ;;
+      *)
+        task_meta="$TASK_STATE/$2.meta"
+        if [ -e "$task_meta" ] || [ -L "$task_meta" ]; then
+          fm_backlog_record_present "$task_meta" "task record" "$TASK_STATE" \
+            || fail "cannot read task $2: $FM_BACKLOG_TRANSITION_ERROR"
+          if grep -qx 'completion_required=1' "$task_meta"; then
+            FM_DATA_OVERRIDE="$DATA" FM_STATE_OVERRIDE="$TASK_STATE" \
+              "$SCRIPT_DIR/fm-captain-hold.sh" verify "$2" >/dev/null \
+              || fail "task $2 must pass its outcome review before closing"
+          else
+            [ "$?" = 1 ] || fail "cannot read outcome requirement for task $2"
+          fi
+        fi
+        ;;
+    esac
+    ;;
+esac
+# A coordinator action retains its owner after the originating milestone is
+# cleaned up. Do not hide that ready action behind an undated generic wait.
+if [ "${1:-}" = hold ] && [ -n "${2:-}" ] && [ "${2#-}" = "$2" ]; then
+  fm_backlog_row_probe "$DATA" "$2" || fail "cannot read task $2 before holding it"
+  if [ "$FM_BACKLOG_ROW_KIND" = firstmate ]; then
+    hold_kind=untyped
+    hold_until=''
+    for ((i=2; i<${#ARGS[@]}; i++)); do
+      case "${ARGS[i]}" in
+        --reason) i=$((i + 1)) ;;
+        --kind) i=$((i + 1)); hold_kind=${ARGS[i]-} ;;
+        --kind=*) hold_kind=${ARGS[i]#*=} ;;
+        --until) i=$((i + 1)); hold_until=${ARGS[i]-} ;;
+        --until=*) hold_until=${ARGS[i]#*=} ;;
+      esac
+    done
+    case "$hold_kind" in
+      captain|external) ;;
+      *) [ -n "$hold_until" ] || fail "firstmate action $2 needs a real captain, external, date or dependency gate; an undated $hold_kind wait cannot hide its next action" ;;
+    esac
+  fi
+fi
 exec tasks-axi ${ARGS[@]+"${ARGS[@]}"}

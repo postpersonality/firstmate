@@ -25,6 +25,8 @@
 # data/backlog.md; those cases print the manual follow-up. A configured
 # non-markdown adapter remains active without a markdown file; any active
 # automatic backend without compatible tasks-axi refuses before cleanup.
+# Before unforced teardown, bin/fm-captain-hold.sh verify checks scouts and
+# completion_required=1 ships for their outcome and captain-call inventory.
 # None of this loosens the landed-work gates below: the transition runs only on
 # the paths that already proceed to remove the record.
 # The close - and only the close - is replaced by `tasks-axi reopen` with the
@@ -3379,10 +3381,14 @@ if [ "$KIND" = scout ] && [ "$FORCE" != "--force" ]; then
     echo "The report is the work product. Have the crewmate write it, or use --force after explicit discard approval." >&2
     exit 1
   fi
+fi
+
+if [ "$FORCE" != "--force" ] && { [ "$KIND" = scout ] \
+    || { [ "$KIND" = ship ] && grep -qx 'completion_required=1' "$META"; }; }; then
   if ! FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" \
       FM_CONFIG_OVERRIDE="$CONFIG" "$SCRIPT_DIR/fm-captain-hold.sh" verify "$ID" >/dev/null; then
-    echo "REFUSED: scout task $ID has not passed the captain-call completion gate." >&2
-    echo "Inventory its report and any visual review through bin/fm-captain-hold.sh before teardown." >&2
+    echo "REFUSED: task $ID has not passed its outcome and captain-call completion gate." >&2
+    echo "Review the requested outcome and its remaining work through bin/fm-captain-hold.sh before teardown." >&2
     exit 1
   fi
 fi
