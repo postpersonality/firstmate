@@ -36,6 +36,26 @@ Ordinary status replies and resolved decisions create no work or new completion 
 The gate can verify declared references and structured task states, not recover omitted intent, prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition.
 Reviewing the original outcome and declaring its remaining scope are supervisor judgments; `bin/fm-captain-hold.sh --help` owns the record, retry and compatibility mechanics.
 
+## Outcome review
+
+Compare the delivered milestone with the original requested outcome in the task and brief before accepting it.
+A saved input, dataset, plan, or prepared command satisfies an archive/plan/preparation-only ask; it does not satisfy an already authorized working result or execution ask.
+Keep authorized work with the current worker when possible, promoting a scout when appropriate, or file the remaining executable work as ordinary backlog tasks carrying the original outcome and authority boundaries.
+Do not turn that work into an optional suggestion or ask for the same authorization again.
+A recommendation outside the authorized ask remains a recommendation.
+
+Use the existing `complete` gate for this outcome review as well as the captain-call inventory, explicitly declaring fulfillment or naming the remaining tasks through its flags.
+Classify each remaining step by who must act next: worker work belongs in the ready queue or its actual running task; an already authorized activation/delivery owned by firstmate must be handled in the accepting turn.
+Name the latter as a firstmate action at the gate before acting, so an interrupted or refused handoff retains its task reference and owner, then re-run the gate after handling it.
+A firstmate action merely marked In flight or parked for firstmate's own next move is still owed.
+Record a real captain, external, dated, or task-dependency gate when one exists, including an explicit user stop, missing paid/network/destructive authority, an executing job's completion condition, or independent work already running.
+Do not invent an external condition or activate an action just to pass the gate; a failed check requires handling the named work or correcting its disposition from evidence.
+After acceptance, re-evaluate ready work under the existing lifecycle.
+Ordinary status replies and resolved decisions create no work or new completion obligation.
+
+The gate can verify declared references and structured task states, not recover omitted intent, prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition.
+Reviewing the original outcome and declaring its remaining scope are supervisor judgments; `bin/fm-captain-hold.sh --help` owns the record, retry and compatibility mechanics.
+
 ## Policy
 
 Every unresolved question that belongs to the captain and is discovered while producing, reading, presenting, or ending an investigation or visual review must be carried by a captain-held task in the authoritative backlog of the home that owns the originating work before that work or review may be treated as complete.
