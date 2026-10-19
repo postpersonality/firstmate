@@ -29,6 +29,26 @@ The test uses a marked temporary Firstmate home and a helper-owned Herdr lab, wi
 Every Herdr operation, including reports from the bridge, passes through `fm-herdr-lab.sh`; teardown checks its default-session tripwire.
 The test does not install a package, provision an account, or change user configuration.
 
+## Recorded results
+
+The six adapter regressions completed on 2026-10-19 without a gate skip:
+
+```text
+FM_TEST_SUMMARY total=6 failed=0 skipped_gate=0 duration_ms=50134
+```
+
+The native guard used the existing corporate `litellm/gpt-6-luna` route inside DSH 0.1.5-rc.1, with the installed official entrypoint selected by `FM_DSH_BIN`:
+
+```text
+ok - real DSH canonical supervised launch, cwd, model tool and Herdr liveness/composer
+ok - real DSH fm-send durable inbox delivery and acknowledgement
+ok - real DSH draft deferral, steering during busy, control cancellation and owned tool termination
+ok - real DSH session close and EOF leave the pane shell alive
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=43588
+```
+
+These results establish the compatibility boundary below; they do not verify another DSH version, provider route, primary role, or backend.
+
 ## Guarantees exercised
 
 | Surface | Evidence |
