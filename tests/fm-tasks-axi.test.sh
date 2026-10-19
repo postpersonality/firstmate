@@ -314,6 +314,12 @@ test_wrapper_close_obeys_the_live_outcome_gate() {
     fail "a value flag before the task id bypassed the live close guard"
   fi
   assert_grep 'outcome review' "$dir/flags.out" "flags-first close failed outside the outcome gate"
+  for out in "done" close; do
+    if wrapper_from_code "$dir" task "$out" --keep 0 --note "noun first" "$id" > "$dir/noun.out" 2>&1; then
+      fail "the optional task noun let $out bypass the live outcome guard"
+    fi
+    assert_grep 'outcome review' "$dir/noun.out" "task-noun $out failed outside the outcome gate"
+  done
   out=$(wrapper_from_code "$dir" show "$id")
   assert_contains "$out" 'state: in_flight' "a refused close changed task state"
   FM_HOME="$dir/home" "$ROOT/bin/fm-captain-hold.sh" complete "$id" --none --fulfilled >/dev/null \
@@ -348,6 +354,10 @@ test_wrapper_outcome_guards_keep_caller_relative_roots() {
       fail "value flags before the task id hid a firstmate action"
     fi
     assert_grep 'firstmate action relative-action' "$dir/hold.out" "flags-first hold failed outside the firstmate guard"
+    if "$WRAPPER" task hold --kind future --reason "my own later move" relative-action > "$dir/hold.out" 2>&1; then
+      fail "the optional task noun hid a firstmate action"
+    fi
+    assert_grep 'firstmate action relative-action' "$dir/hold.out" "task-noun hold failed outside the firstmate guard"
     out=$("$WRAPPER" show "$id") || exit 1
     assert_contains "$out" 'state: done' "relative reviewed close missed its task"
   ) || fail "caller-relative lifecycle guard failed"

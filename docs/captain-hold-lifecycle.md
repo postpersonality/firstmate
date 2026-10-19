@@ -125,7 +125,7 @@ The outcome review and continuation record are owned by `bin/fm-captain-hold.sh 
 `tests/fm-backlog-atomicity.test.sh` checks that firstmate-owned tasks refuse worker dispatch before resources are created.
 `verify` checks:
 
-- For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by a task dependency, held for the captain, an external condition, or a date, or, for worker work only, queued or running.
+- For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by an unfinished task other than its origin, held for the captain, an external condition, or a date, or, for worker work only, queued or running.
 - The recorded attestation exists.
 - Every recorded inventory entry still passes the [completion inventory checks](#recording-a-reviewed-inventory-complete).
 - No keyed status decision opened after the last `complete`.

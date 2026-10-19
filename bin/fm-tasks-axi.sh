@@ -7,13 +7,14 @@
 #
 # Every routine firstmate backlog read or mutation goes through this command
 # rather than a bare `tasks-axi`; `fm-tasks-axi.sh <command> --help` prints
-# tasks-axi's own help. Arguments reach tasks-axi as given, apart from one
-# rewrite that keeps file arguments meaning what the caller meant: a relative
-# value of `--to` or any `--*-file` flag (`--body-file`, `--relation-file`, ...)
-# is made absolute against the caller's working directory, because tasks-axi
-# starts from the backlog root instead. `--report` stays as given: tasks-axi
-# stores it verbatim as a link, which lifecycle transitions record relative to
-# that same root.
+# tasks-axi's own help. Arguments reach tasks-axi as given, apart from
+# tasks-axi's optional leading `task` noun, which this command drops before
+# reading the command, and one rewrite that keeps file arguments meaning what
+# the caller meant: a relative value of `--to` or any `--*-file` flag
+# (`--body-file`, `--relation-file`, ...) is made absolute against the caller's
+# working directory, because tasks-axi starts from the backlog root instead.
+# `--report` stays as given: tasks-axi stores it verbatim as a link, which
+# lifecycle transitions record relative to that same root.
 #
 # `show` (including `view`) and `list` decode stored captain-hold reasons
 # through bin/fm-hold-reason-lib.sh, which owns the field-only decoding contract.
@@ -94,6 +95,7 @@ fail() {
   exit 2
 }
 
+[ "${1:-}" != task ] || shift
 case "${1:-}" in
   -h|--help)
     usage

@@ -164,10 +164,11 @@
 # unfinished referenced tasks, keeping their owner visible after origin cleanup;
 # such rows cannot dispatch to workers. Queued/running worker work stays actionable;
 # a firstmate action must be Done or genuinely gated by a captain/external hold,
-# future hold-until date, or unresolved task dependency. An undated generic
-# future/parked/load hold is not such a condition. --fulfilled cannot erase an
-# outstanding reference. A successful review writes completion_reviewed= bound
-# to kind:spawn_gen, so relaunch and scout promotion require a fresh review.
+# future hold-until date, or unresolved dependency on a task other than its
+# origin. An undated generic future/parked/load hold is not such a condition.
+# --fulfilled cannot erase an outstanding reference. A successful review writes
+# completion_reviewed= bound to kind:spawn_gen, so relaunch and scout promotion
+# require a fresh review.
 # `verify` rechecks references, including gates that have since cleared. These
 # are completion refusals, never execution authority, automatic dispatch or a
 # new watcher. New ships and all scouts verify before unforced cleanup; older
@@ -1787,7 +1788,7 @@ completion_task_show() {  # <task-id>; sets show
 # second queue. Only the supervisor can attest intent/authority; check their
 # recorded disposition without inferring it from report or wait prose.
 completion_work_verify() {  # <origin> <comma-separated owner:id refs> <fulfilled-0-or-1>
-  local origin=$1 refs=$2 fulfilled=$3 ref owner id show state held blocked kind until origin_identity="$1"
+  local origin=$1 refs=$2 fulfilled=$3 ref owner id show state held blocked blocker kind until origin_identity="$1"
   origin_identity=$(task_identity "$origin")
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
@@ -1807,7 +1808,11 @@ completion_work_verify() {  # <origin> <comma-separated owner:id refs> <fulfille
     kind=$(show_field_value "$show" hold_kind)
     if [ "$(show_field_value "$show" kind)" = firstmate ]; then owner=firstmate; fi
     until=$(show_field_value "$show" hold_until)
-    [ "$blocked" != yes ] || continue
+    if [ "$blocked" = yes ]; then
+      for blocker in $(show_field_value "$show" blocked_by | tr ',' ' '); do
+        [ "$blocker" = "$origin" ] || [ "$blocker" = "$origin_identity" ] || continue 2
+      done
+    fi
     if [ "$held" = yes ]; then
       case "$kind" in captain|external) continue ;; esac
       case "$until" in ????-??-??) continue ;; esac

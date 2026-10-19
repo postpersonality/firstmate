@@ -4762,6 +4762,30 @@ test_outcome_review_preserves_real_gates_and_explicit_deliverables() {
   if run_captain "$home" verify sample-outcome > "$home/cleared.out" 2>&1; then
     fail "a cleared external condition concealed the now-ready firstmate action"
   fi
+  home=$(make_completion_home origin-blocker)
+  tasks_in "$home" add sample-other "An independent blocker" >/dev/null
+  tasks_in "$home" add sample-after "Act after the milestone" >/dev/null
+  tasks_in "$home" block sample-after --by sample-outcome >/dev/null
+  tasks_in "$home" block sample-after --by sample-other >/dev/null
+  run_captain "$home" complete sample-outcome --none --firstmate-action sample-after >/dev/null \
+    || fail "an independent active blocker was not accepted as a dependency gate"
+  tasks_in "$home" "done" sample-other --keep 0 >/dev/null
+  if run_captain "$home" verify sample-outcome > "$home/origin-blocker.out" 2>&1; then
+    fail "the origin vouched for its firstmate action once the other blocker completed"
+  fi
+  assert_grep 'firstmate action sample-after' "$home/origin-blocker.out" "origin-blocker refusal did not name its action"
+  if run_teardown "$home" sample-outcome > "$home/origin-teardown.out" 2>&1; then
+    fail "cleanup closed an origin whose only gate on its firstmate action was itself"
+  fi
+  assert_grep 'completion gate' "$home/origin-teardown.out" "origin-blocker cleanup refusal came from an unrelated gate"
+  home=$(make_completion_home origin-only-blocker)
+  tasks_in "$home" add sample-only "Act only after the milestone" >/dev/null
+  tasks_in "$home" block sample-only --by sample-outcome >/dev/null
+  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-only \
+      > "$home/origin-only.out" 2>&1; then
+    fail "a firstmate action blocked only by its origin was accepted"
+  fi
+  assert_grep 'firstmate action sample-only' "$home/origin-only.out" "origin-only refusal did not name its action"
   for kind in scout ship; do
     home=$(make_completion_home "archive-only-$kind" "$kind")
     run_captain "$home" complete sample-outcome --none --fulfilled >/dev/null \
