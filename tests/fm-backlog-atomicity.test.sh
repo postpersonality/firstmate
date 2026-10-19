@@ -620,6 +620,12 @@ run_teardown() {  # <case-dir> <id> [args...]
     "$TEARDOWN" "$@" 2>&1
 }
 
+review_fulfilled_outcome() {  # <case-dir> <id>
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$(home_of "$1")" \
+    PATH="$1/fakebin:$PATH" "$ROOT/bin/fm-captain-hold.sh" complete "$2" --none --fulfilled >/dev/null \
+    || fail "could not review the completed fixture outcome"
+}
+
 run_bootstrap() {  # <case-dir>
   local case_dir=$1
   FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$(home_of "$case_dir")" \
@@ -788,7 +794,17 @@ test_dispatch_moves_the_item_in_flight_in_the_same_run() {
     "markdown dispatch did not pass the backlog file to show"
   [ "$(row_state "$case_dir" "$id")" = in_flight ] \
     || fail "spawn reported success with its backlog item still $(row_state "$case_dir" "$id")"
-  pass "dispatch publishes the record and moves the backlog item In flight in one run"
+  if out=$(FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$(home_of "$case_dir")" \
+      PATH="$case_dir/fakebin:$PATH" "$ROOT/bin/fm-captain-hold.sh" verify "$id" 2>&1); then
+    fail "a fresh automatic-backlog launch skipped the outcome review"
+  fi
+  assert_contains "$out" "no outcome review for this worker incarnation" \
+    "fresh launch did not reach the outcome gate"
+  review_fulfilled_outcome "$case_dir" "$id"
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$(home_of "$case_dir")" \
+    PATH="$case_dir/fakebin:$PATH" "$ROOT/bin/fm-captain-hold.sh" verify "$id" >/dev/null \
+    || fail "the actual spawned task lost its outcome review"
+  pass "dispatch publishes the record, starts its backlog item, and requires an outcome review"
 }
 
 test_dispatch_omits_the_file_for_a_beads_show() {
@@ -969,13 +985,15 @@ SH
 }
 
 test_dispatch_refuses_a_program_row_before_creating_resources() {
-  local case_dir id out rc=0
-  id=atomic-dispatch-program-b1
-  case_dir=$(make_home dispatch-program "$id")
-  tasks-axi add "$id" "umbrella for $id" --kind program \
-    --file "$(backlog_of "$case_dir")" >/dev/null
-  tasks-axi start "$id" --file "$(backlog_of "$case_dir")" >/dev/null
-  cat > "$case_dir/fakebin/tmux" <<SH
+  local case_dir id out kind rc
+  for kind in program firstmate; do
+    rc=0
+    id=atomic-dispatch-$kind-b1
+    case_dir=$(make_home "dispatch-$kind" "$id")
+    tasks-axi add "$id" "non-worker work for $id" --kind "$kind" \
+      --file "$(backlog_of "$case_dir")" >/dev/null
+    tasks-axi start "$id" --file "$(backlog_of "$case_dir")" >/dev/null
+    cat > "$case_dir/fakebin/tmux" <<SH
 #!/usr/bin/env bash
 case "\$*" in
   *new-window*) : > "$case_dir/task-endpoint-created" ;;
@@ -985,21 +1003,22 @@ esac
 case "\${1:-}" in display-message) printf 'firstmate\n'; exit 0 ;; esac
 exit 0
 SH
-  chmod +x "$case_dir/fakebin/tmux"
+    chmod +x "$case_dir/fakebin/tmux"
 
-  out=$(run_ship_spawn "$case_dir" "$id") || rc=$?
-  [ "$rc" -ne 0 ] || fail "spawn accepted a program row"
-  assert_contains "$out" "backlog item $id is a program row, which is never handed to a worker" \
-    "program-row refusal did not name the row as a program row"
-  assert_absent "$(home_of "$case_dir")/state/$id.meta" \
-    "program-row refusal published a task record"
-  assert_absent "$case_dir/task-endpoint-created" \
-    "program-row refusal created an unowned endpoint"
-  assert_absent "$case_dir/local-copy-requested" \
-    "program-row refusal requested an unowned local copy"
-  [ "$(row_state "$case_dir" "$id")" = in_flight ] \
-    || fail "program-row refusal changed the backlog state"
-  pass "dispatch refuses program rows before creating resources"
+    out=$(run_ship_spawn "$case_dir" "$id") || rc=$?
+    [ "$rc" -ne 0 ] || fail "spawn accepted a $kind row"
+    assert_contains "$out" "backlog item $id is a $kind row, which is never handed to a worker" \
+      "non-worker-row refusal did not name the row as a program row"
+    assert_absent "$(home_of "$case_dir")/state/$id.meta" \
+      "non-worker-row refusal published a task record"
+    assert_absent "$case_dir/task-endpoint-created" \
+      "non-worker-row refusal created an unowned endpoint"
+    assert_absent "$case_dir/local-copy-requested" \
+      "non-worker-row refusal requested an unowned local copy"
+    [ "$(row_state "$case_dir" "$id")" = in_flight ] \
+      || fail "non-worker-row refusal changed the backlog state"
+    pass "dispatch refuses $kind rows before creating resources"
+  done
 }
 
 test_dispatch_refuses_a_blocked_row_before_creating_resources() {
@@ -1848,6 +1867,7 @@ test_interrupted_destructive_cleanup_leaves_a_recoverable_close() {
   home=$(home_of "$case_dir")
   add_item "$case_dir" "$id"
   out=$(run_ship_spawn "$case_dir" "$id") || fail "spawn failed: $out"
+  review_fulfilled_outcome "$case_dir" "$id"
   marker="$home/state/$id.backlog-close"
   interrupt_teardown_during_treehouse_return "$case_dir"
 
@@ -2942,6 +2962,7 @@ test_dispatch_and_completion_are_structural() {
 
   out=$(run_ship_spawn "$case_dir" "$id") \
     || fail "structural spawn failed: $out"
+  review_fulfilled_outcome "$case_dir" "$id"
   [ "$(row_state "$case_dir" "$id")" = in_flight ] \
     || fail "spawn left the backlog item outside In flight"
 
@@ -2973,6 +2994,7 @@ test_refused_teardown_leaves_the_item_live() {
   add_item "$case_dir" "$id"
   out=$(run_ship_spawn "$case_dir" "$id") \
     || fail "refusal setup spawn failed: $out"
+  review_fulfilled_outcome "$case_dir" "$id"
 
   printf '%s\n' unlanded > "$case_dir/wt/unlanded.txt"
   git -C "$case_dir/wt" add unlanded.txt

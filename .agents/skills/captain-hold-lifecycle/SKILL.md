@@ -1,8 +1,8 @@
 ---
 name: captain-hold-lifecycle
 description: >-
-  Agent-only policy for completing investigations and visual reviews without losing unresolved captain calls, and for closing what the captain owns with his actual words.
-  Load before treating an investigation, scout report, structured review, or Lavish review as complete, before ending a visual review that exposed a captain decision, when recording or routing the captain's answer, and on any RECORD DIVERGENCE line the wake drain prints.
+  Agent-only policy for accepting worker milestones and firstmate-owned handoffs without losing the requested outcome, completing investigations and visual reviews without losing captain calls, and recording captain answers.
+  Load before accepting a worker milestone or a prepared firstmate-owned handoff, before ship cleanup, before treating an investigation, scout report, structured review, or Lavish review as complete, before ending a visual review that exposed a captain decision, when recording or routing the captain's answer, and on any RECORD DIVERGENCE line the wake drain prints.
 user-invocable: false
 metadata:
   internal: true
@@ -14,6 +14,26 @@ A decision is not a separate thing: it is simply a task waiting on the captain.
 The one primitive is an ordinary backlog task held for the captain through `bin/fm-captain-hold.sh hold`; its identity is the task id, and that wrapper owns the deterministic mechanics this policy relies on.
 The agent performs the semantic inventory because scripts must not infer captain calls from report prose, visual-review artifacts, terminal output, or chat.
 Before publishing or holding a proposed question, apply `ask-user-authority`, the semantic owner that determines whether the call actually requires the captain.
+
+## Outcome review
+
+Compare the delivered milestone with the original requested outcome in the task and brief before accepting it.
+A saved input, dataset, plan, or prepared command satisfies an archive/plan/preparation-only ask; it does not satisfy an already authorized working result or execution ask.
+Keep authorized work with the current worker when possible, promoting a scout when appropriate, or file the remaining executable work as ordinary backlog tasks carrying the original outcome and authority boundaries.
+Do not turn that work into an optional suggestion or ask for the same authorization again.
+A recommendation outside the authorized ask remains a recommendation.
+
+Use the existing `complete` gate for this outcome review as well as the captain-call inventory, explicitly declaring fulfillment or naming the remaining tasks through its flags.
+Classify each remaining step by who must act next: worker work belongs in the ready queue or its actual running task; an already authorized activation/delivery owned by firstmate must be handled in the accepting turn.
+Name the latter as a firstmate action at the gate before acting, so an interrupted or refused handoff retains its task reference and owner, then re-run the gate after handling it.
+A firstmate action merely marked In flight or parked for firstmate's own next move is still owed.
+Record a real captain, external, dated, or task-dependency gate when one exists, including an explicit user stop, missing paid/network/destructive authority, an executing job's completion condition, or independent work already running.
+Do not invent an external condition or activate an action just to pass the gate; a failed check requires handling the named work or correcting its disposition from evidence.
+After acceptance, re-evaluate ready work under the existing lifecycle.
+Ordinary status replies and resolved decisions create no work or new completion obligation.
+
+The gate can verify declared references and structured task states, not recover omitted intent, prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition.
+Reviewing the original outcome and declaring its remaining scope are supervisor judgments; `bin/fm-captain-hold.sh --help` owns the record, retry and compatibility mechanics.
 
 ## Policy
 

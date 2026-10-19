@@ -28,7 +28,8 @@
 #   fm-captain-hold.sh bind <source-id> [<legacy-origin> | --any-origin]
 #   fm-captain-hold.sh unbind <source-id>
 #   fm-captain-hold.sh binding <source-id>
-#   fm-captain-hold.sh complete <origin-id> (--none | <task-id>...)
+#   fm-captain-hold.sh complete <origin-id> (--none | <task-id>...) \
+#     [--fulfilled | --remaining <task-id> | --firstmate-action <task-id>]...
 #   fm-captain-hold.sh verify <origin-id>
 #   fm-captain-hold.sh open <task-id> [--identity] [--distinguish-absent]
 #   fm-captain-hold.sh diverged
@@ -137,7 +138,7 @@
 # stores. `binding` prints the stored value verbatim and `answers` accepts it,
 # so the process-event runner's feed seam is unchanged.
 #
-# `complete` is the shared investigation and visual-review completion gate.
+# `complete` is the shared outcome, investigation and visual-review completion gate.
 # It attests, in the origin task's metadata, the reviewed inventory of
 # captain-held tasks that carry the origin's unresolved captain calls.
 # `--none` is an explicit semantic attestation that the just-reviewed surface
@@ -152,7 +153,29 @@
 # `captain-held [key=...]` status close naming the inventory. Later review
 # passes may add ids. A post-teardown visual review can complete against the
 # surviving report and tasks without recreating task state.
-# `verify` is read-only and is called by scout teardown, so teardown cannot
+# New automatic-backlog ship/scout launches set completion_required=1. Their `complete` also
+# requires --fulfilled (the requested outcome is achieved) OR one or more
+# --remaining <id> / --firstmate-action <id> references to ordinary tasks in
+# this home's backlog. The supervisor judges outcome and authority from the
+# original ask; no prose classifier can prove either. References are unioned
+# into completion_work= as worker:<id> or firstmate:<id> before checking their
+# disposition, so a refused handoff survives a retry. Self references and
+# conflicting owners are refused. --firstmate-action also sets kind=firstmate on
+# unfinished referenced tasks, keeping their owner visible after origin cleanup;
+# such rows cannot dispatch to workers. Queued/running worker work stays actionable;
+# a firstmate action must be Done or genuinely gated by a captain/external hold,
+# future hold-until date, or unresolved task dependency. An undated generic
+# future/parked/load hold is not such a condition. --fulfilled cannot erase an
+# outstanding reference. A successful review writes completion_reviewed= bound
+# to kind:spawn_gen, so relaunch and scout promotion require a fresh review.
+# `verify` rechecks references, including gates that have since cleared. These
+# are completion refusals, never execution authority, automatic dispatch or a
+# new watcher. New ships and all scouts verify before unforced cleanup; older
+# records keep the captain-inventory-only compatibility unless explicitly
+# reviewed with the new flags. --remaining requires live origin metadata.
+# A completed reference pruned from a markdown backlog is read through
+# fm-tasks-axi.sh archive show; missing or unreadable evidence refuses.
+# `verify` is read-only and is called by teardown, so teardown cannot
 # erase a source before this gate has succeeded: every recorded inventory
 # entry must still satisfy the same durability and origin checks as `complete`,
 # and no keyed status decision may be open.
@@ -1744,9 +1767,69 @@ reconcile_note() {
   printf 'still-open: %s\n' "$id"
 }
 
+# Read pruned Done work through the existing archive interface, only after an
+# authoritative NOT_FOUND (never after a read failure or timeout).
+completion_task_show() {  # <task-id>; sets show
+  if task_show "$1"; then
+    show=$TASK_SHOW_OUTPUT
+    return 0
+  fi
+  printf '%s\n' "$TASK_SHOW_OUTPUT" | grep -q '^code: NOT_FOUND$' \
+    || fail "could not read remaining task $1"
+  show=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
+    "$SCRIPT_DIR/fm-tasks-axi.sh" archive show "$1" --full) \
+    || fail "remaining task $1 is absent or unreadable in this home's backlog and archive"
+  [ "$(show_field_value "$show" state)" = "done" ] \
+    || fail "archived remaining task $1 is not Done"
+}
+
+# Completion references are ordinary tasks in this home's backlog, not a
+# second queue. Only the supervisor can attest intent/authority; check their
+# recorded disposition without inferring it from report or wait prose.
+completion_work_verify() {  # <origin> <comma-separated owner:id refs> <fulfilled-0-or-1>
+  local origin=$1 refs=$2 fulfilled=$3 ref owner id show state held blocked kind until origin_identity="$1"
+  origin_identity=$(task_identity "$origin")
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    owner=${ref%%:*}
+    id=${ref#*:}
+    case "$owner" in worker|firstmate) ;; *) fail "invalid completion work owner: $owner" ;; esac
+    validate_slug task-id "$id"
+    [ "$id" != "$origin" ] || fail "origin $origin cannot be its own remaining work"
+    completion_task_show "$id"
+    [ "$(show_field_value "$show" id)" != "$origin_identity" ] || fail "origin $origin cannot be its own remaining work"
+    state=$(show_field_value "$show" state)
+    [ "$state" != "done" ] || continue
+    [ "$fulfilled" = 0 ] || fail "outcome $origin still owes remaining task $id"
+    [ "$(show_field_value "$show" kind)" != program ] || fail "remaining task $id is a program, not executable work"
+    held=$(show_field_value "$show" held)
+    blocked=$(show_field_value "$show" blocked)
+    kind=$(show_field_value "$show" hold_kind)
+    if [ "$(show_field_value "$show" kind)" = firstmate ]; then owner=firstmate; fi
+    until=$(show_field_value "$show" hold_until)
+    [ "$blocked" != yes ] || continue
+    if [ "$held" = yes ]; then
+      case "$kind" in captain|external) continue ;; esac
+      case "$until" in ????-??-??) continue ;; esac
+      fail "remaining task $id has a generic $kind wait; record its real captain, external, date or dependency gate"
+    fi
+    case "$state" in queued|in_flight) ;; *) fail "remaining task $id has unsupported state $state" ;; esac
+    if [ "$owner" = firstmate ]; then
+      fail "firstmate action $id is actionable now; handle it before accepting $origin, or record its real external gate"
+    fi
+  done <<EOF
+$(printf '%s\n' "$refs" | tr ',' '\n')
+EOF
+}
+
+completion_seal() {  # <meta>
+  printf '%s:%s' "$(meta_value "$1" kind)" "$(meta_value "$1" spawn_gen)"
+}
+
 command_complete() {
   local origin=${1:-} meta previous='' supplied='' keys='' entry key status_file open has_meta=0 transfer_rc transfers=() resolved
   local resolved_how attested_by_prefix='' origin_state unrecorded_origin=''
+  local outcome='' remaining='' refs previous_refs ref id seal
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
   validate_slug origin-id "$origin"
   shift
@@ -1760,15 +1843,82 @@ command_complete() {
   fi
   require_tasks_axi
   origin_exists_here "$origin" || fail "origin $origin is not owned by the active home $FM_HOME"
-  if [ "$#" -eq 1 ] && [ "$1" = --none ]; then
-    supplied=''
-  else
-    while [ "$#" -gt 0 ]; do
-      [ "$1" != --none ] || fail "--none cannot be combined with task ids"
-      validate_slug task-id "$1"
-      supplied="${supplied}${supplied:+ }$1"
-      shift
-    done
+  local none=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --none) none=1 ;;
+      --fulfilled)
+        [ -z "$outcome" ] || [ "$outcome" = fulfilled ] || fail "--fulfilled cannot be combined with remaining work"
+        outcome=fulfilled
+        ;;
+      --remaining|--firstmate-action)
+        [ "$outcome" != fulfilled ] || fail "--fulfilled cannot be combined with remaining work"
+        outcome=remaining
+        if [ "$1" = --remaining ]; then ref=worker; else ref=firstmate; fi
+        shift
+        [ "$#" -gt 0 ] || fail "remaining task id is required"
+        validate_slug task-id "$1"
+        [ "$1" != "$origin" ] || fail "origin $origin cannot be its own remaining work"
+        remaining="${remaining}${remaining:+ }$ref:$1"
+        ;;
+      *)
+        validate_slug task-id "$1"
+        supplied="${supplied}${supplied:+ }$1"
+        ;;
+    esac
+    shift
+  done
+  [ "$none" = 0 ] || [ -z "$supplied" ] || fail "--none cannot be combined with task ids"
+  [ "$none" = 1 ] || [ -n "$supplied" ] || fail "supply --none or the captain-call task ids"
+  if [ "$has_meta" = 1 ]; then
+    if [ "$(meta_value "$meta" completion_required)" = 1 ] || [ -n "$outcome" ]; then
+      [ -n "$outcome" ] || fail "review the requested outcome: use --fulfilled or name authorized --remaining / --firstmate-action tasks"
+      if [ "$(meta_value "$meta" completion_required)" != 1 ]; then
+        printf 'completion_required=1\n' >> "$meta" || fail "cannot require the outcome review"
+      fi
+      previous_refs=$(meta_value "$meta" completion_work)
+      refs=$(sorted_key_union "$previous_refs" "$remaining")
+      # Validate existence before persisting; persist accepted edges before the
+      # disposition check so a failed ready action cannot be erased by retry.
+      while IFS= read -r ref; do
+        [ -n "$ref" ] || continue
+        id=${ref#*:}
+        completion_task_show "$id"
+        [ "$(show_field_value "$show" kind)" != program ] || fail "remaining task $id is a program, not executable work"
+        [ "$(show_field_value "$show" id)" != "$(task_identity "$origin")" ] || fail "origin $origin cannot be its own remaining work"
+        case ",$refs," in
+          *",worker:$id,"*",firstmate:$id,"*|*",firstmate:$id,"*",worker:$id,"*)
+            fail "remaining task $id has conflicting owners" ;;
+        esac
+      done <<EOF
+$(printf '%s\n' "$refs" | tr ',' '\n')
+EOF
+      while IFS= read -r ref; do
+        case "$ref" in
+          firstmate:*)
+            id=${ref#*:}
+            completion_task_show "$id"
+            if [ "$(show_field_value "$show" state)" != "done" ] \
+                && [ "$(show_field_value "$show" kind)" != firstmate ]; then
+              [ ! -f "$STATE/$id.meta" ] || fail "task $id already has a worker; use --remaining for its independent work"
+              tasks_axi update "$id" --kind firstmate >/dev/null || fail "cannot record firstmate ownership of $id"
+            fi
+            ;;
+        esac
+      done <<EOF
+$(printf '%s\n' "$refs" | tr ',' '\n')
+EOF
+      if [ "$refs" != "$previous_refs" ]; then
+        printf 'completion_work=%s\n' "$refs" >> "$meta" || fail "cannot record remaining work"
+      fi
+      if [ "$outcome" = fulfilled ]; then
+        completion_work_verify "$origin" "$refs" 1
+      else
+        completion_work_verify "$origin" "$refs" 0
+      fi
+    fi
+  elif [ -n "$remaining" ]; then
+    fail "remaining work requires the originating task metadata; file it before cleanup"
   fi
   if [ "$has_meta" = 1 ]; then
     previous=$(meta_value "$meta" decision_keys)
@@ -1802,6 +1952,12 @@ EOF
   if [ "$has_meta" = 1 ]; then
     if [ "$(meta_value "$meta" decisions_reviewed)" != 1 ] || [ "$previous" != "$keys" ]; then
       printf 'decisions_reviewed=1\ndecision_keys=%s\n' "$keys" >> "$meta"
+    fi
+    if [ -n "$outcome" ]; then
+      seal=$(completion_seal "$meta")
+      if [ "$(meta_value "$meta" completion_reviewed)" != "$seal" ]; then
+        printf 'completion_reviewed=%s\n' "$seal" >> "$meta" || fail "cannot record outcome review"
+      fi
     fi
     fm_lock_release "$CAPTAIN_META_LOCK"
     CAPTAIN_META_LOCK_HELD=0
@@ -1838,6 +1994,11 @@ command_verify() {
   meta="$STATE/$origin.meta"
   [ -f "$meta" ] || fail "origin metadata is absent: $meta"
   require_tasks_axi
+  if [ "$(meta_value "$meta" completion_required)" = 1 ] || [ -n "$(meta_value "$meta" completion_reviewed)" ]; then
+    [ "$(meta_value "$meta" completion_reviewed)" = "$(completion_seal "$meta")" ] \
+      || fail "origin $origin has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work"
+    completion_work_verify "$origin" "$(meta_value "$meta" completion_work)" 0
+  fi
   reviewed=$(meta_value "$meta" decisions_reviewed)
   [ "$reviewed" = 1 ] || fail "origin $origin has no completed captain-call inventory"
   keys=$(meta_value "$meta" decision_keys)

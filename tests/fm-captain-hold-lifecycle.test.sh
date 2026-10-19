@@ -4665,6 +4665,183 @@ SH
   pass "marked hold reasons round-trip through public reads, fleet, startup, and return without changing other fields"
 }
 
+# New launches require an outcome review as well as the captain-call inventory.
+# No report prose is interpreted: the supervisor supplies the outcome and typed
+# continuation references, and the gate checks the existing backlog facts.
+make_completion_home() {
+  local home id=sample-outcome
+  home=$(make_home "$1")
+  tasks_in "$home" add "$id" "Working evaluator on the saved corpus" >/dev/null
+  tasks_in "$home" start "$id" >/dev/null
+  write_origin_meta "$home" "$id" "${2:-scout}"
+  printf 'completion_required=1\n' >> "$home/state/$id.meta"
+  mkdir -p "$home/data/$id"
+  printf '# Corpus and calibration plan\n' > "$home/data/$id/report.md"
+  printf 'done: bounded milestone saved\n' > "$home/state/$id.status"
+  printf '%s\n' "$home"
+}
+
+test_outcome_review_distinguishes_a_milestone_from_the_goal() {
+  local home out
+  home=$(make_completion_home outcome-required)
+  if run_captain "$home" complete sample-outcome --none > "$home/review.out" 2>&1; then
+    fail "a captain-call-only inventory silently completed a working-evaluator outcome"
+  fi
+  if run_teardown "$home" sample-outcome > "$home/teardown.out" 2>&1; then
+    fail "teardown accepted a milestone without an outcome disposition"
+  fi
+  assert_present "$home/state/sample-outcome.meta" "outcome refusal lost its source records"
+  tasks_in "$home" add sample-evaluator "Implement and assess the authorized evaluator" >/dev/null
+  run_captain "$home" complete sample-outcome --none --remaining sample-evaluator >/dev/null \
+    || fail "a durable executable continuation was not accepted"
+  run_captain "$home" verify sample-outcome >/dev/null || fail "continuation did not verify"
+  run_teardown "$home" sample-outcome > "$home/teardown.out" 2>&1 \
+    || fail "milestone cleanup failed: $(cat "$home/teardown.out")"
+  out=$(tasks_in "$home" ready)
+  assert_contains "$out" sample-evaluator "cleanup hid remaining authorized work from ready"
+  out=$(tasks_in "$home" show sample-evaluator --full)
+  assert_contains "$out" 'state: queued' "cleanup closed the remaining executable task"
+  pass "a saved corpus milestone requires and preserves executable remaining work"
+}
+
+test_prepared_firstmate_action_cannot_be_a_generic_wait() {
+  local home out before
+  home=$(make_completion_home coordinator-action)
+  tasks_in "$home" add sample-activate "Activate the already authorized bounded handoff" >/dev/null
+  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate \
+      > "$home/action.out" 2>&1; then
+    fail "an unperformed coordinator action was accepted as complete"
+  fi
+  assert_grep 'firstmate action sample-activate' "$home/action.out" "ready refusal did not name its action"
+  tasks_in "$home" hold sample-activate --reason "my own next step later" --kind future >/dev/null
+  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate \
+      > "$home/future.out" 2>&1; then
+    fail "an undated future hold hid an accepted firstmate action"
+  fi
+  assert_grep 'generic future wait' "$home/future.out" "future-hold case did not reach disposition validation"
+  if run_captain "$home" complete sample-outcome --none --fulfilled > "$home/erase.out" 2>&1; then
+    fail "a fulfilled attestation erased an outstanding accepted handoff"
+  fi
+  tasks_in "$home" unhold sample-activate >/dev/null
+  tasks_in "$home" start sample-activate >/dev/null
+  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate \
+      > "$home/start.out" 2>&1; then
+    fail "starting an ordinary row claimed that a firstmate action executed"
+  fi
+  tasks_in "$home" "done" sample-activate --keep 0 >/dev/null
+  run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate >/dev/null \
+    || fail "the handled coordinator action did not clear the gate"
+  before=$(cat "$home/state/sample-outcome.meta")
+  run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate >/dev/null \
+    || fail "completion replay failed"
+  [ "$before" = "$(cat "$home/state/sample-outcome.meta")" ] || fail "completion replay rewrote metadata"
+  run_captain "$home" verify sample-outcome >/dev/null || fail "handled action failed verification"
+  pass "prepared coordinator actions must be handled and replay converges"
+}
+
+test_outcome_review_preserves_real_gates_and_explicit_deliverables() {
+  local home id kind
+  home=$(make_completion_home legitimate-outcomes)
+  for kind in running captain external dated dependency; do
+    id=sample-$kind
+    tasks_in "$home" add "$id" "Legitimate continuation gate" >/dev/null
+    case "$kind" in
+      captain) run_captain "$home" hold "$id" --reason "Explicit stop or missing paid network authority" >/dev/null ;;
+      external) tasks_in "$home" hold "$id" --reason "Executing job completion receipt" --kind external >/dev/null ;;
+      dated) tasks_in "$home" hold "$id" --reason "External release window" --until 2099-01-01 --kind future >/dev/null ;;
+      dependency) tasks_in "$home" block "$id" --by sample-running >/dev/null ;;
+      running) tasks_in "$home" start "$id" >/dev/null ;;
+    esac
+  done
+  run_captain "$home" complete sample-outcome --none --firstmate-action sample-captain \
+    --firstmate-action sample-external --firstmate-action sample-dated \
+    --firstmate-action sample-dependency --remaining sample-running >/dev/null \
+    || fail "a legitimate gate or already-running independent task was rejected"
+  run_captain "$home" verify sample-outcome >/dev/null || fail "legitimate dispositions did not verify"
+  tasks_in "$home" unhold sample-external >/dev/null
+  if run_captain "$home" verify sample-outcome > "$home/cleared.out" 2>&1; then
+    fail "a cleared external condition concealed the now-ready firstmate action"
+  fi
+  for kind in scout ship; do
+    home=$(make_completion_home "archive-only-$kind" "$kind")
+    run_captain "$home" complete sample-outcome --none --fulfilled >/dev/null \
+      || fail "an explicitly requested archive-only deliverable could not complete"
+    run_captain "$home" verify sample-outcome >/dev/null || fail "fulfilled outcome failed verification"
+    if [ "$kind" = ship ]; then
+      printf 'completion_reviewed=\n' >> "$home/state/sample-outcome.meta"
+      if run_teardown "$home" sample-outcome > "$home/ship.out" 2>&1; then
+        fail "ship teardown skipped the outcome gate"
+      fi
+      assert_grep 'completion gate' "$home/ship.out" "ship refusal came from an unrelated gate"
+      run_captain "$home" complete sample-outcome --none --fulfilled >/dev/null || fail "ship could not re-attest"
+    else
+      printf 'kind=ship\n' >> "$home/state/sample-outcome.meta"
+      if run_captain "$home" verify sample-outcome > "$home/promoted.out" 2>&1; then
+        fail "a scout promotion inherited the scout outcome attestation"
+      fi
+      run_captain "$home" complete sample-outcome --none --fulfilled >/dev/null || fail "promoted ship could not re-attest"
+    fi
+    printf 'spawn_gen=replacement\n' >> "$home/state/sample-outcome.meta"
+    if run_captain "$home" verify sample-outcome > "$home/replaced.out" 2>&1; then
+      fail "a replacement worker inherited a previous outcome attestation"
+    fi
+  done
+  pass "explicit deliverables, real external gates, stops, and independent work remain valid"
+}
+
+test_outcome_inventory_rejects_missing_self_and_nondispatchable_work() {
+  local home
+  home=$(make_completion_home invalid-outcomes)
+  if run_captain "$home" complete sample-outcome --none --remaining sample-missing > "$home/missing.out" 2>&1; then
+    fail "remaining work accepted an absent task"
+  fi
+  if run_captain "$home" complete sample-outcome --none --remaining sample-outcome > "$home/self.out" 2>&1; then
+    fail "a milestone could vouch for its own follow-through"
+  fi
+  tasks_in "$home" add sample-program "A non-dispatchable umbrella" --kind program >/dev/null
+  if run_captain "$home" complete sample-outcome --none --remaining sample-program > "$home/program.out" 2>&1; then
+    fail "a non-dispatchable umbrella satisfied executable follow-through"
+  fi
+  tasks_in "$home" add sample-action "A bounded step" >/dev/null
+  if run_captain "$home" complete sample-outcome --none --remaining sample-action \
+    --firstmate-action sample-action > "$home/owners.out" 2>&1; then
+    fail "conflicting next-action owners were accepted"
+  fi
+  pass "completion inventory refuses missing, self, program and conflicting-owner references"
+}
+
+test_firstmate_action_ownership_survives_milestone_cleanup() {
+  local home out before
+  home=$(make_completion_home retained-action)
+  tasks_in "$home" add sample-deliver "Deliver after the external completion receipt" >/dev/null
+  tasks_in "$home" hold sample-deliver --reason "Executing job completion receipt" --kind external >/dev/null
+  run_captain "$home" complete sample-outcome --none --firstmate-action sample-deliver >/dev/null \
+    || fail "a genuinely gated firstmate action could not be accepted"
+  run_teardown "$home" sample-outcome > "$home/cleanup.out" 2>&1 \
+    || fail "milestone cleanup failed: $(cat "$home/cleanup.out")"
+  out=$(tasks_in "$home" show sample-deliver --full)
+  assert_contains "$out" 'kind: firstmate' "milestone cleanup lost the next-action owner"
+  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" unhold sample-deliver >/dev/null || fail "external wait could not clear"
+  before=$(cat "$home/data/backlog.md")
+  if FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-deliver --kind future \
+      --reason "my own later move" > "$home/hide.out" 2>&1; then
+    fail "a cleaned-up milestone's firstmate action disappeared into a generic future wait"
+  fi
+  [ "$before" = "$(cat "$home/data/backlog.md")" ] || fail "refused future wait changed the backlog"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" ready)
+  assert_contains "$out" sample-deliver "a ready firstmate action disappeared after cleanup"
+  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-deliver --kind captain \
+    --reason "Explicit user stop or missing network authority" >/dev/null || fail "explicit stop was refused"
+  assert_absent "$home/state/.wake-queue" "completion created an automatic re-wake loop"
+  pass "firstmate ownership survives cleanup, refuses generic future waits, and preserves explicit stops"
+}
+
+test_outcome_review_distinguishes_a_milestone_from_the_goal
+test_prepared_firstmate_action_cannot_be_a_generic_wait
+test_outcome_review_preserves_real_gates_and_explicit_deliverables
+test_outcome_inventory_rejects_missing_self_and_nondispatchable_work
+test_firstmate_action_ownership_survives_milestone_cleanup
+
 test_hold_reason_round_trips_awkward_characters
 test_hold_origins_precede_backend_holds
 test_historical_self_inventory_has_workable_repair

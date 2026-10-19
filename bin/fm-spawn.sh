@@ -527,6 +527,8 @@
 # success line and state/<id>.meta omit them.
 # Every fresh spawn or relaunch records a new spawn_gen= incarnation token so durable
 # consumers can distinguish a replacement worker that reuses the same task id.
+# Automatic-backlog ship/scout launches also require the outcome review owned by
+# bin/fm-captain-hold.sh before teardown (completion_required=1).
 # When the home session's frozen trace-context decision is enabled (see
 # docs/configuration.md and bin/fm-trace-context-lib.sh), the meta also records
 # one W3C traceparent= carrier, the same value injected into the pane as
@@ -3686,15 +3688,16 @@ if fm_backlog_transition_applies "$CONFIG" "$DATA" "$KIND"; then
     echo "error: task $ID's backlog item could not be read before dispatch ($FM_BACKLOG_ROW_ERROR)" >&2
     exit 1
   fi
+  if ! fm_backlog_row_dispatchable "$BACKLOG_ROW_STATE"; then
+    echo "error: this home's backlog item $ID is not dispatchable in state $BACKLOG_ROW_STATE; refusing before creating its endpoint or local copy" >&2
+    exit 1
+  fi
   spawn_preflight_actor=$(fm_lease_actor) || exit "$FM_LEASE_REFUSE_EXIT"
   if [ "$spawn_preflight_actor" = branch ] && fm_lease_away_relocated; then
     if [ "$BACKLOG_ROW_STATE" != "queued no no" ]; then
       echo "error: spawn refused - the supervision branch under the away-posture record may dispatch only queued unblocked work (already queued, or filed by the branch from the captain's away words); task $ID has no dispatchable backlog item in this home" >&2
       exit 1
     fi
-  elif ! fm_backlog_row_dispatchable "$BACKLOG_ROW_STATE"; then
-    echo "error: this home's backlog item $ID is not dispatchable in state $BACKLOG_ROW_STATE; refusing before creating its endpoint or local copy" >&2
-    exit 1
   fi
 else
   BACKLOG_GATE_STATUS=$?
@@ -5159,6 +5162,7 @@ preserve_relaunch_meta() {
   [ -z "$WORKER_ACCOUNT_PROVIDER" ] || echo "account_provider=$WORKER_ACCOUNT_PROVIDER"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
+  [ "$BACKLOG_TRANSITION" != 1 ] || echo "completion_required=1"
   # Default-off writes no traceparent= line.
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;
