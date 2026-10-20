@@ -1200,8 +1200,8 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on?.("before_agent_start", (event) => {
-    // Wakes are user messages; Pi 1.3+ also raises this for idle custom messages,
-    // which carry no prompt.
+    // Wakes arrive as user follow-ups; Pi 1.3+ also raises this for custom runs,
+    // which carry no prompt and are not wakes.
     if (event.messageType !== "custom") consumeWake(generation, event.prompt);
   });
   pi.on?.("message_start", (event) => {

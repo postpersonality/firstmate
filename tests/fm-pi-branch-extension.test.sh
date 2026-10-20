@@ -1067,14 +1067,16 @@ const customRunTexts = [
   "extension note that opened its own run",
   "custom message that started an idle run",
 ];
-await fire("before_agent_start", {
-  messageType: "custom",
-  message: { role: "custom", customType: "fm-branch-merge", content: customRunTexts[0], display: false },
-}, mainCtx);
-await fire("before_agent_start", {
-  messageType: "custom",
-  message: { role: "custom", customType: "firstmate-sessionstart-nudge", content: customRunTexts[1], display: false, timestamp: 0 },
-}, mainCtx);
+const customRunMessages = [
+  { customType: "fm-branch-merge", content: customRunTexts[0], display: false },
+  { customType: "firstmate-sessionstart-nudge", content: customRunTexts[1], display: false, timestamp: 0 },
+];
+for (const message of customRunMessages) {
+  await fire("before_agent_start", {
+    messageType: "custom",
+    message: { role: "custom", ...message },
+  }, mainCtx);
+}
 const unsolicitedPrompt = "Please keep responses concise while monitoring the fleet.";
 await fire("before_agent_start", { prompt: unsolicitedPrompt }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: unsolicitedPrompt } });
