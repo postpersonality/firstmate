@@ -211,6 +211,24 @@ test('browser app uses the real router for goal forms, the card and task actions
       assert.equal(store.inbox(nativeId).requests.filter(r => r.requestId.startsWith(`delo-${action}-${nativeId}-`)).length, 1);
     }
 
+    run(join(store.firstmate.home, 'bin', 'fm-captain-hold.sh'), ['hold', nativeId, '--reason', 'Какой вариант брать?\nA или B'], store.firstmate.home, 45000, env);
+    // The card reloads asynchronously on the same hash, so wait for the new state before reading its buttons.
+    const asking = () => /В работе · ждёт ответа/.test(window.document.querySelector('.page-heading .eyebrow')?.textContent ?? '');
+    const shown = () => [...window.document.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action'));
+    await buttons(goal.id); await until(asking);
+    assert.deepEqual(shown(), ['answer', 'stop', 'close'], 'a question asked during work is answered from the card');
+    assert.equal(window.document.querySelector('[data-task-action="close"]')?.textContent, 'Запросить закрытие');
+    (window.document.querySelector('[data-task-action="answer"]') as HTMLButtonElement).click();
+    assert.equal(window.document.getElementById('answer-question')?.textContent, 'Какой вариант брать?\nA или B', 'the dialog shows the whole question');
+    const reply = window.document.querySelector('[name=answer]') as HTMLTextAreaElement;
+    assert.equal(reply.tagName, 'TEXTAREA');
+    reply.value = 'Выбираю A\nпотому что быстрее';
+    (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await until(() => store.firstmate.show(nativeId).held === 'no');
+    assert.equal(store.firstmate.show(nativeId).state, 'in_flight');
+    assert.match(store.firstmate.show(nativeId).body ?? '', /Answer: Выбираю A \/ потому что быстрее/);
+    await buttons(goal.id); await until(() => !asking());
+    assert.deepEqual(shown(), ['stop', 'close']);
     window.document.getElementById('new-case')?.click();
     assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'reviewKind', 'sources', 'why', 'doneWhen', 'context', 'constraints']);
     (window.document.querySelector('[name=title]') as HTMLInputElement).value = 'UI дело';

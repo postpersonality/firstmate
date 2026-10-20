@@ -1,7 +1,7 @@
 import type { Goal } from '../src/model.ts';
 import type { Overview, Row, CaseRow } from '../src/overview.ts';
 type ViewGoal = Goal & { inbox?: { requests: { requestId: string; at: string; state: string; acknowledged: boolean; reply: unknown }[]; ready?: any }; worker?: { harness: string; current?: string; reason?: string; prUrl?: string } };
-type CaseTask = Pick<Goal, 'id' | 'title' | 'state' | 'actions' | 'holdKind' | 'inFlight' | 'links' | 'report' | 'review' | 'reviewProgress'> & { phase: keyof typeof phaseLabels };
+type CaseTask = Pick<Goal, 'id' | 'title' | 'state' | 'actions' | 'holdKind' | 'reason' | 'inFlight' | 'links' | 'report' | 'review' | 'reviewProgress'> & { phase: keyof typeof phaseLabels };
 type ViewCase = Goal & { archived: boolean; sources: string[]; tasks: CaseTask[]; earlier: CaseTask[] };
 const phaseLabels = { working: 'в работе', waiting: 'ждёт меня', next: 'дальше', done: 'сделано' };
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -100,17 +100,17 @@ async function newAgent(c: ViewCase) {
   interactive.onchange = () => { if (interactive.checked) document.querySelector<HTMLSelectElement>('#dialog-body [name=harness]')!.value = 'codex'; };
 }
 const actionLabels: Record<string, string> = { start: 'Взять в работу', pause: 'Пауза', unhold: 'Снять паузу', close: 'Закрыть', decline: 'Отказ', answer: 'Ответить', release: 'Разрешить работу', later: 'Позже', reopen: 'Вернуть', stop: 'Запросить остановку' };
-const taskState = (g: { state?: Goal['state']; holdKind?: string; inFlight?: boolean }) => g.state === 'done' ? 'Закрыта' : g.inFlight ? 'В работе' : g.holdKind === 'captain' ? 'Ждёт решения' : g.state === 'paused' ? 'На паузе' : g.state === 'active' ? 'В очереди' : '';
-function taskControls(g: Pick<Goal, 'id' | 'title' | 'actions' | 'holdKind' | 'inFlight'>) {
+const taskState = (g: { state?: Goal['state']; holdKind?: string; inFlight?: boolean }) => g.state === 'done' ? 'Закрыта' : g.holdKind === 'captain' ? (g.inFlight ? 'В работе · ждёт ответа' : 'Ждёт решения') : g.inFlight ? 'В работе' : g.state === 'paused' ? 'На паузе' : g.state === 'active' ? 'В очереди' : '';
+function taskControls(g: Pick<Goal, 'id' | 'title' | 'actions' | 'holdKind' | 'reason' | 'inFlight'>) {
   const pending = pendingTasks.has(g.id);
-  return `<div class="actions task-actions">${g.actions.map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}" ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
+  return `<div class="actions task-actions">${g.actions.map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}"${a === 'answer' ? ` data-question="${esc(g.reason)}"` : ''} ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
 }
 function taskPending(id: string, on: boolean) {
   if (on) pendingTasks.add(id); else pendingTasks.delete(id);
   document.querySelectorAll<HTMLButtonElement>('[data-task-action], [data-action="pin"]').forEach(b => { if (b.dataset.id === id) b.disabled = on; });
   document.querySelectorAll<HTMLElement>('[data-task-pending]').forEach(e => { if (e.dataset.id === id) e.hidden = !on; });
 }
-async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'>, action: string) {
+async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'> & { question?: string }, action: string) {
   const path = `/api/tasks/${encodeURIComponent(g.id)}/${action}`;
   const run = async (body: Record<string, unknown> = {}) => {
     if (pendingTasks.has(g.id)) return;
@@ -135,7 +135,7 @@ async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'
     $('dialog-cancel').hidden = false;
   }
   else if (action === 'decline') modal('Отказ', field('reason', 'Причина отказа', '', false, true), async f => run({ reason: f.get('reason') }), 'Отказаться');
-  else if (action === 'answer') modal('Ответить', field('answer', 'Ответ', '', false, true), async f => run({ answer: f.get('answer') }), 'Ответить');
+  else if (action === 'answer') modal('Ответить', `${g.question ? `<p class="prose" id="answer-question">${esc(g.question)}</p>` : ''}${field('answer', 'Ответ', '', true, true)}`, async f => run({ answer: f.get('answer') }), 'Ответить');
   else if (action === 'release') modal('Разрешить работу', field('answer', 'Комментарий (необязательно)'), async f => run(f.get('answer') ? { answer: f.get('answer') } : {}), 'Разрешить работу');
   else if (action === 'later') modal('Позже', `${field('reason', 'Почему позже', '', false, true)}<label>Вернуться<input type="date" name="until" required></label>`, async f => run({ reason: f.get('reason'), until: f.get('until') }), 'Отложить');
   else await run();
@@ -285,7 +285,7 @@ $('dialog-close').onclick = $('dialog-cancel').onclick = () => ($('dialog') as H
 $('dialog-form').onsubmit = async event => { event.preventDefault(); if (($('dialog-submit') as HTMLButtonElement).disabled) return; $('dialog-submit').setAttribute('disabled', ''); try { await submitDialog(new FormData($('dialog-form') as HTMLFormElement)); ($('dialog') as HTMLDialogElement).close(); } catch (e: any) { $('dialog-error').textContent = e.message; } finally { $('dialog-submit').removeAttribute('disabled'); } };
 $('main').onclick = async event => {
   const taskButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-task-action]');
-  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, title: taskButton.dataset.title!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight }, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } return; }
+  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, title: taskButton.dataset.title!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight, question: taskButton.dataset.question }, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } return; }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
   if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, button, input, select, textarea, label, .task-actions, .row-actions')) go.querySelector('a')?.click(); return; }
   try { if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'open-report') { button.disabled = true; await api(`/api/reports/${encodeURIComponent(button.dataset.id!)}/open`, {}); return; } if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }

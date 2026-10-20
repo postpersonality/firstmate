@@ -14,6 +14,7 @@ test('card actions follow the backlog row state', () => {
   assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'captain', kind: 'captain' }), ['answer', 'later', 'close']);
   assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'captain', kind: 'scout' }), ['release', 'later', 'close']);
   assert.deepEqual(actions({ state: 'in_flight', held: 'no', kind: 'ship' }), ['stop', 'close']);
+  assert.deepEqual(actions({ state: 'in_flight', held: 'yes', hold_kind: 'captain', kind: 'ship' }), ['answer', 'stop', 'close']);
   assert.deepEqual(actions({ state: 'done', held: 'no', kind: 'ship' }), ['reopen']);
   assert.deepEqual(actions({ state: 'done', held: 'no', kind: 'captain' }), []);
 });
@@ -112,6 +113,40 @@ test('closing obsolete held work records the explicit choice through the captain
       assert.match(readFileSync(join(fm, 'state', '.wake-queue'), 'utf8'), new RegExp(`captain answered through delo: ${id}`));
     }
     assert.equal(store.firstmate.receipts().pending.length, 0, 'held closure uses the answer owner, not a free-text note');
+    assert.equal(existsSync(stubLog), false, 'no worker lifecycle command runs');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('an answer to a question asked during work is recorded once and the work keeps running', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-held-flight-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root) });
+    const fm = store.firstmate.home;
+    const wakes = () => existsSync(join(fm, 'state', '.wake-queue')) ? readFileSync(join(fm, 'state', '.wake-queue'), 'utf8').split('\n').filter(Boolean) : [];
+    const records = () => (store.firstmate.show(work).body ?? '').split('Resolution recorded by fm-captain-hold.').length - 1;
+    const work = store.create({ title: 'Работа с вопросом' }).id;
+    store.firstmate.start(work);
+    const question = 'Какой вариант брать?\nA - быстрее\nB - дешевле';
+    run(join(fm, 'bin', 'fm-captain-hold.sh'), ['hold', work, '--reason', question], fm, 45000, { ...process.env, FM_HOME: fm });
+    const asked = store.get(work);
+    assert.deepEqual([asked.actions, asked.inFlight, asked.holdKind, asked.reason], [['answer', 'stop', 'close'], true, 'captain', question]);
+    assert.ok((await store.overview()).waiting.some(g => g.rows.some(r => r.id === work && r.reason === question)), 'the row waits for the answer with its question');
+    assert.throws(() => store.act(work, 'answer', { answer: ' \n ' }), /ответ/);
+
+    const before = wakes().length;
+    store.act(work, 'answer', { answer: 'Выбираю A\nпотому что быстрее' });
+    const after = store.firstmate.show(work);
+    assert.deepEqual([after.state, after.held], ['in_flight', 'no'], 'the work keeps running without the hold');
+    assert.match(after.body ?? '', /Resolution mode: released/);
+    assert.match(after.body ?? '', /Answer: Выбираю A \/ потому что быстрее/);
+    assert.equal(records(), 1);
+    assert.equal(wakes().length - before, 1, 'one answer wakes firstmate once');
+    assert.deepEqual(store.get(work).actions, ['stop', 'close']);
+    assert.equal((await store.overview()).waiting.some(g => g.rows.some(r => r.id === work)), false, 'the row leaves «Ждёт меня»');
+
+    assert.throws(() => store.act(work, 'answer', { answer: 'Выбираю A\nпотому что быстрее' }), /недоступно/);
+    assert.deepEqual([records(), wakes().length - before, store.firstmate.show(work).state], [1, 1, 'in_flight'], 'a repeated answer records nothing');
+    assert.equal(store.firstmate.receipts().pending.length, 0, 'the answer is not a note');
     assert.equal(existsSync(stubLog), false, 'no worker lifecycle command runs');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

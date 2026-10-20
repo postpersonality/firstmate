@@ -25,14 +25,14 @@ export const agentInput = z.object({
 });
 export const closeCaseInput = z.object({ confirmed: z.array(id).default([]) });
 export const goalPatch = z.object({ title: line.min(1).optional(), body: text.optional(), personal: z.boolean().optional(), folder: line.optional(), state: state.optional() });
-export const actionInput = z.object({ reason: line.optional(), answer: line.refine(v => !v.includes('\t'), 'Без табуляции').optional(), until: day.optional() });
+export const actionInput = z.object({ reason: line.optional(), answer: z.string().max(500).refine(v => !v.includes('\t'), 'Без табуляции').optional(), until: day.optional() });
 export const personalLine = 'Личное';
 
 // Card buttons by backlog row state (plan section 5); the server refuses any action not listed here.
 export type Action = 'start' | 'pause' | 'unhold' | 'close' | 'decline' | 'answer' | 'release' | 'later' | 'reopen' | 'stop';
 export function actions(task: { state: string; held?: string | boolean; hold_kind?: string; kind?: string }): Action[] {
   if (task.kind === 'program') return []; // A дело has its own buttons on its page.
-  if (task.state === 'in_flight') return ['stop', 'close'];
+  if (task.state === 'in_flight') return task.hold_kind === 'captain' ? ['answer', 'stop', 'close'] : ['stop', 'close'];
   if (task.state === 'done') return task.kind === 'captain' || task.hold_kind === 'captain' ? [] : ['reopen'];
   if (task.hold_kind === 'captain') return [task.kind === 'captain' ? 'answer' : 'release', 'later', 'close'];
   if (task.held === true || task.held === 'yes') return ['unhold', 'close', 'decline'];

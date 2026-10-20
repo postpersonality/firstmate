@@ -157,8 +157,8 @@ export class Store {
     if (task.kind !== 'program') throw new Error('Это не дело');
     const goal = this.get(caseId, task);
     const entry = (t: FirstmateTask) => {
-      const { id, title, state, actions, holdKind, inFlight, links, report, review, reviewProgress } = this.get(t.id, t);
-      return { id, title, state, actions, holdKind, inFlight, phase: phase(t), links, report, review, reviewProgress };
+      const { id, title, state, actions, holdKind, reason, inFlight, links, report, review, reviewProgress } = this.get(t.id, t);
+      return { id, title, state, actions, holdKind, reason, inFlight, phase: phase(t), links, report, review, reviewProgress };
     };
     const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
     const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t, true)));
@@ -276,8 +276,10 @@ export class Store {
       return { output };
     }
     if (action === 'answer' || action === 'release') {
-      const answer = action === 'answer' ? need(data.answer, 'ответ') : data.answer || 'Разрешаю работу';
-      const output = this.firstmate.answer(task.id, answer, action === 'answer' ? 'Ответить' : 'Разрешить работу', action === 'answer' ? 'done' : 'release');
+      const answer = action === 'answer' ? need(data.answer?.trim(), 'ответ') : data.answer || 'Разрешаю работу';
+      // Only a question row closes on its answer; answered work, including work in flight, keeps running.
+      const mode = action === 'answer' && task.kind === 'captain' && task.state !== 'in_flight' ? 'done' : 'release';
+      const output = this.firstmate.answer(task.id, answer, action === 'answer' ? 'Ответить' : 'Разрешить работу', mode);
       if (/^skipped:/m.test(output)) throw new Error(output);
       return { output };
     }
