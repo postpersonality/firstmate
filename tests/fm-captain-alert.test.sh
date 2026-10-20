@@ -244,6 +244,18 @@ mail_cli alert "$ALERT_TMP/permission.json" > "$ALERT_TMP/out" || fail "a re-rai
 [ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 3 ] || fail 'a re-raised decision under the same request id must send once'
 pass 'a new generation or a re-raised decision is reviewed and sent afresh under the same request id'
 
+printf '%s\n' 'blocked [at=1790000000]: publication permission is still absent after the first email' >> "$FM_HOME/state/demo.status"
+before=$(reviews)
+mail_cli alert "$ALERT_TMP/permission-twin.json" > "$ALERT_TMP/out"
+assert_contains "$(cat "$ALERT_TMP/out")" 'already mailed' 'a restamped open decision is the mailed occurrence'
+[ "$(reviews)" = "$before" ] || fail 'a restamped open decision was reviewed again'
+printf '%s\n' 'resolved: the owner answered' \
+  'blocked: publication permission is still absent after the first email' >> "$FM_HOME/state/demo.status"
+mail_cli alert "$ALERT_TMP/permission.json" > "$ALERT_TMP/out" || fail "an identical reopen was not sent: $(cat "$ALERT_TMP/out")"
+[ "$(reviews)" -gt "$before" ] || fail 'an identical reopen reused an earlier review'
+[ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 4 ] || fail 'an identical reopen after a close must send once'
+pass 'a restamped open decision stays mailed; a close and identical reopen is a new occurrence'
+
 rm "$ALERT_TMP/smtp"
 rc=0
 SMTP_FAIL=1 mail_cli alert "$ALERT_TMP/smtp-fail.json" > "$ALERT_TMP/out" 2>&1 || rc=$?

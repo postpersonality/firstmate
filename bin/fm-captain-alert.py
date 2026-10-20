@@ -15,14 +15,17 @@ The gate reads the task's canonical records itself: brief (data/<task>/brief.md)
 steering (state/<task>.inbox/*.msg and handled/*.msg, by name), status
 (state/<task>.status) and authority (AGENTS.md); inside the home, <= 512 KiB.
 It binds the task generation (the one spawn_gen of state/<task>.meta) and the
-named decision while the shared fold, status_open_decisions, holds it open.
+named decision, with the status line that opened its current occurrence, while
+the shared fold (status_open_decision_occurrence) holds it open.
 A fresh print-mode critic (180s, no tools) must return NEEDS_CAPTAIN bound to
 request_sha256, quoting every present role. Before SMTP the gate rereads the
 records and refuses any change.
 Receipts: $FM_HOME/state/captain-alerts/<task>/<decision>/<binding>/, mode
 0700/0600, with the frozen context and the critic's path, executable and output
 sha256, session and models; <decision> hashes the bound task, generation and
-decision (key, verb, summary), whatever the request id. Delivery is locked and
+decision (key, opening line, verb, summary), whatever the request id, so a
+restamped re-raise stays one occurrence and a close and reopen is a new one.
+Delivery is locked and
 deduplicated per <decision>: once a message for it reaches the authenticated SMTP
 server, no request for it is sent again, whatever the outcome; its sent.json or
 attempted.json names that request's id and binding. A SELF_RESOLVE or
@@ -177,17 +180,16 @@ def bind_task(home, task, key):
     generations = [line[len('spawn_gen='):] for line in meta.splitlines() if line.startswith('spawn_gen=')]
     if len(generations) != 1 or not re.fullmatch(SLUG, generations[0]):
         raise ValueError('task record of ' + task + ' must name exactly one spawn_gen generation')
-    fold = subprocess.run(['/bin/bash', '-c', '. "$0" && status_open_decisions "$1"',
-                           str(BIN / 'fm-classify-lib.sh'), str(state / (task + '.status'))],
+    fold = subprocess.run(['/bin/bash', '-c', '. "$0" && status_open_decision_occurrence "$1" "$2"',
+                           str(BIN / 'fm-classify-lib.sh'), str(state / (task + '.status')), key],
                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env={'PATH': SAFE_PATH}, timeout=60)
     if fold.returncode:
         raise ValueError('the shared decision fold failed; repair bin/fm-classify-lib.sh')
-    for line in fold.stdout.decode('utf-8').splitlines():
-        open_key, verb, summary = line.split('\t', 2)
-        if open_key == key:
-            return dict(id=task, spawn_gen=generations[0], decision=dict(key=key, verb=verb, summary=summary))
-    raise ValueError('decision ' + key + ' is not an open blocked or needs-decision record of task ' + task
-                     + '; email only a currently open blocker')
+    if not fold.stdout:
+        raise ValueError('decision ' + key + ' is not an open blocked or needs-decision record of task ' + task
+                         + '; email only a currently open blocker')
+    opened, verb, summary = fold.stdout.decode('utf-8').rstrip('\n').split('\t', 2)
+    return dict(id=task, spawn_gen=generations[0], decision=dict(key=key, opened=int(opened), verb=verb, summary=summary))
 
 
 def freeze(raw, cfg, home):

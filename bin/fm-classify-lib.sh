@@ -772,10 +772,11 @@ EOF
 # Fold ONE status line into an existing "<key>\t<verb>\t<note>\n"-per-line open
 # set, applying the same needs-decision/blocked-opens, resolved/captain-held-closes
 # rule status_open_decisions documents above. Pure text transform, no file I/O.
-# This is the ONE place the per-line open/resolved rule is written; both the
-# whole-file fold (status_open_decisions) and the incremental cursor-backed fold
-# (status_open_decisions_incremental) below call this instead of re-deriving the
-# rule, so the two consumption strategies can never drift apart on semantics.
+# This is the ONE place the per-line open/resolved rule is written; the
+# whole-file folds (status_open_decisions, status_open_decision_occurrence) and
+# the incremental cursor-backed fold (status_open_decisions_incremental) below
+# call this instead of re-deriving the rule, so the consumption strategies can
+# never drift apart on semantics.
 # Reserved decision-key namespaces, and the rule that makes them mean something.
 #
 # A key like `pending-reply-<id>` names a decision that one library raises and is
@@ -908,6 +909,37 @@ status_open_decisions() {  # <status-file> [<kind>]
     esac
   done < "$f"
   printf '%s' "$open"
+}
+
+# One decision of the same fold, with the occurrence that opened it: prints
+# "<line>\t<verb>\t<summary>" while <key> is open, where <line> numbers the
+# status line that opened it from closed. Re-raising a still-open key keeps
+# <line>; a close and a later reopen, even with identical text, takes the
+# reopening line's. Prints nothing when <key> is not open.
+status_open_decision_occurrence() {  # <status-file> <key> [<kind>]
+  local f=$1 key=$2 kind=${3:-} line resolve held open='' prior verb n=0 at=''
+  [ -f "$f" ] && [ -r "$f" ] && [ ! -L "$f" ] || return 0
+  kind=$(_fm_status_kind "$f" "$kind")
+  resolve=${FM_CLASSIFY_RESOLVE_VERB:-$FM_CLASSIFY_RESOLVE_VERB_DEFAULT}
+  held=${FM_CLASSIFY_CAPTAIN_HELD_VERB:-$FM_CLASSIFY_CAPTAIN_HELD_VERB_DEFAULT}
+  while IFS= read -r line || [ -n "$line" ]; do
+    n=$((n + 1))
+    status_line_verb "$line" verb
+    case "$verb" in
+      needs-decision|blocked|done|failed|"$resolve"|"$held")
+        prior=$open
+        open=$(_fm_decision_fold_line "$open" "$line" "$resolve" "$held" "$kind")
+        if _fm_open_set_has "$open" "$key" && ! _fm_open_set_has "$prior" "$key"; then
+          at=$n
+        fi
+        ;;
+    esac
+  done < "$f"
+  while IFS= read -r line; do
+    case "$line" in "$key"$'\t'*) printf '%s\t%s\n' "$at" "${line#*$'\t'}" ;; esac
+  done <<EOF
+$open
+EOF
 }
 
 # Resolve the log's current declaration at one boundary for crew-state consumers.
