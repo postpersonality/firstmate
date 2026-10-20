@@ -14,6 +14,7 @@ test_question_authority_reaches_every_primary() {
     out=$("$RENDER" --harness "$harness") || fail "$harness: instruction rendering failed"
     assert_equals "$(printf '%s\n' "$out" | grep -cF "$owner")" 1 \
       "$harness: startup must point to the question authority owner exactly once"
+    assert_not_contains "$out" 'is missing or empty' "$harness: present policy rendered the missing-owner diagnostic"
   done
   pass "every primary protocol, including unknown/API, points to question authority"
 }
@@ -30,6 +31,7 @@ test_question_policy_pointer_keeps_protocol() {
   printf '# ask-user-authority\nfixture policy body\n' > "$owner"
   out=$(bash "$script" --harness unknown) || fail "fixture render failed"
   assert_contains "$out" "$owner" "renderer did not point to its policy owner"
+  assert_not_contains "$out" 'is missing or empty' "present policy rendered the missing-owner diagnostic"
   assert_not_contains "$out" 'fixture policy body' "renderer embedded the policy body instead of pointing to it"
   rm "$owner"
   out=$(bash "$script" --harness unknown 2>&1) || fail "missing policy blocked the watcher protocol"
