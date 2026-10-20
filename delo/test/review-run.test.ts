@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { Store } from '../src/store.ts';
 import { firstmateHome } from './firstmate-home.ts';
 import { runSaReview, saCommand } from '../src/review-run.ts';
+import { fileURLToPath } from 'node:url';
 
 test('agent runner executes exact npm argv/cwd, consumes real event boundaries live, and preserves terminal failures', async () => {
   const root = mkdtempSync(join(tmpdir(), 'delo-review-run-'));
@@ -62,4 +63,35 @@ setTimeout(() => { fs.appendFileSync(log, '{"topic":"partial"'); fs.writeFileSyn
     assert.doesNotMatch(readFileSync(join(home,'state',failed+'.status'),'utf8'),/^done/m);
     assert.equal(store.firstmate.show(failed).state,'queued','runner never closes a failed task');
   } finally {delete process.env.FAKE_FAIL; rmSync(root, {recursive:true,force:true});}
+});
+
+test('compact stdout fixture is monitored without journals, survives large noise, and cancellation overrides ready/exit-zero', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-review-compact-'));
+  try {
+    const home = firstmateHome(root), cwd = join(root, 'команда SA'); mkdirSync(cwd);
+    const store = new Store({ firstmateHome: home });
+    const taskId = store.createCase({title:'Compact review',requestId:randomUUID(),review:{kind:'sa',document:'https://example.com/pages/1',repo:root}}).tasks[0].id;
+    const old = store.firstmate.show(taskId);
+    store.firstmate.update(taskId,{body:old.body+'\nReview links: '+JSON.stringify({status:'unavailable',links:[],note:'Fixture: source is offline',startedAt:new Date().toISOString(),endedAt:new Date().toISOString()})});
+    const fixture = fileURLToPath(new URL('./fixtures/sa-review-console.txt', import.meta.url));
+    const fake = join(root,'npm');
+    writeFileSync(fake, `#!/usr/bin/env node
+const fs=require('node:fs'),p=require('node:path');
+const dir=p.join(process.cwd(),'runs','compact');fs.mkdirSync(dir,{recursive:true});
+console.log('x'.repeat(3*1024*1024));
+console.log('Run directory: '+dir);
+fs.writeFileSync(p.join(dir,'result.json'),JSON.stringify({status:'ready'}));
+const text=fs.readFileSync(${JSON.stringify(fixture)},'utf8');
+process.stdout.write(text.slice(0,23));setTimeout(()=>process.stdout.write(text.slice(23)),20);
+`,{mode:0o755});
+    const result=await runSaReview({home,taskId,command:fake,cwd,pollMs:20});
+    assert.equal(result.exitCode,0);assert.equal(result.status,'failed');
+    assert.equal(result.protocol,'sa-review-console/observed-2026-10-20');
+    assert.equal(result.reportedTotal,'19m 59s');
+    assert.equal(result.phases.find(p=>p.name==='audit_review')?.elapsedMs,500000);
+    assert.equal(result.phases.find(p=>p.name==='unknown')?.elapsedMs,null);
+    assert.match(result.error!,/cancelled/);
+    assert.ok(readFileSync(join(home,'data',taskId,'review-console.log')).byteLength<=2*1024*1024);
+    assert.match(store.report(taskId).text,/FACTORY_STOP status=failed/);
+  } finally {rmSync(root,{recursive:true,force:true});}
 });
