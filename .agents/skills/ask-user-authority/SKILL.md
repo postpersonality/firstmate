@@ -14,7 +14,7 @@ metadata:
 
 This skill is the single owner of the decision policy for no-mistakes ask-user findings and coordinator questions, including questions firstmate originates itself.
 `AGENTS.md` section 7 points here and does not restate this procedure.
-`bin/fm-supervision-instructions.sh` includes this owner in every primary's startup block, including the unknown/API fallback.
+`bin/fm-supervision-instructions.sh` points every primary's startup block, including the unknown/API fallback, to this owner.
 Decision authority is determined by the criteria below, not by `yolo`; merge authority remains governed by the existing merge contract.
 Apply this judgment before drafting options or publishing a question, rather than assuming that a reported blocker or a proposed question already belongs to the captain.
 

@@ -9,47 +9,41 @@ TMP_ROOT=$(fm_test_tmproot fm-supervision-instructions)
 RENDER="$ROOT/bin/fm-supervision-instructions.sh"
 
 test_question_authority_reaches_every_primary() {
-  local harness out
+  local harness out owner="$ROOT/.agents/skills/ask-user-authority/SKILL.md"
   for harness in unknown claude codex cursor grok opencode omp pi pi-signed; do
     out=$("$RENDER" --harness "$harness") || fail "$harness: instruction rendering failed"
-    assert_contains "$out" '# ask-user-authority' "$harness: startup omitted the question authority owner"
-    assert_equals "$(printf '%s\n' "$out" | grep -c '^# ask-user-authority$')" 1 \
-      "$harness: startup duplicated the question authority owner"
+    assert_equals "$(printf '%s\n' "$out" | grep -cF "$owner")" 1 \
+      "$harness: startup must point to the question authority owner exactly once"
   done
-  pass "every primary protocol, including unknown/API, delivers question authority"
+  pass "every primary protocol, including unknown/API, points to question authority"
 }
 
 # Test the rendering dependency, not the wording or the agent's semantic judgment.
-test_question_policy_is_live_and_required() {
-  local root owner out
+test_question_policy_pointer_keeps_protocol() {
+  local root owner script out
   root="$TMP_ROOT/policy-root"
   owner="$root/.agents/skills/ask-user-authority/SKILL.md"
+  script="$root/bin/fm-supervision-instructions.sh"
   mkdir -p "$root/bin" "$root/docs/supervision-protocols" "$(dirname "$owner")"
   cp "$RENDER" "$root/bin/"
   printf 'fixture harness protocol\n' > "$root/docs/supervision-protocols/unknown.md"
-  printf '# ask-user-authority\nfixture policy one\n' > "$owner"
-  out=$(bash "$root/bin/fm-supervision-instructions.sh" --harness unknown) || fail "fixture render failed"
-  assert_contains "$out" 'fixture policy one' "renderer did not consume its tracked policy owner"
-  printf '# ask-user-authority\nfixture policy two\n' > "$owner"
-  out=$(bash "$root/bin/fm-supervision-instructions.sh" --harness unknown) || fail "policy reload failed"
-  assert_contains "$out" 'fixture policy two' "renderer cached a stale policy copy"
-  assert_not_contains "$out" 'fixture policy one' "renderer duplicated the old policy"
+  printf '# ask-user-authority\nfixture policy body\n' > "$owner"
+  out=$(bash "$script" --harness unknown) || fail "fixture render failed"
+  assert_contains "$out" "$owner" "renderer did not point to its policy owner"
+  assert_not_contains "$out" 'fixture policy body' "renderer embedded the policy body instead of pointing to it"
   rm "$owner"
-  if bash "$root/bin/fm-supervision-instructions.sh" --harness unknown > "$TMP_ROOT/missing-policy" 2>&1; then
-    fail "renderer silently continued without its question policy"
-  fi
-  assert_contains "$(cat "$TMP_ROOT/missing-policy")" "$owner" "missing policy diagnostic omitted its owner"
+  out=$(bash "$script" --harness unknown 2>&1) || fail "missing policy blocked the watcher protocol"
+  assert_contains "$out" 'fixture harness protocol' "missing policy dropped the watcher protocol"
+  assert_contains "$out" "$owner is missing or empty" "missing policy diagnostic omitted its owner"
   : > "$owner"
-  if bash "$root/bin/fm-supervision-instructions.sh" --harness unknown >/dev/null 2>&1; then
-    fail "renderer silently continued with an empty question policy"
-  fi
-  bash "$root/bin/fm-supervision-instructions.sh" --harness unknown --repair-line >/dev/null \
-    || fail "missing policy prevented the independent watcher repair instruction"
-  pass "renderer reloads the policy owner and refuses absent or empty policy without blocking repair"
+  out=$(bash "$script" --harness unknown 2>&1) || fail "empty policy blocked the watcher protocol"
+  assert_contains "$out" 'fixture harness protocol' "empty policy dropped the watcher protocol"
+  assert_contains "$out" "$owner is missing or empty" "empty policy diagnostic omitted its owner"
+  pass "renderer points to the policy owner and keeps the watcher protocol when it is absent or empty"
 }
 
 test_question_authority_reaches_every_primary
-test_question_policy_is_live_and_required
+test_question_policy_pointer_keeps_protocol
 
 test_selected_harness_block_only() {
   local out

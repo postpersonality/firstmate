@@ -17,14 +17,14 @@ bash bin/fm-test-run.sh tests/fm-supervision-instructions.test.sh tests/fm-ask-u
 Observed output includes:
 
 ```text
-ok - every primary protocol, including unknown/API, delivers question authority
-ok - renderer reloads the policy owner and refuses absent or empty policy without blocking repair
+ok - every primary protocol, including unknown/API, points to question authority
+ok - renderer points to the policy owner and keeps the watcher protocol when it is absent or empty
 ```
 
-The first check renders unknown, Claude, Codex, Cursor, Grok, OpenCode, omp, Pi, and pi-signed protocols through `bin/fm-supervision-instructions.sh`.
-The second changes and removes the owner in a disposable fixture to verify live consumption, missing-policy refusal, and independent watcher repair.
+The first check renders unknown, Claude, Codex, Cursor, Grok, OpenCode, omp, Pi, and pi-signed protocols through `bin/fm-supervision-instructions.sh` and finds exactly one pointer to the tracked policy owner in each.
+The second uses a disposable fixture to verify that the block points to the owner instead of embedding its text, and that a missing or empty owner yields a diagnostic line naming it while the watcher protocol still renders.
 `bin/fm-session-start.sh` calls this renderer for every primary; the supervision branch already consumes the same owner through `bin/fm-branch-prompt.sh`.
-The [semantic policy](../../.agents/skills/ask-user-authority/SKILL.md) decides whether a question is appropriate; these executable checks prove delivery and dependency behavior, not semantic classification.
+The [semantic policy](../../.agents/skills/ask-user-authority/SKILL.md) decides whether a question is appropriate; these executable checks prove delivery of the pointer, not that an agent loads the policy or classifies a question correctly.
 No question-tool interception or native question publication was tested: an unknown/API primary can still call `functions.request_user_input_async` directly, or ask in chat, and judgment remains necessary.
 The startup hooks and nudges for named primaries feed the same session-start command; their native question tools and the tmux, Herdr, Zellij, Orca, cmux, and Codex Desktop transports are unchanged and are not covered by a new runtime-prevention claim.
 
