@@ -1960,6 +1960,34 @@ test_roots_sidecar_records_per_root_lifecycle() {
   pass "the retained sidecar records each root's lifecycle with a mode, reason, and duration"
 }
 
+test_comma_decimal_locale_keeps_epoch_timestamps() {
+  local tmp fakebin roots_log out rc locale candidate floor_ms
+  locale=
+  for candidate in ru_RU.UTF-8 de_DE.UTF-8; do
+    case "$(LC_ALL=$candidate bash -c 'printf %s "${EPOCHREALTIME:-}"' 2>/dev/null)" in
+      *,*) locale=$candidate; break ;;
+    esac
+  done
+  if [ -z "$locale" ]; then
+    pass "SKIP (no comma-decimal locale installed): comma-locale timestamp check"
+    return
+  fi
+  tmp=$(fm_test_tmproot fm-lint-comma-locale)
+  fakebin=$(fm_fakebin "$tmp")
+  fm_lint_stub_shellcheck "$fakebin" "$tmp/stub.log"
+  roots_log="$tmp/lint.roots.tsv"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/alpha.sh"
+  floor_ms=$(( $(date +%s) * 1000 ))
+
+  rc=0
+  out=$(LC_ALL=$locale PATH="$fakebin:$PATH" FM_TEST_STUB_LOG="$tmp/stub.log" \
+    "$LINT" --telemetry "$tmp/lint.tsv" "$tmp/alpha.sh" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "a clean run failed under $locale"$'\n'"$out"
+  [ "$(awk -F '\t' -v floor="$floor_ms" '$1 == "end" && $6 >= floor && $7 >= $6 { n++ } END { print n + 0 }' "$roots_log")" -eq 1 ] \
+    || fail "$locale decimal commas corrupted root timestamps"$'\n'"$(cat "$roots_log")"
+  pass "fm-lint.sh reads epoch milliseconds under a comma-decimal locale"
+}
+
 test_seeded_module_boundary_parity() {
   if ! pinned_ready; then
     pass "SKIP (ShellCheck $REQUIRED not resolved): seeded source-boundary parity check"
@@ -2059,6 +2087,7 @@ test_require_bounds_refuses_when_enforcement_is_missing
 test_pinned_shellcheck_memory_limit
 test_sidecar_result_exit_reflects_final_status
 test_roots_sidecar_records_per_root_lifecycle
+test_comma_decimal_locale_keeps_epoch_timestamps
 test_seeded_module_boundary_parity
 test_changed_mode_lints_only_the_changed_file
 test_ci_forces_full_lint_even_with_empty_diff
