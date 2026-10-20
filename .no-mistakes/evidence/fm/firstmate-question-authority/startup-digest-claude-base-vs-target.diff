@@ -1,0 +1,11 @@
+--- base-343e7a3/claude-startup
++++ target-d639c06/claude-startup
+@@ -62,6 +62,8 @@
+ Re-arm attaches to an existing healthy cycle when one is already present and follows its verified successor chain.
+ See [`watcher-continuity.md`](../watcher-continuity.md) for the arm-layer successor and clean-close failure contract and the Claude ownership model.
+ 
++Question authority (mandatory): before deciding an ask-user finding or publishing any question through a native question tool such as functions.request_user_input_async, chat, a board, or a captain hold, load and apply the ask-user-authority skill (ROOT/.agents/skills/ask-user-authority/SKILL.md); it decides whether the call needs the captain, and no hook intercepts native question tools.
++
+ Supervision host: on for this home (`config/supervision-host-off` turns it off; [`supervision-host.md`](../supervision-host.md) owns the design).
+ The Stop hook runs the supervision host in the arm's place, and everything above still holds with these additions:
+ 1. Attended (no away record, including a quiet-mode record; see [Postures](../supervision-host.md#postures)): a headless supervision session takes the wakes the supervision branch may take and never wakes you for a routine outcome, so fewer wakes reach you; check wakes, decision wakes, and whatever it cannot take still reach you exactly as above.

@@ -1,0 +1,11 @@
+--- base-343e7a3/unknown-startup
++++ target-d639c06/unknown-startup
+@@ -47,6 +47,8 @@
+ 
+ Record new verification evidence before promoting an unknown harness to a named snippet.
+ 
++Question authority (mandatory): before deciding an ask-user finding or publishing any question through a native question tool such as functions.request_user_input_async, chat, a board, or a captain hold, load and apply the ask-user-authority skill (ROOT/.agents/skills/ask-user-authority/SKILL.md); it decides whether the call needs the captain, and no hook intercepts native question tools.
++
+ 
+ ================================================================================
+ READ-ONCE CONTRACT

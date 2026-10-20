@@ -1,0 +1,17 @@
+Startup digest produced by bin/fm-sessionstart-run.sh (SessionStart JSON payload on stdin, source=startup) in disposable lab FM_HOME
+digest                             bytes  lines  pointer  diag   readonce_line    fleet_line
+base-claude-startup                13805  167    0        0      84               108
+claude-startup                     14230  169    1        0      86               110
+base-unknown-startup               7081   135    0        0      52               76
+unknown-startup                    7506   137    1        0      54               78
+unknown-reemit                     7975   143    1        0      60               84
+missing-unknown-startup            7334   137    0        1      54               78
+empty-unknown-startup              7332   137    0        1      54               78
+missing-claude-startup             14058  169    0        1      86               110
+
+pointer line number within each digest:
+unknown-reemit.txt:56:Question authority (mandatory): before deciding an ask-user finding or publishing any question through a native questi
+unknown-startup.txt:50:Question authority (mandatory): before deciding an ask-user finding or publishing any question through a native quest
+empty-unknown-startup.txt:50:Question authority (mandatory): the ask-user-authority policy owner /tmp/claude-1000/fm-qa.JPfRG0/target-empty/
+missing-unknown-startup.txt:50:Question authority (mandatory): the ask-user-authority policy owner /tmp/claude-1000/fm-qa.JPfRG0/target-miss
+claude-startup.txt:65:Question authority (mandatory): before deciding an ask-user finding or publishing any question through a native questi
