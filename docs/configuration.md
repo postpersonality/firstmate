@@ -1512,15 +1512,55 @@ STARTTLS and port 587 are not supported.
 Inbound mail is off unless the home's gitignored `.env` provides the connection values.
 This section is the single owner of the mail-plane configuration schema; for direct invocations, environment values override `.env`, matching the Relay contract.
 
+Inbound `read`, `poll` and `status` require, in the home's gitignored `.env`:
+
+```sh
+FM_MAIL_USER=   # IMAP login
+FM_MAIL_PASS=   # IMAP password
+FM_IMAP_HOST=   # IMAP server hostname
+FM_SMTP_HOST=   # SMTP server hostname; still validated and reported by status
+```
+
+The outgoing `alert` path does not use these values from the home's `.env`; its sender and credential live only in the gate configuration below.
+
 Outgoing notifications need a deployed gate.
 The repository prepares the gate but installs nothing: Firstmate creates no account, sudoers rule, file under `/etc` or service.
 The deployment the gate checks for:
 
 - a dedicated gate account that the Firstmate account cannot become, nor root, except through the rule below;
-- a copy of `bin/fm-captain-alert.py` owned by root outside any directory Firstmate can write;
+- root-owned copies of `bin/fm-captain-alert.py`, `bin/fm-classify-lib.sh` and `bin/fm-timeout-lib.sh` in one directory outside any directory Firstmate can write; the gate folds the task's open decisions with that `fm-classify-lib.sh`;
 - `/etc/firstmate/captain-alert.env`, owned by the gate account with mode 0600, holding `FM_MAIL_USER`, `FM_MAIL_PASS`, `FM_SMTP_HOST`, optional `FM_SMTP_PORT`, `FM_CAPTAIN_ALERT_TO`, `FM_CAPTAIN_ALERT_HOME` (the Firstmate home), `FM_CAPTAIN_ALERT_STATE` (the gate's receipt directory) and `FM_CAPTAIN_ALERT_CLAUDE` (the absolute path of a Claude CLI installed and authenticated for the gate account, which Firstmate cannot write);
 - read access for the gate account to `AGENTS.md`, `data/` and `state/` in the Firstmate home;
-- a sudoers rule that lets the Firstmate account run only `<gate program> gate` and `<gate program> preflight` as the gate account, without `SETENV`.
+- a sudoers rule that lets the Firstmate account run only `/usr/bin/python3 -I <gate program> gate` and `/usr/bin/python3 -I <gate program> preflight` as the gate account, without `SETENV`; the fixed interpreter in isolated mode keeps the Firstmate account's `PATH` and `PYTHON*` variables from choosing code that runs as the gate account.
+
+Prepared deployment commands, for an administrator to review and run as root from a reviewed checkout; Firstmate never runs them:
+
+```sh
+FM_USER=<firstmate account> GATE_USER=<gate account> FM_HOME_DIR=<Firstmate home> GATE_DIR=/opt/firstmate-gate
+useradd --system --create-home --shell /usr/sbin/nologin "$GATE_USER"
+install -d -o root -g root -m 755 "$GATE_DIR" /etc/firstmate
+install -o root -g root -m 755 bin/fm-captain-alert.py bin/fm-classify-lib.sh bin/fm-timeout-lib.sh "$GATE_DIR"/
+install -o "$GATE_USER" -g "$GATE_USER" -m 600 /dev/null /etc/firstmate/captain-alert.env
+install -d -o "$GATE_USER" -g "$GATE_USER" -m 700 /var/lib/firstmate-gate
+setfacl -m "u:$GATE_USER:r" "$FM_HOME_DIR/AGENTS.md"
+setfacl -R -m "u:$GATE_USER:rX,d:u:$GATE_USER:rX" "$FM_HOME_DIR/data" "$FM_HOME_DIR/state"
+printf '%s ALL=(%s) NOPASSWD: /usr/bin/python3 -I %s gate, /usr/bin/python3 -I %s preflight\n' \
+  "$FM_USER" "$GATE_USER" "$GATE_DIR/fm-captain-alert.py" "$GATE_DIR/fm-captain-alert.py" > /etc/sudoers.d/firstmate-gate
+chmod 440 /etc/sudoers.d/firstmate-gate
+visudo -cf /etc/sudoers.d/firstmate-gate
+```
+
+Every ancestor directory of the home also needs search permission for the gate account, for example `setfacl -m "u:$GATE_USER:x" <directory>`.
+The default ACL reaches a record Firstmate creates later only through that file's group permission bits; a record created with mode 0600 stays unreadable, and the gate then refuses the request instead of reviewing partial evidence.
+Install and authenticate the Claude CLI as the gate account, then write the gate configuration as that account; the password is read without echo and never enters chat, arguments, history or logs:
+
+```sh
+sudo -u "$GATE_USER" bash -c 'umask 077; read -rsp "SMTP app password: " p; echo
+printf "%s\n" "FM_MAIL_USER=<sender address>" "FM_MAIL_PASS=$p" "FM_SMTP_HOST=smtp.gmail.com" \
+  "FM_CAPTAIN_ALERT_TO=<owner address>" "FM_CAPTAIN_ALERT_HOME=<Firstmate home>" \
+  "FM_CAPTAIN_ALERT_STATE=/var/lib/firstmate-gate" "FM_CAPTAIN_ALERT_CLAUDE=<absolute path of the gate account claude executable>" \
+  > /etc/firstmate/captain-alert.env'
+```
 
 The home's `.env` then carries only the submitting side:
 
@@ -1532,7 +1572,6 @@ FM_CAPTAIN_ALERT_GATE_USER=   # the gate account
 The sending account's credential never goes into the home's `.env`: the submitting agent can read that file and would be able to send unreviewed mail.
 For the same reason the inbound IMAP account must not be the gate's sending account.
 No recipient is inferred from Git identity.
-`FM_IMAP_HOST` is required by inbound `read`/`poll` and the historical inbound `status`; it is not needed for outgoing alerts.
 Outgoing activation does not arm inbound polling.
 Run `FM_HOME=/path/to/home bin/fm-mail.sh alert-preflight` to list missing gate parameters and corrective actions without printing credentials, sending mail or contacting the critic.
 Presence checks do not prove native authentication, SMTP authentication or inbox arrival.
@@ -1542,11 +1581,10 @@ For Gmail, use `smtp.gmail.com` with implicit TLS on port 465, as documented by 
 This password-based sender requires a Gmail app password, which requires 2-Step Verification; do not supply the main account password ([Google app-password help](https://support.google.com/mail/answer/185833)).
 OAuth is not implemented by this sender.
 If the account cannot create an app password, resolve that account constraint before activation.
-Enter the secret locally into the gate configuration as the gate account; never put it in chat, shell arguments, history or logs.
 Never use a synthetic case to test live SMTP; the first real send must be a configured, independently approved blocker event.
 `tests/fm-captain-alert.test.sh` tests the deterministic gate with fixture transports, while `FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh` empirically tests native classification with SMTP forbidden.
 
-`FM_IMAP_PORT` (default 993), `FM_MAIL_TIMEOUT` (default 20 seconds), and `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200) are optional.
+`FM_IMAP_PORT` (default 993), `FM_SMTP_PORT` (default 465), `FM_MAIL_TIMEOUT` (default 20 seconds), and `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200) are optional.
 The per-poll wake cap bounds the wakes of one `poll` run; header fetches scan a larger bounded window of new unseen uids plus already-surfaced retry-set uids, so a flood or large backlog still makes bounded progress every poll, keeping the durable wake queue bounded without ever dropping mail.
 
 **Unfetchable headers**
@@ -2438,8 +2476,8 @@ FM_TEARDOWN_NM_TIMEOUT=10    # seconds allowed per no-mistakes query or abort in
 FM_CREW_STATE_RUNS_LIMIT=200  # plain runs-ledger rows scanned for fallback attribution; does not change the CLI's AXI overview window (selection owner: bin/fm-nm-run-lib.sh)
 FM_TEARDOWN_NM_RUNS_LIMIT=200  # recent no-mistakes run rows scanned to prove an unresolved-head parked run belongs to teardown's task
 FM_CREW_STATE_BIN=bin/fm-crew-state.sh   # test override for the current-state reader used by watcher triage: the working/paused classification, and the wedge timer's parked-gate wait evidence
-FM_MAIL_USER=      # mail-plane IMAP login, from .env or environment (docs/configuration.md "Mail plane")
-FM_MAIL_PASS=      # mail-plane IMAP password
+FM_MAIL_USER=      # mail-plane inbound IMAP login, from .env or environment (docs/configuration.md "Mail plane"); never the gate's sender
+FM_MAIL_PASS=      # mail-plane inbound IMAP password; inbound read/poll/status also require FM_IMAP_HOST and FM_SMTP_HOST
 FM_IMAP_HOST=      # mail-plane IMAP server hostname
 FM_IMAP_PORT=993   # mail-plane IMAP server port
 FM_SMTP_HOST=      # mail-plane SMTP server hostname

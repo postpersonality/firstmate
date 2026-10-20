@@ -10,14 +10,16 @@ export FM_HOME="$ALERT_TMP/home" ALERT_TMP
 unset FM_MAIL_USER FM_MAIL_PASS FM_SMTP_HOST FM_SMTP_PORT FM_IMAP_HOST FM_CAPTAIN_ALERT_TO SUDO_UID
 # The submitting side holds only the gate location; the fake sudo stands in for
 # the separate gate account (SUDO_UID is the submitter, never the gate itself).
+# It accepts only the pinned isolated interpreter, then drops -I so the SMTP
+# fixture below stays importable.
 export FM_CAPTAIN_ALERT_GATE="$ROOT/bin/fm-captain-alert.py" FM_CAPTAIN_ALERT_GATE_USER=fm-gate
 export PYTHONPATH="$ALERT_TMP/py" PATH="$ALERT_TMP/fakebin:$PATH"
 cat > "$ALERT_TMP/fakebin/sudo" <<'SH'
 #!/usr/bin/env bash
-[ "$1 $2" = "-n -u" ] || exit 1
-shift 3
+[ "$1 $2 $4 $5" = "-n -u /usr/bin/python3 -I" ] || exit 1
+shift 5
 export SUDO_UID=${FAKE_SUDO_UID:-4242}
-exec "$@"
+exec python3 "$@"
 SH
 # A forged critic on PATH must never be reached: the gate pins an absolute path.
 cat > "$ALERT_TMP/fakebin/claude" <<'SH'
@@ -53,6 +55,8 @@ if os.environ.get('CRITIC_FAIL'): sys.exit(7)
 if os.environ.get('CRITIC_INVALID'): print('{}'); sys.exit(0)
 if os.environ.get('CRITIC_CHANGE'):
     (root / 'home/data/demo/brief.md').write_text('Changed accepted intent')
+if os.environ.get('CRITIC_RESPAWN'):
+    (root / 'home/state/demo.meta').write_text('kind=ship\nspawn_gen=s2.2.2\n')
 verdict = 'SELF_RESOLVE' if p['request']['id'] in ('Q23', 'next-step') else 'NEEDS_CAPTAIN'
 if os.environ.get('CRITIC_INSUFFICIENT'): verdict = 'INSUFFICIENT_EVIDENCE'
 review = {'verdict': verdict, 'request_sha256': p['request_sha256'],
@@ -74,6 +78,7 @@ printf '%s' "$BRIEF" > "$FM_HOME/data/demo/brief.md"
 printf '%s' 'No public publication without explicit owner permission.' > "$FM_HOME/state/demo.inbox/handled/000.msg"
 printf '%s' 'Ordinary accepted work remains authorized; public publication still needs explicit permission.' > "$FM_HOME/state/demo.inbox/001.msg"
 printf '%s\n' 'blocked: publication permission is absent' > "$FM_HOME/state/demo.status"
+printf '%s\n' kind=ship spawn_gen=s1.1.1 > "$FM_HOME/state/demo.meta"
 printf '%s' 'Only the human owner may authorize public publication.' > "$FM_HOME/AGENTS.md"
 printf '%s' 'Outside the home.' > "$ALERT_TMP/outside.md"
 ln -s "$ALERT_TMP/outside.md" "$FM_HOME/data/escape/brief.md"
@@ -82,9 +87,11 @@ import json, os
 from pathlib import Path
 r = Path(os.environ['ALERT_TMP'])
 for key in ['Q23','next-step','permission','failed','invalid','changed','bad-hash','smtp-fail','insufficient',
-            'recipient-change','ghost','escape','with-sources','self-gate','loose','undeployed']:
-    task = key if key in ('ghost', 'escape') else 'demo'
-    request = {'id':key, 'task':task, 'subject':'Permission needed: ' + key,
+            'recipient-change','ghost','escape','with-sources','self-gate','loose','undeployed',
+            'reworked-a','reworked-b','respawn']:
+    task = {'ghost':'ghost', 'escape':'escape', 'reworked-a':'reworked'}.get(key, 'demo')
+    request = {'id':key, 'task':task, 'decision':'stale' if key == 'reworked-b' else 'default',
+        'subject':'Permission needed: ' + key,
         'body':'-' if key == 'permission' else 'Please grant publication permission.', 'analysis':{
           'why_blocked':'Publication needs human consent', 'attempts':['Verified consent is absent'],
           'alternatives':['Keep local work ready; publication cannot proceed'],
@@ -128,8 +135,11 @@ grep -rlF 'Blocker email Q23: SELF_RESOLVE' "$FM_HOME/state/inbox" >/dev/null ||
 before=$(reviews)
 reject Q23
 [ "$(reviews)" = "$before" ] || fail 'unchanged self-resolvable event was reviewed again'
+CRITIC_FAIL=1 reject next-step
 reject next-step
-pass 'authorized corrections return to Firstmate without mail'
+grep -rqF 'Blocker email next-step: NO_MAIL' "$FM_HOME/state/inbox" || fail 'a failed review must reach the inbox'
+grep -rqF 'Blocker email next-step: SELF_RESOLVE' "$FM_HOME/state/inbox" || fail 'the retried outcome must reach the inbox too'
+pass 'authorized corrections return to Firstmate without mail; each new outcome is a new note'
 
 rc=0
 mail_cli alert-preflight > "$ALERT_TMP/out" 2>&1 || rc=$?
@@ -162,6 +172,13 @@ reject_unreviewed escape 'inside the Firstmate home'
 reject_unreviewed with-sources 'the gate reads the evidence'
 pass 'evidence comes only from canonical task records inside the home'
 
+cp "$ALERT_TMP/reworked-a.json" "$ALERT_TMP/reworked.json"
+reject_unreviewed reworked 'task reworked lacks its canonical brief record'
+cp "$ALERT_TMP/reworked-b.json" "$ALERT_TMP/reworked.json"
+reject_unreviewed reworked 'decision stale is not an open blocked or needs-decision record'
+grep -rqF 'decision stale is not an open' "$FM_HOME/state/inbox" || fail 'a new correction at the same request path must reach the inbox'
+pass 'only a currently open decision is reviewed; a new correction at one path is a new note'
+
 CRITIC_INVALID=1 reject invalid
 CRITIC_BAD_HASH=1 reject bad-hash
 CRITIC_INSUFFICIENT=1 reject insufficient
@@ -176,7 +193,10 @@ pass 'failed, missing receipt and unbound critic verdict fail closed; a failed r
 CRITIC_CHANGE=1 reject changed
 assert_contains "$(cat "$ALERT_TMP/out")" 'changed during review' 'changed records cannot consume an earlier approval'
 printf '%s' "$BRIEF" > "$FM_HOME/data/demo/brief.md"
-pass 'changed task records cannot consume an earlier approval'
+CRITIC_RESPAWN=1 reject respawn
+assert_contains "$(cat "$ALERT_TMP/out")" 'changed during review' 'a new task generation cannot consume an earlier approval'
+printf '%s\n' kind=ship spawn_gen=s1.1.1 > "$FM_HOME/state/demo.meta"
+pass 'changed task records or generation cannot consume an earlier approval'
 
 CRITIC_INSUFFICIENT=1 reject recipient-change
 before=$(reviews)
