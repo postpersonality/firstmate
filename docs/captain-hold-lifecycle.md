@@ -121,8 +121,6 @@ The event names the reviewed inventory.
 
 Scout teardown and new ship teardown call the read-only `verify` subcommand before removing source state.
 The outcome review and continuation record are owned by `bin/fm-captain-hold.sh --help`; the procedure is owned by the [lifecycle skill](../.agents/skills/captain-hold-lifecycle/SKILL.md#outcome-review).
-`tests/fm-captain-hold-lifecycle.test.sh` covers milestone continuation, firstmate-owned action acceptance, retained ownership, genuine gates, archive retention, replay and worker replacement.
-`tests/fm-backlog-atomicity.test.sh` checks that firstmate-owned tasks refuse worker dispatch before resources are created.
 `verify` checks:
 
 - For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by an unfinished task other than its origin, held for the captain, an external condition, or a date, or, for worker work only, queued or running.
