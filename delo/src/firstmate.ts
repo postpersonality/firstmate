@@ -63,7 +63,8 @@ export class Firstmate {
     const args = ['update', id];
     if (patch.title !== undefined) args.push('--title', patch.title);
     if (patch.kind !== undefined) args.push('--kind', patch.kind);
-    if (patch.repo !== undefined) args.push('--repo', patch.repo);
+    // tasks-axi rejects an empty flag value; Delo already reads '-' as an unset field.
+    if (patch.repo !== undefined) args.push('--repo', patch.repo || '-');
     if (patch.archiveBody) args.push('--archive-body');
     if (patch.body !== undefined) { const file = this.bodyArgs(patch.body); try { args.push(...file.args, '--json'); return JSON.parse(this.call(args)).task as FirstmateTask; } finally { file.cleanup(); } }
     args.push('--json');

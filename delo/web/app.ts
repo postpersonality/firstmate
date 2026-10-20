@@ -55,35 +55,55 @@ const personalLine = 'Личное';
 const personalBox = (on = false) => `<label class="checkbox"><input type="checkbox" name="personal" ${on ? 'checked' : ''}> Личное</label>`;
 // The folder is the body's `Папка:` line; suggestions are the folders other backlog tasks name.
 const folderLine = 'Папка: ';
-const pathField = (name: string, label: string, choices: { value: string; label?: string }[], value = '', required = false) => `<label>${esc(label)}<input name="${name}" value="${esc(value)}" list="${name}-list" maxlength="500" ${required ? 'required' : ''} placeholder="${name === 'folder' ? 'абсолютный путь или ~/…' : 'проект из списка или абсолютный путь'}"><datalist id="${name}-list">${choices.map(f => `<option value="${esc(f.value)}">${esc(f.label)}</option>`).join('')}</datalist></label>`;
-const folderField = (folders: string[], value = '') => pathField('folder', 'Папка (только чтение)', folders.map(value => ({ value })), value);
+type ProjectChoice = { name: string; path: string };
+const pathField = (name: string, label: string, choices: { value: string; label?: string }[], value = '', required = false) => `<label>${esc(label)}<input name="${name}" value="${esc(value)}" list="${name}-list" maxlength="500" ${required ? 'required' : ''} placeholder="${name === 'folder' ? 'абсолютный путь или ~/…' : 'проект из списка или полный путь к папке'}"><datalist id="${name}-list">${choices.map(f => `<option value="${esc(f.value)}">${esc(f.label)}</option>`).join('')}</datalist></label>${name === 'folder' ? '' : `<label>Зарегистрированный проект<select data-project-choice="${name}" aria-label="${esc(label)}: зарегистрированные проекты"><option value="">Выбрать зарегистрированный проект…</option>${choices.map(f => `<option value="${esc(f.value)}">${esc(f.label || f.value)}</option>`).join('')}</select></label>`}`;
+const projectField = (name: string, projects: ProjectChoice[], value = '', required = false) => pathField(name, 'Проект (необязательно)', projects.map(p => ({ value: p.name, label: `${p.name} · ${p.path}` })), value, required);
+function projectChoices(name: string, projects: ProjectChoice[]) {
+  const options = projects.map(p => `<option value="${esc(p.name)}">${esc(p.name)} · ${esc(p.path)}</option>`).join('');
+  const list = document.getElementById(`${name}-list`);
+  const select = document.querySelector(`[data-project-choice="${name}"]`);
+  if (!list || !select) return;
+  list.innerHTML = options;
+  select.innerHTML = '<option value="">Выбрать зарегистрированный проект…</option>' + options;
+}
+$('dialog-body').addEventListener('change', e => {
+  const select = e.target as HTMLSelectElement;
+  if (select.dataset.projectChoice && select.value) {
+    const input = document.querySelector<HTMLInputElement>(`#dialog-body [name=${select.dataset.projectChoice}]`)!;
+    input.value = select.value; input.dispatchEvent(new Event('input', { bubbles: true }));
+    select.value = '';
+  }
+});
+const folderField = (folders: string[], value = '') => pathField('folder', 'Материалы для чтения: папка', folders.map(value => ({ value })), value) + '<p class="muted">Необязательно для обычного исследования. Агент читает эту папку без права менять её файлы. Для правок выберите «Изменение файлов» и проект.</p>';
 async function newGoal() {
   const folders = await api<string[]>('/api/folders');
   const repos = view?.repos ?? [];
   const cases = view?.cases ?? [];
-  modal('Новая задача', `${field('title', 'Название', '', false, true)}${personalBox()}<label>Дело<select name="caseId"><option value="">Без дела</option>${cases.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select></label><label>Вид<select name="kind"><option value="ship">ship</option><option value="scout">scout</option></select></label><label>Проект<input name="repo" list="repo-list" maxlength="500"><datalist id="repo-list">${repos.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>${folderField(folders)}${field('body', 'Описание', '', true)}${field('blockedBy', 'После задачи (id)')}<label>Отложить до<input type="date" name="holdUntil"></label>`, async f => {
+  modal('Новая задача', `${field('title', 'Название', '', false, true)}${personalBox()}<label>Дело<select name="caseId"><option value="">Без дела</option>${cases.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select></label><label>Вид<select name="kind"><option value="ship">Изменение файлов</option><option value="scout">Исследование</option></select></label><label>Проект<input name="repo" list="repo-list" maxlength="500"><datalist id="repo-list">${repos.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>${folderField(folders)}${field('body', 'Описание', '', true)}${field('blockedBy', 'После задачи (id)')}<label>Отложить до<input type="date" name="holdUntil"></label>`, async f => {
     const g = await api<Goal>('/api/goals', { title: f.get('title'), kind: f.get('kind'), repo: f.get('repo'), body: f.get('body'), blockedBy: f.get('blockedBy'), holdUntil: f.get('holdUntil'), personal: f.has('personal'), caseId: f.get('caseId'), folder: f.get('folder') });
     location.hash = g.id; refresh();
   }, 'Завести задачу');
 }
 function newCase() {
   const requestId = crypto.randomUUID();
-  modal('Новое дело', `${field('title', 'Название', '', false, true)}<label>Вид дела<select name="reviewKind"><option value="">Обычное дело</option><option value="sa">Ревью системной аналитики</option><option value="code">Код-ревью</option></select></label><div id="review-fields"></div><div id="case-sources">${field('sources', 'Источники, по одной ссылке в строке', '', true)}</div>${field('why', 'Зачем', '', true)}${field('doneWhen', 'Критерий готовности', '', true)}${field('context', 'Контекст', '', true)}${field('constraints', 'Ограничения, по одному в строке', '', true)}`, async f => {
+  modal('Новое дело', `${field('title', 'Название', '', false, true)}<label>Вид дела<select name="reviewKind"><option value="">Обычное дело</option><option value="duty">Дежурство</option><option value="sa">Ревью системной аналитики</option><option value="code">Код-ревью</option></select></label>${projectField('reviewRepo', [])}<p class="muted">Проект задаёт контекст агенту. Правки выполняются в отдельном рабочем дереве выбранного проекта. Личное дело можно оставить без проекта.</p><div id="review-fields"></div><div id="duty-fields" hidden>${folderField([])}<p class="muted">Для дежурства папка обязательна. Дежурный исследует обращение и готовит отчёт и черновики. Публикация и правки файлов не выполняются.</p></div><div id="case-sources">${field('sources', 'Источники, по одной ссылке в строке', '', true)}</div>${field('why', 'Зачем', '', true)}${field('doneWhen', 'Критерий готовности', '', true)}${field('context', 'Контекст', '', true)}${field('constraints', 'Ограничения, по одному в строке', '', true)}`, async f => {
     const review = f.get('reviewKind') === 'sa' ? { kind: 'sa', document: f.get('document'), repo: f.get('reviewRepo') } : f.get('reviewKind') === 'code' ? { kind: 'code', url: f.get('url'), repo: f.get('reviewRepo') } : undefined;
-    const c = await api<Goal>('/api/cases', { ...Object.fromEntries(['title', 'sources', 'why', 'doneWhen', 'context', 'constraints'].map(k => [k, f.get(k)])), ...(review ? { review, requestId, ...(review.kind === 'code' ? { sources: '' } : {}) } : {}) });
+    const c = await api<Goal>('/api/cases', { ...Object.fromEntries(['title', 'sources', 'why', 'doneWhen', 'context', 'constraints'].map(k => [k, f.get(k)])), repo: f.get('reviewRepo'), caseType: f.get('reviewKind') === 'duty' ? 'duty' : 'ordinary', folder: f.get('reviewKind') === 'duty' ? f.get('folder') : '', ...(review ? { review, requestId, ...(review.kind === 'code' ? { sources: '' } : {}) } : {}) });
     location.hash = `case:${c.id}`; refresh();
   }, 'Завести дело');
   const select = document.querySelector<HTMLSelectElement>('[name=reviewKind]')!;
-  select.onchange = async () => {
+  select.onchange = () => {
     $('case-sources').hidden = select.value === 'code';
-    $('review-fields').innerHTML = select.value ? `${select.value === 'sa' ? '<label>Документ для ревью<input name="document" type="url" pattern="https?://.+" maxlength="2000" required placeholder="https://confluence…"></label>' : '<label>Задача Jira или pull request<input name="url" type="url" maxlength="2000" required placeholder="https://jira.example.invalid/browse/…"></label>'}${pathField('reviewRepo', select.value === 'sa' ? 'Проект контекста' : 'Проект контекста (необязательно)', [], '', select.value === 'sa')}` : '';
-    if (!select.value) return;
-    try {
-      const projects = await api<{ name: string; path: string }[]>('/api/review-projects');
-      const list = document.getElementById('reviewRepo-list');
-      if (list) list.innerHTML = projects.map(p => `<option value="${esc(p.name)}">${esc(p.path)}</option>`).join('');
-    } catch (error: any) { $('dialog-error').textContent = error.message; }
+    $('duty-fields').hidden = select.value !== 'duty';
+    const folder = document.querySelector<HTMLInputElement>('#dialog-body [name=folder]')!;
+    folder.disabled = select.value !== 'duty'; folder.required = select.value === 'duty';
+    const project = document.querySelector<HTMLInputElement>('[name=reviewRepo]')!;
+    project.required = select.value === 'sa';
+    project.closest('label')!.firstChild!.textContent = select.value === 'sa' ? 'Проект контекста' : 'Проект (необязательно)';
+    $('review-fields').innerHTML = select.value === 'sa' ? '<label>Документ для ревью<input name="document" type="url" pattern="https?://.+" maxlength="2000" required placeholder="https://confluence…"></label>' : select.value === 'code' ? '<label>Задача Jira или pull request<input name="url" type="url" maxlength="2000" required placeholder="https://jira.example.invalid/browse/…"></label>' : '';
   };
+  select.onchange(new Event('change'));
+  api<ProjectChoice[]>('/api/review-projects').then(projects => projectChoices('reviewRepo', projects)).catch(error => { $('dialog-error').textContent = error.message; });
 }
 // The browser loads app.ts with types stripped, so it keeps a copy of `harnesses` from src/model.ts; edit both together.
 const harnesses = ['claude', 'codex', 'opencode', 'pi', 'grok', 'kimi', 'gemini', 'agy'];
@@ -96,18 +116,24 @@ const receipt = (result: any) => {
     : 'Просьба сохранена для Firstmate. Ждём принятия; выполнение ещё не подтверждено.';
 };
 async function newAgent(c: ViewCase) {
-  const folders = await api<string[]>('/api/folders');
-  const repos = view?.repos ?? [];
-  modal('Новый агент', `${field('direction', 'Направление', defaultDirection, true, true)}<label>Вид<select name="kind"><option value="scout">scout</option><option value="ship">ship</option></select></label><label id="agent-repo" style="display:none">Проект<input name="repo" list="repo-list" maxlength="500"><datalist id="repo-list">${repos.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label><label>Исполнитель<select name="harness"><option value="">как решит firstmate</option>${harnesses.map(h => `<option value="${h}">${h}</option>`).join('')}</select></label><label class="checkbox"><input type="checkbox" name="interactive"> Работаю в окне сам</label>${folderField(folders, c.folder)}`, async f => {
-    const result = await api(`/api/cases/${encodeURIComponent(c.id)}/agent`, { direction: f.get('direction'), kind: f.get('kind'), repo: f.get('repo'), harness: f.get('harness'), interactive: f.has('interactive'), folder: f.get('folder') });
+  const [folders, projects] = await Promise.all([api<string[]>('/api/folders'), api<ProjectChoice[]>('/api/review-projects')]);
+  const duty = c.caseType === 'duty';
+  modal('Новый агент', `${field('direction', 'Направление', defaultDirection, true, true)}<label>Режим работы<select name="kind"><option value="scout">Исследование: отчёт без изменения файлов</option>${duty ? '' : '<option value="ship">Изменение файлов: отдельное рабочее дерево проекта</option>'}</select></label><p id="agent-mode-help" class="muted"></p><div id="agent-repo">${projectField('repo', projects, c.repo || c.review?.repo || '')}</div><label>Исполнитель<select name="harness"><option value="">как решит firstmate</option>${(duty ? ['claude'] : harnesses).map(h => `<option value="${h}">${h}</option>`).join('')}</select></label>${duty ? '<p class="muted">Дежурство использует claude для доступа к материалам только для чтения.</p>' : '<label class="checkbox"><input type="checkbox" name="interactive"> Работаю в окне сам</label>'}<div id="agent-folder">${folderField(folders, c.folder)}</div>`, async f => {
+    const result = await api(`/api/cases/${encodeURIComponent(c.id)}/agent`, { direction: f.get('direction'), kind: f.get('kind'), repo: f.get('repo'), harness: f.get('harness'), interactive: f.has('interactive'), folder: f.get('kind') === 'scout' ? f.get('folder') : '' });
     message(`Новый агент: задача ${result.task.id}. ${receipt(result)}`);
     refresh();
   }, 'Запустить');
   const kindSelect = document.querySelector<HTMLSelectElement>('#dialog-body [name=kind]')!;
-  kindSelect.onchange = () => { $('agent-repo').style.display = kindSelect.value === 'ship' ? '' : 'none'; };
-  // Interactive work runs on Codex by the captain's standing preference; the choice stays changeable.
-  const interactive = document.querySelector<HTMLInputElement>('#dialog-body [name=interactive]')!;
-  interactive.onchange = () => { if (interactive.checked) document.querySelector<HTMLSelectElement>('#dialog-body [name=harness]')!.value = 'codex'; };
+  const updateMode = () => {
+    const research = kindSelect.value === 'scout';
+    $('agent-folder').hidden = !research;
+    const folder = document.querySelector<HTMLInputElement>('#dialog-body [name=folder]')!;
+    folder.disabled = !research; folder.required = duty;
+    $('agent-mode-help').textContent = duty ? 'Дежурство готовит отчёт и черновики по ориентировке и материалам. Для изменения проекта заведите обычное дело.' : research ? 'Агент изучает проект и готовит отчёт. Чтобы поручить правки файлов, выберите режим «Изменение файлов».' : 'Агент меняет файлы в изолированном рабочем дереве проекта. Папка материалов для чтения не становится местом для правок.';
+  };
+  kindSelect.onchange = updateMode; updateMode();
+  const interactive = document.querySelector<HTMLInputElement>('#dialog-body [name=interactive]');
+  if (interactive) interactive.onchange = () => { if (interactive.checked) document.querySelector<HTMLSelectElement>('#dialog-body [name=harness]')!.value = 'codex'; };
 }
 const actionLabels: Record<string, string> = { start: 'Взять в работу', pause: 'Пауза', unhold: 'Снять паузу', close: 'Закрыть', decline: 'Отказ', answer: 'Ответить', release: 'Разрешить работу', later: 'Позже', reopen: 'Вернуть', stop: 'Запросить остановку' };
 const taskState = (g: { state?: Goal['state']; holdKind?: string; inFlight?: boolean }) => g.state === 'done' ? 'Закрыта' : g.holdKind === 'captain' ? (g.inFlight ? 'В работе · ждёт ответа' : 'Ждёт решения') : g.inFlight ? 'В работе' : g.state === 'paused' ? 'На паузе' : g.state === 'active' ? 'В очереди' : '';
@@ -232,7 +258,7 @@ function renderCase(c: ViewCase) {
   const open = !c.archived && c.state !== 'done';
   const buttons = open ? '<button data-action="agent-case" class="primary">Новый агент</button><button data-action="edit">Править</button><button data-action="close-case">Закрыть дело</button>' : c.archived ? '<button data-action="continue-case">Продолжить</button>' : '<button data-action="reopen-case">Вернуть</button>';
   const groups = Object.entries(phaseLabels).map(([key, label]) => ({ label, rows: c.tasks.filter(t => t.phase === key) })).filter(g => g.rows.length);
-  renderMain(`<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Дело · ${esc(c.id)}${c.archived ? ' · в архиве' : c.state === 'done' ? ' · закрыто' : ''}</p><h1>${esc(c.title)}</h1><p class="muted">${esc(c.why || 'Зачем нужно дело, пока не записано')}</p>${reviewDetails(c)}</div><div class="actions">${buttons}</div></div><section class="section"><div class="section-heading"><h2>Бриф</h2></div>${brief(c)}${open ? '' : '<p class="disabled-note">Бриф заморожен после закрытия дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Задачи</h2></div>${groups.length ? groups.map(g => `<p class="eyebrow">${esc(g.label)}</p><div class="rows">${g.rows.map(t => caseTask(t, true)).join('')}</div>`).join('') : '<p class="muted">В бэклоге нет задач этого дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Закрыты раньше</h2></div>${c.earlier.length ? `<div class="rows">${c.earlier.map(t => caseTask(t, false)).join('')}</div>` : '<p class="muted">В архиве нет задач этого дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${c.links.length ? `<div class="rows">${c.links.map(ref => link(ref)).join('')}</div>` : '<p class="muted">У дела и его задач нет ссылок.</p>'}</section>`);
+  renderMain(`<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Дело · ${esc(c.id)}${c.archived ? ' · в архиве' : c.state === 'done' ? ' · закрыто' : ''}</p><h1>${esc(c.title)}</h1><p class="muted">${esc(c.why || 'Зачем нужно дело, пока не записано')}</p><p class="muted">${c.caseType === 'duty' ? 'Дежурство · только чтение' : c.review ? c.review.kind === 'sa' ? 'Ревью системной аналитики' : 'Код-ревью' : 'Обычное дело'} · Проект: ${esc(c.repo || c.review?.repo || 'не выбран')}${c.folder ? `<br>Материалы для чтения: ${esc(c.folder)}` : ''}</p>${reviewDetails(c)}</div><div class="actions">${buttons}</div></div><section class="section"><div class="section-heading"><h2>Бриф</h2></div>${brief(c)}${open ? '' : '<p class="disabled-note">Бриф заморожен после закрытия дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Задачи</h2></div>${groups.length ? groups.map(g => `<p class="eyebrow">${esc(g.label)}</p><div class="rows">${g.rows.map(t => caseTask(t, true)).join('')}</div>`).join('') : '<p class="muted">В бэклоге нет задач этого дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Закрыты раньше</h2></div>${c.earlier.length ? `<div class="rows">${c.earlier.map(t => caseTask(t, false)).join('')}</div>` : '<p class="muted">В архиве нет задач этого дела.</p>'}</section><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${c.links.length ? `<div class="rows">${c.links.map(ref => link(ref)).join('')}</div>` : '<p class="muted">У дела и его задач нет ссылок.</p>'}</section>`);
 }
 function renderClosed(list: { id: string; title: string; closed?: string }[]) {
   current = undefined; document.title = 'Закрытые дела — Дело';
@@ -254,9 +280,9 @@ async function goalAction(action: string) {
   const g = current; if (!g) return;
   const base = `/api/goals/${encodeURIComponent(g.id)}`;
   if (action !== 'edit') return;
-  // A дело's brief has no folder: only its tasks are duties.
-  const folder = g.kind === 'program' ? '' : folderField(await api<string[]>('/api/folders'), g.folder);
-  modal(g.kind === 'program' ? 'Править дело' : 'Править задачу', `${field('title', 'Название', g.title, false, true)}${field('body', 'Описание', g.body.split('\n').filter(l => l !== personalLine && !(folder && l.startsWith(folderLine))).join('\n'), true)}${folder}${personalBox(g.personal)}`, async f => { await api(base, { title: f.get('title'), body: f.get('body'), personal: f.has('personal'), folder: f.get('folder') ?? undefined }, 'PATCH'); refresh(); });
+  const [folders, projects] = await Promise.all([api<string[]>('/api/folders'), api<ProjectChoice[]>('/api/review-projects')]);
+  const folder = g.kind !== 'program' || g.caseType === 'duty' || g.folder ? folderField(folders, g.folder) : '';
+  modal(g.kind === 'program' ? 'Править дело' : 'Править задачу', `${field('title', 'Название', g.title, false, true)}${g.kind === 'program' ? projectField('repo', projects, g.repo || g.review?.repo || '') : ''}${field('body', 'Описание', g.body.split('\n').filter(l => l !== personalLine && !(folder && l.startsWith(folderLine)) && l !== 'Вид дела: duty').join('\n'), true)}${folder}${personalBox(g.personal)}`, async f => { await api(base, { title: f.get('title'), body: f.get('body'), personal: f.has('personal'), ...(g.kind === 'program' ? { repo: f.get('repo') } : {}), folder: f.get('folder') ?? undefined }, 'PATCH'); refresh(); });
 }
 
 async function caseAction(c: ViewCase, action: string) {

@@ -24,6 +24,7 @@ test('SA review case validates inputs, resolves registry paths, and queues exact
     assert.deepEqual(store.reviewProjects(), [{ name: 'avia', path: join(home, 'projects/avia') }]);
     const c = store.createCase(input);
     assert.equal(c.kind, 'program');
+    assert.equal(c.repo, join(home, 'projects/avia'), 'case exposes the selected review project');
     assert.equal(c.tasks.length, 1);
     const child = store.get(c.tasks[0].id);
     assert.equal(child.kind, 'scout');
@@ -40,6 +41,11 @@ test('SA review case validates inputs, resolves registry paths, and queues exact
     assert.throws(() => store.createCase({ ...input, review: { ...input.review, document: 'https://other.example/pages/1' } }), /повтор/i);
     store.act(child.id, 'start', {}); store.act(child.id, 'start', {});
     assert.equal(store.firstmate.receipts().pending.length, 1, 'ordinary start is idempotent');
+    const changed = store.update(c.id, { repo: root });
+    assert.equal(changed.repo, root); assert.equal(changed.review?.repo, root);
+    assert.throws(() => store.update(c.id, { repo: '' }), 'SA keeps its mandatory project on edit');
+    assert.equal(store.getCase(c.id).repo, root);
+    assert.equal(store.newAgent(c.id, { direction: 'Продолжить исследование' }).task.repo, root, 'new agent inherits the edited review context');
     assert.equal(existsSync(stubLog) ? readFileSync(stubLog, 'utf8') : '', '', 'no agent/model transport called');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

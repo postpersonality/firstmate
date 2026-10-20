@@ -235,7 +235,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     await buttons(goal.id); await until(() => !asking());
     assert.deepEqual(shown(), [], 'answering leaves pending stop/close receipts intact');
     window.document.getElementById('new-case')?.click();
-    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'reviewKind', 'sources', 'why', 'doneWhen', 'context', 'constraints']);
+    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'reviewKind', 'reviewRepo', 'folder', 'sources', 'why', 'doneWhen', 'context', 'constraints']);
     (window.document.querySelector('[name=title]') as HTMLInputElement).value = 'UI дело';
     (window.document.querySelector('[name=why]') as HTMLTextAreaElement).value = 'Собрать задачи';
     (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
@@ -294,7 +294,7 @@ test('«Новый агент» appears only on an open дело, defaults its f
     assert.equal(input('direction').value, 'Разбери текущее дело по ориентировке и прикреплённым материалам. Прочитай источники, необходимые для понимания задания. Если задание понятно, приступай к работе. Если сведений недостаточно, задай уточняющий вопрос.');
     assert.deepEqual([input('kind').value, input('harness').value, input('folder').value], ['scout', '', folder]);
     assert.deepEqual([...document.querySelectorAll('#dialog-body [name=harness] option')].map(o => o.textContent), ['как решит firstmate', 'claude', 'codex', 'opencode', 'pi', 'grok', 'kimi', 'gemini', 'agy']);
-    assert.equal((document.getElementById('agent-repo') as HTMLElement).style.display, 'none', 'Проект is for ship only');
+    assert.equal((document.getElementById('agent-repo') as HTMLElement).hidden, false, 'Проект is visible for research as well as edits');
     input('kind').value = 'ship'; input('kind').dispatchEvent(new window.Event('change'));
     assert.equal((document.getElementById('agent-repo') as HTMLElement).style.display, '');
     input('kind').value = 'scout'; input('kind').dispatchEvent(new window.Event('change'));
@@ -613,4 +613,81 @@ test('an open case form survives a server restart and refreshes its token once',
       }
     } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+test('duty/project path from New case through editing and New agent preserves drafts and queues the chosen context', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-duty-ui-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) }); const handle = router(store);
+  const product = join(root, 'materials'); mkdirSync(product);
+  mkdirSync(join(store.firstmate.home, 'projects', 'app'), { recursive: true });
+  writeFileSync(join(store.firstmate.home, 'data/projects.md'), '- app [local-only] - fixture\n');
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: 'http://localhost:4317/', runScripts: 'outside-only' });
+  const { window } = dom; const document: Document = window.document;
+  window.setInterval = () => 0;
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  const payloads: any[] = [];
+  window.fetch = async (path: string, init: RequestInit = {}) => {
+    if (/\/agent$/.test(path) && init.body) payloads.push(JSON.parse(String(init.body)));
+    return handle(new Request(new URL(path, window.location.href), init));
+  };
+  const until = async (check: () => unknown) => { for (let i = 0; i < 300 && !check(); i++) await new Promise(r => setTimeout(r, 20)); assert.ok(check()); };
+  const input = (name: string) => document.querySelector<HTMLInputElement>(`#dialog-body [name=${name}]`)!;
+  const change = (name: string, value: string) => { input(name).value = value; input(name).dispatchEvent(new window.Event('change', { bubbles: true })); };
+  const submit = () => document.getElementById('dialog-form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  const chooseProject = (name: string) => { const select = document.querySelector<HTMLSelectElement>(`[data-project-choice=${name}]`)!; select.value = 'app'; select.dispatchEvent(new window.Event('change', { bubbles: true })); };
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    await until(() => document.querySelector('main h1'));
+    document.getElementById('new-case')!.click();
+    await until(() => document.querySelector('[data-project-choice=reviewRepo] option[value=app]'));
+    chooseProject('reviewRepo'); assert.equal(input('reviewRepo').value, 'app');
+    input('title').value = 'Дежурство из формы'; input('why').value = 'Проверить обращение';
+    input('sources').value = 'https://example.com/thread'; change('reviewKind', 'duty');
+    assert.equal(input('reviewRepo').value, 'app', 'changing type preserves project');
+    assert.equal(input('folder').required, true); assert.equal(payloads.length, 0);
+    input('folder').value = 'relative/path'; submit();
+    await until(() => /Папка:/.test(document.getElementById('dialog-error')!.textContent ?? ''));
+    assert.equal(input('title').value, 'Дежурство из формы'); assert.equal(input('reviewRepo').value, 'app');
+    assert.equal(store.list().length, 0, 'validation failure leaves the complete draft intact and writes nothing');
+    input('folder').value = product; input('reviewRepo').value = 'unknown-project'; submit();
+    await until(() => /Проект:/.test(document.getElementById('dialog-error')!.textContent ?? ''));
+    assert.equal(input('reviewRepo').value, 'unknown-project'); assert.equal(input('why').value, 'Проверить обращение');
+    assert.equal(store.list().length, 0);
+    chooseProject('reviewRepo'); submit();
+    await until(() => document.querySelector('main h1')?.textContent === 'Дежурство из формы');
+    const caseId = window.location.hash.slice('#case:'.length);
+    assert.match(document.querySelector('main')!.textContent!, /Дежурство · только чтение · Проект: app/);
+    assert.equal(store.firstmate.receipts().pending.length, 0, 'saving a duty never starts a worker');
+    document.querySelector<HTMLButtonElement>('[data-action=edit]')!.click(); await until(() => input('repo'));
+    assert.equal(input('repo').value, 'app'); assert.equal(input('folder').value, product);
+    input('repo').value = product; submit();
+    await until(() => !(document.getElementById('dialog') as HTMLDialogElement).open);
+    assert.equal(store.getCase(caseId).repo, product); assert.equal(store.getCase(caseId).caseType, 'duty');
+    await until(() => document.querySelector('main')!.textContent!.includes(`Проект: ${product}`));
+    document.querySelector<HTMLButtonElement>('[data-action=agent-case]')!.click(); await until(() => input('direction'));
+    assert.equal(input('repo').value, product); assert.equal(input('folder').value, product);
+    assert.equal(document.querySelector('[name=kind] option[value=ship]'), null, 'duty stays read-only');
+    chooseProject('repo'); input('direction').value = 'Разбери материалы.'; submit();
+    await until(() => payloads.length === 1 && store.getCase(caseId).tasks.length === 1);
+    const dutyTask = store.getCase(caseId).tasks[0];
+    assert.equal(store.get(dutyTask.id).repo, 'app'); assert.equal(store.get(dutyTask.id).folder, product);
+    assert.equal(store.firstmate.show(dutyTask.id).state, 'queued');
+    assert.equal(payloads[0].kind, 'scout'); assert.equal(payloads[0].repo, 'app');
+    await until(() => !(document.getElementById('dialog') as HTMLDialogElement).open);
+    const ordinary = store.createCase({ title: 'Правка файлов', repo: 'app' });
+    window.location.hash = `case:${ordinary.id}`;
+    await until(() => document.querySelector('main h1')?.textContent === 'Правка файлов');
+    document.querySelector<HTMLButtonElement>('[data-action=agent-case]')!.click(); await until(() => (document.getElementById('dialog') as HTMLDialogElement).open && document.querySelector('[name=kind] option[value=ship]'));
+    assert.equal(input('repo').value, 'app');
+    assert.match(document.getElementById('dialog-body')!.textContent!, /Исследование: отчёт без изменения файлов/);
+    input('folder').value = product; change('kind', 'ship');
+    assert.equal(document.getElementById('agent-folder')!.hidden, true);
+    assert.match(document.getElementById('agent-mode-help')!.textContent!, /изолированном рабочем дереве/);
+    input('repo').value = product; input('direction').value = 'Исправь проект.'; submit();
+    await until(() => payloads.length === 2 && store.getCase(ordinary.id).tasks.length === 1);
+    const ship = store.firstmate.show(store.getCase(ordinary.id).tasks[0].id);
+    assert.equal(ship.kind, 'ship'); assert.equal(ship.repo, product); assert.equal(ship.state, 'queued');
+    assert.equal(payloads[1].folder, ''); assert.ok(!ship.body.includes('Папка:'), 'read-only materials never become writable workspace');
+  } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
 });

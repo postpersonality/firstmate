@@ -14,17 +14,18 @@ export const goalInput = z.object({
 // A дело is a backlog row of kind program whose body is the managed brief after its `Источник:` lines.
 export const caseInput = z.object({
   requestId: z.string().uuid().optional(), review: reviewInput.optional(),
+  caseType: z.enum(['ordinary', 'duty']).default('ordinary'), repo: line.default(''), folder: line.default(''),
   title: line.min(1), why: text.default(''), doneWhen: text.default(''), context: text.default(''), constraints: text.default(''), sources: text.default(''),
 });
 // shortcut: список повторяет AGENTS.md, раздел 4, и установленные программы; править при смене списка
 export const harnesses = ['claude', 'codex', 'opencode', 'pi', 'grok', 'kimi', 'gemini', 'agy'] as const;
 // «Новый агент» on an open дело; an empty harness leaves the choice to firstmate and writes no line.
 export const agentInput = z.object({
-  direction: text.refine(v => v.trim() !== '', 'Нужно направление'), kind: z.enum(['ship', 'scout']).default('scout'), repo: line.default(''),
-  harness: z.union([z.enum(harnesses), z.literal('')]).default(''), interactive: z.boolean().default(false), folder: line.default(''),
+  direction: text.refine(v => v.trim() !== '', 'Нужно направление'), kind: z.enum(['ship', 'scout']).default('scout'), repo: line.optional(),
+  harness: z.union([z.enum(harnesses), z.literal('')]).default(''), interactive: z.boolean().default(false), folder: line.optional(),
 });
 export const closeCaseInput = z.object({ confirmed: z.array(id).default([]) });
-export const goalPatch = z.object({ title: line.min(1).optional(), body: text.optional(), personal: z.boolean().optional(), folder: line.optional(), state: state.optional() });
+export const goalPatch = z.object({ title: line.min(1).optional(), body: text.optional(), personal: z.boolean().optional(), repo: line.optional(), folder: line.optional(), state: state.optional() });
 export const actionInput = z.object({ attempt: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(), reason: line.optional(), answer: z.string().max(500).refine(v => !v.includes('\t'), 'Без табуляции').optional(), until: day.optional() });
 export const personalLine = 'Личное';
 
@@ -49,7 +50,7 @@ export type TaskRequest = { action: 'start' | 'stop' | 'close'; requestId: strin
 
 // A card is one Firstmate row; links are the row's own pr/report/doc links.
 export type Goal = {
-  review?: Review; reviewProgress?: ReviewProgress;
+  review?: Review; reviewProgress?: ReviewProgress; caseType?: 'ordinary' | 'duty';
   id: string; title: string; state: z.infer<typeof state>; body: string; kind?: string; repo?: string; personal: boolean; actions: Action[]; requests?: TaskRequest[];
   managedBrief?: boolean; prUrl?: string; reason?: string; blockers?: { id: string; title: string }[];
   why: string; doneWhen: string; context: string; constraints: string[]; holdKind?: string; inFlight?: boolean; links: string[]; report: boolean; folder: string; harness: string;

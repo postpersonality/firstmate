@@ -43,6 +43,7 @@ test('New case SA fields validate, suggest registry projects, deduplicate double
     await until(() => document.querySelector('main h1')?.textContent === 'Ревью СА через форму');
     assert.equal(creations, 2, 'one invalid submit and one accepted submit');
     const c = store.getCase(window.location.hash.slice('#case:'.length)); const task = c.tasks[0];
+    assert.equal(c.repo, join(store.firstmate.home, 'projects/avia'));
     assert.equal(c.tasks.length, 1); assert.equal(store.firstmate.receipts().pending.length, 0);
     assert.ok(document.querySelector(`[data-task-action=start][data-id="${task.id}"]`));
     const dir = join(store.firstmate.home, 'data', task.id); mkdirSync(dir, { recursive: true });
@@ -53,5 +54,12 @@ test('New case SA fields validate, suggest registry projects, deduplicate double
     assert.match(progress, /Ошибка/); assert.match(progress, /Проверка аудита/); assert.match(progress, /3 с/); assert.match(progress, /2 с/); assert.match(progress, /Protocol unknown/);
     assert.match(progress, /12:00/); assert.match(progress, /ledger/);
     assert.match(document.querySelector('main').textContent, /Проект контекста/);
+    window.location.hash = `case:${c.id}`;
+    await until(() => document.querySelector('main h1')?.textContent === c.title);
+    document.querySelector('[data-action=agent-case]').click();
+    await until(() => input('repo'));
+    assert.equal(input('repo').value, c.repo, 'SA New agent inherits the project');
+    assert.ok(document.querySelector('[data-project-choice=repo]'));
+    assert.equal(store.firstmate.receipts().pending.length, 0, 'opening New agent never starts it');
   } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
 });

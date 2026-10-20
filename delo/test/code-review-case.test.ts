@@ -184,6 +184,7 @@ test('New case exposes code review with one required link and starts its scout t
     url.value = 'https://github.com/org/repo'; submit();
     await until(() => /ссылк.*Jira.*pull request/i.test(document.getElementById('dialog-error')!.textContent ?? ''));
     assert.equal((await store.firstmate.list()).length, 0, 'invalid URL leaves the dialog open and writes nothing');
+    document.querySelector<HTMLInputElement>('#dialog-body [name=reviewRepo]')!.value = root;
     url.value = 'https://github.com/org/repo/pull/7'; deferCreate = true; submit(); submit();
     assert.equal(creations, 2, 'one invalid attempt plus one in-flight submit; duplicate submit is ignored');
     assert.ok((document.getElementById('dialog-submit') as HTMLButtonElement).disabled);
@@ -191,6 +192,8 @@ test('New case exposes code review with one required link and starts its scout t
     await until(() => document.querySelector('[data-task-action=start]'));
     const tasks = await store.firstmate.list(); const task = tasks.find(t => t.kind === 'scout')!;
     assert.equal(tasks.length, 2); assert.ok(task);
+    assert.equal(task.repo, root, 'code-review scout preserves the full context folder');
+    assert.equal(store.getCase(window.location.hash.slice('#case:'.length)).repo, root);
     assert.ok(document.querySelector('[data-action=agent-case]'), 'ordinary New agent stays available');
     const start = document.querySelector<HTMLButtonElement>('[data-task-action=start]')!;
     start.click(); start.click();
