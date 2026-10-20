@@ -5,6 +5,7 @@ import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, cl
 import type { Goal, Action } from './model.ts';
 import { validateReview, reviewProjects, reviewOf, reviewLine, reviewInstructions, readReviewProgress } from './review.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
+import { diagnosticText, taskDiagnostics } from './diagnostics.ts';
 import { checkFolder } from './folder.ts';
 import { type Overview, overview, position, requestsByTask, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
 
@@ -188,11 +189,11 @@ export class Store {
     const requests = requestsByTask(this.firstmate.receipts());
     const records = this.firstmate.list();
     const byId = new Map(records.map(t => [t.id, t]));
-    const places = new Map((['waiting', 'working', 'next', 'done'] as const).flatMap(phase => (view?.[phase] ?? []).flatMap(g => g.rows.map(r => [r.id, { phase, reason: r.reason, owner: r.owner, current: r.current }] as const))));
+    const places = new Map((['waiting', 'working', 'next', 'done'] as const).flatMap(phase => (view?.[phase] ?? []).flatMap(g => g.rows.map(r => [r.id, { ...r, phase }] as const))));
     const entry = (t: FirstmateTask) => {
       const { id, title, state, actions, holdKind, reason, inFlight, links, report, review, reviewProgress } = this.get(t.id, t);
       const place = t.state === 'done' ? position(t, undefined, byId) : places.get(t.id) ?? position(t, undefined, byId);
-      return { id, title, state, actions, requests: (requests.get(t.id) ?? []).filter(r => actions.includes(r.action) && (r.action !== 'close' || inFlight)), holdKind, reason: place.reason ?? reason, owner: place.owner, current: 'current' in place ? place.current : undefined, inFlight, phase: place.phase, links, report, review, reviewProgress };
+      return { id, title, state, actions, requests: (requests.get(t.id) ?? []).filter(r => actions.includes(r.action) && (r.action !== 'close' || inFlight)), holdKind, reason: place.reason ?? reason, owner: place.owner, nextStep: place.nextStep, waitKind: place.waitKind, until: place.until, current: 'current' in place ? place.current : undefined, inFlight, phase: place.phase, links, report, review, reviewProgress };
     };
     const tasks = records.filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
     const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t, true)));
@@ -374,13 +375,17 @@ export class Store {
 
   // The executor actually running a task, from the fleet snapshot's worker record.
   async worker(taskId: string) {
-    const record = ((await this.firstmate.snapshot('fm-fleet-snapshot.sh')).tasks ?? []).find((t: any) => t.id === taskId);
+    let snapshot: any;
+    try { snapshot = await this.firstmate.snapshot('fm-fleet-snapshot.sh'); }
+    catch { /* The backlog assignment remains readable without runtime evidence. */ }
+    const record = (snapshot?.tasks ?? []).find((t: any) => t.id === taskId);
     const tasks = this.firstmate.list();
     const task = tasks.find(t => t.id === taskId);
     const [delivery, declaredWait] = task?.state === 'done' ? [] : await Promise.all([this.firstmate.delivery(record), this.firstmate.declaredWait(record)]);
     const place = position(task, { ...record, delivery, declaredWait }, new Map(tasks.map(t => [t.id, t])));
-    const current = `${task?.state === 'done' && record ? 'Сохранённый исполнитель · ' : ''}${workerState(record)}`;
-    return { harness: field(record?.harness) ?? '', current, phase: place.phase, reason: place.reason, owner: place.owner, prUrl: field(record?.pr?.url) };
+    const current = snapshot ? `${task?.state === 'done' && record ? 'Сохранённый исполнитель · ' : ''}${workerState(record)}` : 'Состояние неизвестно';
+    if (!snapshot) place.nextStep = 'Не удалось прочитать состояние исполнителя. Обновите задачу, чтобы проверить его';
+    return { harness: field(record?.harness) ?? '', current, ...place, details: record?.current_state?.detail ? diagnosticText(String(record.current_state.detail)).slice(0, 2000) : undefined, diagnostics: taskDiagnostics(this.firstmate.home, taskId, record), prUrl: field(record?.pr?.url) };
   }
 
   // Suggestions for the folder field: every folder an open backlog task names.

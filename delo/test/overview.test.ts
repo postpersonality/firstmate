@@ -34,11 +34,11 @@ test('business work survives unknown runtime while actual waits and completion t
   assert.deepEqual(ids(view.next), ['queued']);
   assert.deepEqual(ids(view.done), ['closed']);
   const rows = new Map(view.waiting.flatMap(g => g.rows).map(r => [r.id, r]));
-  assert.equal(rows.get('human')?.owner, 'Капитан');
+  assert.equal(rows.get('human')?.owner, 'Вы');
   assert.equal(rows.get('coordinator')?.owner, 'Firstmate');
   assert.equal(rows.get('held')?.owner, undefined, 'an external hold never invents a responsible person');
   assert.equal(rows.get('held')?.reason, 'Ждём поставщика');
-  assert.match(rows.get('ready')?.reason ?? '', /посадк/);
+  assert.match(rows.get('ready')?.reason ?? '', /основную ветку/);
   assert.match(view.working.flatMap(g => g.rows).find(r => r.id === 'unknown')?.current ?? '', /неизвестно/);
   const queued = records.map(r => r.id === 'unknown' ? { ...r, state: 'queued' } : r);
   assert.ok(ids(overview({}, { backlog: { records: queued }, tasks }).next).includes('unknown'), 'a live unknown endpoint alone does not prove business work');
@@ -149,6 +149,28 @@ test('native task rows supply computed holds when the fleet snapshot omits them'
   assert.equal(view.next[0].rows.find(r => r.id === 'expired')?.state, 'active');
 });
 
+test('wait subsets preserve deliberate parking and distinguish answers, external waits, failures and delivery', () => {
+  const records = [record('park', { held: 'yes', hold_kind: 'parked', hold_reason: 'Мой перерыв', hold_until: '2026-12-01', blocked_by: 'dependency' }),
+    record('answer', { hold_kind: 'captain' }), record('dependency'),
+    ...['quota', 'failed', 'ready', 'busy', 'unknown', 'gate', 'blocked'].map(id => record(id, { state: 'in_flight' }))];
+  const tasks = [
+    { id: 'quota', current_state: { state: 'blocked', detail: 'token quota reached until 2026-12-01T10:00Z' } },
+    { id: 'failed', current_state: { state: 'failed', detail: 'process exited' } },
+    { id: 'ready', current_state: { state: 'unknown' }, delivery: { state: 'pending' } },
+    { id: 'busy', current_state: { state: 'working' }, hints: { last_event_text: 'paused: old quota' } },
+    { id: 'unknown', current_state: { state: 'unknown' }, hints: { last_event_text: 'failed: old failure' } },
+    { id: 'gate', current_state: { state: 'parked', source: 'run-step', detail: 'parked at Review' } },
+    { id: 'blocked', current_state: { state: 'blocked', detail: 'Cannot finish the task' } },
+  ];
+  const view = overview({}, { backlog: { records }, tasks });
+  const waiting = view.waiting.flatMap(g => g.rows);
+  assert.deepEqual(waiting.map(r => [r.id, r.waitKind]), [['park', 'parked'], ['answer', 'answer'], ['quota', 'environment'], ['failed', 'attention'], ['ready', 'delivery'], ['gate', 'answer'], ['blocked', 'attention']]);
+  assert.equal((waiting[0] as any).until, '2026-12-01');
+  assert.equal((waiting[2] as any).until, '2026-12-01T10:00Z');
+  assert.match((waiting[0] as any).nextStep, /Снимите паузу/);
+  assert.deepEqual(ids(view.working), ['busy', 'unknown']);
+});
+
 test('rows group by repo, rows without one go last under «Без проекта»', () => {
   const row = (id: string, repo?: string) => ({ id, title: id, repo, pinned: false, open: true, task: true, personal: false, actions: [] });
   assert.deepEqual(groupByRepo([row('a'), row('b', 'zeta'), row('c', 'alpha'), row('d', 'zeta')]).map(g => [g.repo, g.rows.map(r => r.id)]), [['alpha', ['c']], ['zeta', ['b', 'd']], ['Без проекта', ['a']]]);
@@ -191,7 +213,7 @@ test('rows expose full holds, unresolved dependencies, fleet PRs and honest work
     ['ci', { state: 'working', source: 'run-step', detail: 'run active' }, 'Идёт проверка'],
     ['ask', { state: 'parked', detail: 'needs-decision: choose' }, 'Вопрос исполнителя'],
     ['unknown', { state: 'unknown', detail: 'harness state unavailable' }, 'Состояние неизвестно'],
-    ['paused', { state: 'paused', detail: 'waiting' }, 'Исполнитель на паузе'],
+    ['paused', { state: 'paused', detail: 'waiting' }, 'Исполнитель ожидает'],
     ['failed', { state: 'failed', detail: 'run failed' }, 'Работа завершилась с ошибкой'],
   ] as const;
   const records = [record('rr-refund-q2', { title: 'Согласовать возвраты' }),

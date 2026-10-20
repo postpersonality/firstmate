@@ -12,13 +12,13 @@
 <body>
   <header class="topbar">
     <a class="brand" href="#"><span class="brand-mark">Д</span><span>Дело<small>Задачи Firstmate</small></span></a>
-    <button id="new-case" class="primary">Новое дело</button>
-    <button id="new-goal">Новая задача</button>
+    <button id="new-case" class="primary"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>Новое дело</button>
+    <button id="new-goal"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>Новая задача</button>
   </header>
   <div class="layout">
     <main id="main"><p class="muted">Читаю задачи Firstmate…</p></main>
   </div>
-  <dialog id="dialog"><form id="dialog-form"><div class="dialog-heading"><h2 id="dialog-title"></h2><button id="dialog-close" type="button" class="quiet" aria-label="Закрыть диалог">×</button></div><div id="dialog-body"></div><p id="dialog-error" role="alert"></p><footer><button id="dialog-cancel" type="button" class="quiet" hidden>Отмена</button><button id="dialog-submit" type="submit" class="primary">Сохранить</button></footer></form></dialog>
+  <dialog id="dialog" aria-labelledby="dialog-title"><form id="dialog-form"><div class="dialog-heading"><h2 id="dialog-title"></h2><button id="dialog-close" type="button" class="quiet" aria-label="Закрыть диалог"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="dialog-body"></div><p id="dialog-error" role="alert"></p><footer><button id="dialog-cancel" type="button" class="quiet" hidden>Отмена</button><button id="dialog-submit" type="submit" class="primary">Сохранить</button></footer></form></dialog>
   <div id="message" class="message" role="status" hidden></div>
 </body>
 </html>

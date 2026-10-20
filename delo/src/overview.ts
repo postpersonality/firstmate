@@ -1,11 +1,14 @@
 import { actions, type Phase, type Goal, type TaskRequest } from './model.ts';
 import type { FirstmateTask } from './firstmate.ts';
+import { diagnosticText } from './diagnostics.ts';
 // Bearings supplies context; backlog and reconciled worker state determine each row's section.
+export type WaitKind = 'answer' | 'environment' | 'parked' | 'attention' | 'delivery';
+export type Position = { phase: Phase; reason?: string; owner?: string; waitKind?: WaitKind; nextStep?: string; until?: string };
 export type Row = {
   id: string; title: string; kind?: string; repo?: string; pinned: boolean; open: boolean; task: boolean; personal: boolean;
   reason?: string; current?: string; noWorker?: boolean; blockedBy?: string; blockers?: { id: string; title: string }[]; prUrl?: string; reportPath?: string; owner?: string;
   requests?: TaskRequest[]; actions: Goal['actions']; state?: Goal['state']; holdKind?: string; inFlight?: boolean;
-  phase?: Phase;
+  phase?: Phase; waitKind?: WaitKind; nextStep?: string; until?: string;
 };
 export type Group = { repo: string; rows: Row[] };
 export type CaseRow = Row & { counts: Record<Phase, number> };
@@ -51,33 +54,41 @@ export function workerState(worker: any): string {
   if (!state || state.state === 'unknown') return 'Состояние неизвестно';
   if (state.state === 'needs-decision' || (['parked', 'paused', 'blocked'].includes(state.state) && (worker.hints?.pending_decision === true || /^needs-decision\b/.test(state.detail ?? '')))) return 'Вопрос исполнителя';
   if (state.state === 'working') return state.source === 'run-step' || /^(validating\b|ci running\b)/.test(state.detail ?? '') ? 'Идёт проверка' : 'Работает';
-  return ({ parked: 'Исполнитель на паузе', paused: 'Исполнитель на паузе', blocked: 'Работа заблокирована', done: 'Работа исполнителя завершена', failed: 'Работа завершилась с ошибкой' } as Record<string, string>)[state.state] ?? 'Состояние неизвестно';
+  return ({ parked: 'Исполнитель ждёт продолжения', paused: 'Исполнитель ожидает', blocked: 'Работа заблокирована', done: 'Работа исполнителя завершена', failed: 'Работа завершилась с ошибкой' } as Record<string, string>)[state.state] ?? 'Состояние неизвестно';
 }
 
 // Business progress is independent of native runtime; explicit waits and completion win.
-export function position(task: any, worker: any, records: Map<string, any>): { phase: Phase; reason?: string; owner?: string } {
+export function position(task: any, worker: any, records: Map<string, any>): Position {
   if (task?.state === 'done') return { phase: 'done' };
   const reason = value(task?.hold_reason);
+  const until = value(task?.hold_until);
+  const held = task?.held === true || task?.held === 'yes' || task?.held === undefined && reason && task?.hold_kind;
+  if (task?.hold_kind === 'captain') return { phase: 'waiting', waitKind: 'answer', reason: reason ?? 'Ожидает ответа', owner: 'Вы', until, nextStep: 'Ответьте на вопрос или отложите решение' };
+  if (held && task?.hold_kind === 'parked') return { phase: 'waiting', waitKind: 'parked', reason: reason ?? 'Работа отложена пользователем', until, nextStep: 'Снимите паузу, когда захотите продолжить. Это не запускает исполнителя' };
   const blockers = taskBlockers(task ?? {}, records);
-  if (blockers.length) return { phase: 'waiting', reason: reason ?? 'Ожидает завершения задач' };
-  if (task?.hold_kind === 'captain') return { phase: 'waiting', reason: reason ?? 'Ожидает ответа', owner: 'Капитан' };
-  if (task?.held === true || task?.held === 'yes' || task?.held === undefined && reason && task?.hold_kind) {
-    return { phase: 'waiting', reason: [reason ?? 'Задача отложена', value(task.hold_until) ? `До ${task.hold_until}` : undefined].filter(Boolean).join(' · ') };
-  }
+  if (blockers.length) return { phase: 'waiting', waitKind: 'environment', reason: reason ?? 'Ожидает завершения задач', nextStep: 'Продолжение зависит от связанных задач' };
+  if (held) return { phase: 'waiting', waitKind: 'environment', reason: reason ?? 'Задача отложена', until, nextStep: 'Ожидает снятия ограничения' };
   const current = worker?.current_state?.state === 'unknown' && worker?.declaredWait ? worker.declaredWait : worker?.current_state;
   const state = current?.state;
-  const detail = value(current?.detail);
-  if (['unknown', 'done'].includes(state) && worker?.delivery?.state === 'pending') return { phase: 'waiting', reason: 'Результат готов, ожидает локальной посадки', owner: 'Firstmate' };
+  const rawDetail = value(current?.detail);
+  const detail = rawDetail ? diagnosticText(rawDetail).slice(0, 2000) : undefined;
+  const knownTime = rawDetail?.match(/\buntil\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)\b/)?.[1];
+  if (['unknown', 'done'].includes(state) && worker?.delivery?.state === 'pending') return { phase: 'waiting', waitKind: 'delivery', reason: 'Результат готов, ожидает включения в основную ветку', owner: 'Firstmate', nextStep: 'Firstmate завершит перенос готовых изменений' };
   const decision = state === 'unknown' ? worker?.hints?.open_decisions?.[0] : undefined;
-  if (decision) return { phase: 'waiting', reason: value(decision.summary) ?? 'Ожидает разрешения открытого вопроса', owner: decision.verb === 'needs-decision' ? 'Firstmate' : undefined };
+  if (decision) return { phase: 'waiting', waitKind: decision.verb === 'needs-decision' ? 'answer' : 'attention', reason: value(decision.summary) ?? 'Ожидает разрешения открытого вопроса', owner: 'Firstmate', nextStep: 'Firstmate должен разобрать открытый вопрос' };
   if (state === 'needs-decision' || ['parked', 'paused', 'blocked'].includes(state) && (worker.hints?.pending_decision === true || /^needs-decision\b/.test(detail ?? ''))) {
-    return { phase: 'waiting', reason: `Исполнителю нужен ответ Firstmate${detail ? `: ${detail.replace(/^needs-decision:\s*/, '')}` : ''}`, owner: 'Firstmate' };
+    return { phase: 'waiting', waitKind: 'answer', reason: `Исполнителю нужен ответ Firstmate${detail ? `: ${detail.replace(/^needs-decision:\s*/, '')}` : ''}`, owner: 'Firstmate', nextStep: 'Firstmate должен ответить исполнителю' };
   }
   if (state === 'done' && !task?.state) return { phase: 'done' };
-  if (state === 'done') return { phase: 'waiting', reason: worker.pr?.url ? 'Результат готов, ожидает ревью или слияния' : 'Результат готов, ожидает разбора и завершения задачи', owner: 'Firstmate' };
-  if (state === 'failed') return { phase: 'waiting', reason: `Нужен разбор ошибки исполнителя${detail ? `: ${detail}` : ''}`, owner: 'Firstmate' };
-  if (['parked', 'paused', 'blocked'].includes(state)) return { phase: 'waiting', reason: `Исполнитель ожидает продолжения${detail ? `: ${detail}` : ''}` };
-  return { phase: task?.state === 'in_flight' || state === 'working' ? 'working' : 'next' };
+  if (state === 'parked' && current.source === 'run-step') return { phase: 'waiting', waitKind: 'answer', reason: 'Проверка приостановлена: требуется решение Firstmate', owner: 'Firstmate', nextStep: 'Firstmate должен разобрать результаты проверки' };
+  if (state === 'done') return { phase: 'waiting', waitKind: 'delivery', reason: worker.pr?.url ? 'Результат готов, ожидает ревью или слияния' : 'Результат готов, ожидает разбора и завершения задачи', owner: 'Firstmate', nextStep: 'Firstmate должен проверить готовый результат' };
+  if (state === 'failed') return { phase: 'waiting', waitKind: 'attention', reason: 'Нужен разбор ошибки исполнителя', owner: 'Firstmate', nextStep: 'Firstmate должен разобрать ошибку перед продолжением' };
+  if (['parked', 'paused', 'blocked'].includes(state)) {
+    const quota = /usage limit|quota|rate.?limit|лимит|квот/i.test(rawDetail ?? '');
+    if (state === 'blocked' && !quota) return { phase: 'waiting', waitKind: 'attention', reason: `Исполнитель сообщил о проблеме${detail ? `: ${detail}` : ''}`, owner: 'Firstmate', nextStep: 'Firstmate должен разобрать препятствие перед продолжением' };
+    return { phase: 'waiting', waitKind: 'environment', reason: quota ? 'Достигнут лимит сервиса' : `Исполнитель ожидает продолжения${detail ? `: ${detail}` : ''}`, until: knownTime, nextStep: quota ? 'Продолжение возможно после восстановления лимита' : 'Ожидает устранения указанной причины' };
+  }
+  return { phase: task?.state === 'in_flight' || state === 'working' ? 'working' : 'next', nextStep: task?.state === 'in_flight' && state !== 'working' ? 'Текущее состояние исполнителя не подтверждено' : undefined };
 }
 
 export function groupByRepo(rows: Row[]): Group[] {
@@ -106,7 +117,7 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
       pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(worker?.pr?.url) ?? value(r?.pr_url), reportPath: value(r?.report_path),
       requests: (requests.get(id) ?? []).filter(request => task && actions(task).includes(request.action) && (request.action !== 'close' || task.state === 'in_flight')),
       actions: r ? actions(task) : [], state: !r ? undefined : task.state === 'done' ? 'done' : task.held === true || task.held === 'yes' ? 'paused' : 'active',
-      reason: place.reason ?? extra.reason, owner: place.owner, phase: place.phase,
+      ...place, reason: place.reason ?? extra.reason,
       blockers: taskBlockers({ ...r, blocked_by: extra.blockedBy ?? r?.blocked_by }, records),
       current: worker || task?.state === 'in_flight' ? `${task?.state === 'done' && worker ? 'Сохранённый исполнитель · ' : ''}${workerState(worker)}` : extra.current,
       holdKind: value(task?.hold_kind), inFlight: task?.state === 'in_flight',
@@ -134,9 +145,9 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
     if (records.get(r.id)?.kind === 'program') continue;
     const task = records.get(r.id) ?? archive.find(t => t.id === r.id);
     const place = position(task ?? (r.blockedBy ? { blocked_by: r.blockedBy } : undefined), workers.get(r.id), records);
-    if (!task && decisions.has(r.id)) { place.phase = 'waiting'; place.owner = 'Капитан'; }
+    if (!task && decisions.has(r.id)) { place.phase = 'waiting'; place.owner = 'Вы'; place.waitKind = 'answer'; }
     else if (!task && landed.has(r.id)) place.phase = 'done';
-    sections[place.phase].push({ ...r, phase: place.phase, reason: place.phase === 'done' ? undefined : place.reason ?? r.reason, owner: place.owner });
+    sections[place.phase].push({ ...r, ...place, reason: place.phase === 'done' ? undefined : place.reason ?? r.reason, owner: place.owner });
   }
   const { waiting, working, next, done } = sections;
   const all = [...waiting, ...working, ...next, ...done];

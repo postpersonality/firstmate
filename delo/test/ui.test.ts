@@ -77,7 +77,7 @@ test('case children and task cards open only their own terminal through the prot
     button('two')!.click(); await until(() => focused.length === 2);
     assert.deepEqual(focused, ['w30:t39', 'w30:t40']);
     window.location.hash = 'one'; await until(() => document.querySelector('main h1')?.textContent === 'Первый агент');
-    assert.ok(button('one')); assert.match(document.querySelector('main')!.textContent!, /usage limit reached/);
+    assert.ok(button('one')); assert.match(document.querySelector('main')!.textContent!, /Достигнут лимит сервиса/);
     (document.querySelector('[data-action="edit"]') as HTMLButtonElement).click();
     await until(() => document.querySelector('[name=title]'));
     (document.querySelector('[name=title]') as HTMLInputElement).value = 'Несохранённый ввод';
@@ -95,6 +95,96 @@ test('case children and task cards open only their own terminal through the prot
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require('jsdom') as any;
+
+test('visible assignment, safe diagnostics, wait filters and one-click unhold give honest feedback', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-clear-state-ui-'));
+  const home = firstmateHome(root); mkdirSync(join(home, 'state'));
+  const store = new Store({ firstmateHome: home });
+  let held = true; let writes = 0; let patchCount = 0;
+  let delayPatch = false; let failPatch = false; let releasePatch: (() => void) | undefined;
+  let diagnosticWorker: any; let failOverview = false;
+  const task = () => ({ id: 'parked', title: 'Отложенное исследование', state: 'queued' as const, kind: 'scout', held: held ? 'yes' : 'no', hold_kind: 'parked', hold_reason: 'Мой перерыв', body: '## Зачем\nВидимое задание\n## Критерий готовности\nОтчёт\n## Контекст\nКонтекст\n## Ограничения\n- Без правок' });
+  t.mock.method(store.firstmate, 'list', () => [task()]);
+  t.mock.method(store.firstmate, 'show', task);
+  t.mock.method(store.firstmate, 'archive', () => []);
+  t.mock.method(store.firstmate, 'receipts', () => ({}));
+  t.mock.method(store.firstmate, 'terminal', async () => ({ available: false }));
+  t.mock.method(store.firstmate, 'snapshot', async () => ({ generated: '2026-10-20T16:00:00Z', backlog: { records: [task()] }, tasks: diagnosticWorker ? [diagnosticWorker] : [] }));
+  t.mock.method(store.firstmate, 'unhold', () => { held = false; writes++; return task(); });
+  t.mock.method(store.firstmate, 'update', task);
+  const handle = router(store);
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: 'http://localhost:4317/', runScripts: 'outside-only' });
+  const { window } = dom; const document = window.document;
+  let interval: (() => Promise<void>) | undefined;
+  window.setInterval = ((callback: () => Promise<void>) => { interval = callback; return 0; }) as typeof window.setInterval;
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new window.Event('close')); };
+  (window as any).fetch = async (input: string, init: RequestInit = {}) => {
+    if (input === '/api/overview' && failOverview) { failOverview = false; return Response.json({ error: 'Снимок недоступен' }, { status: 400 }); }
+    if (init.method === 'PATCH') {
+      patchCount++;
+      if (delayPatch) { delayPatch = false; await new Promise<void>(resolve => { releasePatch = resolve; }); }
+      if (failPatch) { failPatch = false; return Response.json({ error: 'Не удалось сохранить' }, { status: 400 }); }
+    }
+    return handle(new Request(new URL(input, window.location.href), init));
+  };
+  const until = async (check: () => unknown) => { for (let i = 0; i < 100 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(check()); };
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    await until(() => document.querySelector('#overview-waiting'));
+    assert.match(document.querySelector('[data-wait-kind="parked"] h3')?.textContent ?? '', /Отложено вами/);
+    assert.ok(document.querySelector('[data-kind="scout"]'));
+    assert.equal(document.querySelector('.page-heading .eyebrow')?.textContent, 'Firstmate');
+    (document.querySelector('[data-kind="ship"]') as HTMLButtonElement | null)?.click();
+    assert.equal(writes, 0);
+    window.location.hash = 'parked';
+    await until(() => document.querySelector('main h1')?.textContent === task().title);
+    const assignment = document.getElementById('task-assignment')!;
+    assert.ok(assignment, 'task assignment is visible on opening');
+    assert.equal(assignment.closest('details'), null);
+    assert.match(assignment.textContent!, /Видимое задание.*Контекст/s);
+    assert.match(document.getElementById('task-diagnostics')?.textContent ?? '', /не подтверждена/);
+    assert.equal(writes, 0, 'rendering and navigation never resume parked work');
+    await interval!(); assert.equal(writes, 0, 'refresh never resumes parked work');
+    writeFileSync(join(home, 'state/parked.meta'), 'kind=scout\nspawn_gen=one\nendpoint_task_id=parked\n');
+    writeFileSync(join(home, 'state/parked.status'), 'failed [at=1]: <script>alert(1)</script> process exited\nblocked: TOKEN=hidden-value\n');
+    diagnosticWorker = { id: 'parked', kind: 'scout', spawn_gen: 'one', current_state: { state: 'failed', detail: 'process exited' } };
+    window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+    await until(() => document.querySelector('#task-diagnostics pre')?.textContent?.includes('process exited'));
+    assert.equal(document.querySelector('#task-diagnostics script'), null, 'diagnostics render as plain text');
+    assert.doesNotMatch(document.querySelector('#task-diagnostics')!.textContent!, /hidden-value/);
+    assert.equal(writes, 0);
+    const resume = document.querySelector('[data-task-action="unhold"]') as HTMLButtonElement;
+    assert.ok(resume.querySelector('svg[aria-hidden="true"]'));
+    assert.equal(resume.disabled, false);
+    failOverview = true;
+    resume.click(); await until(() => writes === 1 && document.getElementById('message')?.textContent?.includes('Не удалось обновить список'));
+    assert.match(document.getElementById('message')!.textContent!, /Пауза снята.*не запущен/);
+    assert.equal((document.getElementById('dialog') as HTMLDialogElement).open, false, 'no extra resume confirmation');
+    const edit = document.querySelector('[data-action="edit"]') as HTMLButtonElement; edit.focus(); edit.click();
+    await until(() => (document.getElementById('dialog') as HTMLDialogElement).open);
+    const close = document.getElementById('dialog-close') as HTMLButtonElement;
+    assert.equal(close.getAttribute('aria-label'), 'Закрыть диалог'); assert.ok(close.querySelector('svg'));
+    close.click(); assert.equal(document.activeElement, edit, 'closing restores keyboard focus');
+    edit.click(); await until(() => (document.getElementById('dialog') as HTMLDialogElement).open);
+    const body = document.querySelector('[name=body]') as HTMLTextAreaElement;
+    body.value = 'Не потерять введённый текст'; failPatch = true; delayPatch = true;
+    const submit = () => document.getElementById('dialog-form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    submit(); submit();
+    await until(() => patchCount === 1 && releasePatch);
+    assert.equal(document.getElementById('dialog-form')!.getAttribute('aria-busy'), 'true');
+    releasePatch!(); await until(() => document.getElementById('dialog-error')!.textContent);
+    assert.equal(body.value, 'Не потерять введённый текст');
+    assert.equal((document.getElementById('dialog-submit') as HTMLButtonElement).disabled, false);
+    delayPatch = true; releasePatch = undefined; submit();
+    await until(() => patchCount === 2 && releasePatch);
+    close.click(); edit.click(); await until(() => (document.getElementById('dialog') as HTMLDialogElement).open);
+    (document.querySelector('[name=body]') as HTMLTextAreaElement).value = 'Новый черновик';
+    releasePatch!(); await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal((document.getElementById('dialog') as HTMLDialogElement).open, true, 'an earlier submission cannot close a newer dialog');
+    assert.equal((document.querySelector('[name=body]') as HTMLTextAreaElement).value, 'Новый черновик');
+  } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
+});
 
 test('public overview, task and case pages separate ongoing work, actual waits and parked tasks', async t => {
   const root = mkdtempSync(join(tmpdir(), 'delo-waiting-ui-'));
@@ -140,17 +230,15 @@ test('public overview, task and case pages separate ongoing work, actual waits a
     assert.deepEqual(rowIds('working'), ['busy', 'ci', 'unknown']); assert.deepEqual(rowIds('done'), ['closed']); assert.deepEqual(rowIds('next'), ['idle']);
     assert.match(document.querySelector('#overview-waiting')!.textContent!, /Ответственный: Firstmate/);
     const parked = document.querySelector('a[href="#held"]')!.closest('.row')!;
-    assert.match(parked.textContent!, /Припаркована.*Ждём поставщика/);
+    assert.match(parked.textContent!, /Отложена вами.*Ждём поставщика/);
     assert.doesNotMatch(parked.textContent!, /Ответственный неизвестен/);
     assert.ok(document.querySelector('#overview-waiting [data-task-action="answer"]'), 'human answers remain available');
     assert.ok(document.querySelector('#overview-waiting [data-task-action="unhold"]'), 'held tasks can resume');
     assert.ok(document.querySelector('#overview-done [data-task-action="reopen"]'), 'closed tasks can return');
     assert.match(document.querySelector('a[href="#case:case"]')!.closest('.row')!.textContent!, /в работе 3 · ждёт 7 · дальше 1 · сделано 1/);
-    const kind = document.getElementById('kind') as HTMLSelectElement;
-    kind.value = 'scout'; kind.dispatchEvent(new window.Event('change'));
+    (document.querySelector('[data-kind="scout"]') as HTMLButtonElement).click();
     assert.deepEqual(rowIds('waiting'), []);
-    const resetKind = document.getElementById('kind') as HTMLSelectElement;
-    resetKind.value = ''; resetKind.dispatchEvent(new window.Event('change'));
+    (document.querySelector('[data-kind=""]') as HTMLButtonElement).click();
     (document.querySelector('#overview-waiting a[href="#coordinator"]') as HTMLAnchorElement).click();
     await until(() => document.querySelector('main h1')?.textContent === 'coordinator');
     assert.match(document.querySelector('.page-heading')!.textContent!, /Нужен разбор/);
@@ -166,7 +254,7 @@ test('public overview, task and case pages separate ongoing work, actual waits a
     assert.match(document.querySelector('.page-heading')!.textContent!, /Ждёт.*Frozen checkpoint/);
     window.location.hash = 'held';
     await until(() => document.querySelector('main h1')?.textContent === 'held');
-    assert.match(document.querySelector('.page-heading')!.textContent!, /Припаркована.*Ждём поставщика/);
+    assert.match(document.querySelector('.page-heading')!.textContent!, /Отложена вами.*Ждём поставщика/);
     assert.doesNotMatch(document.querySelector('.page-heading')!.textContent!, /Ответственный неизвестен/);
     assert.deepEqual(tasks.find(t => t.id === 'held')?.hold_reason, 'Ждём поставщика', 'display preserves the authoritative reason');
     const response = await handle(new Request('http://localhost:4317/api/cases/case'));
@@ -178,7 +266,7 @@ test('public overview, task and case pages separate ongoing work, actual waits a
     await until(() => document.querySelector('[data-action="agent-case"]'));
     assert.match(document.querySelector('main')!.textContent!, /ждёт.*Нужен разбор/);
     const parkedCase = document.querySelector('a[href="#held"]')!.closest('.row')!;
-    assert.match(parkedCase.textContent!, /Припаркована.*Ждём поставщика/);
+    assert.match(parkedCase.textContent!, /Отложена вами.*Ждём поставщика/);
     assert.doesNotMatch(parkedCase.textContent!, /Ответственный неизвестен/);
   } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
 });
@@ -252,14 +340,14 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal(window.document.querySelector('[data-action="brief"]'), null);
     for (const action of ['cover', 'link', 'report', 'knowledge', 'tracker']) assert.equal(window.document.querySelector(`[data-action="${action}"]`), null, action);
     assert.equal(window.document.getElementById('search-form'), null);
-    assert.deepEqual([...window.document.querySelectorAll('main h2')].map(h => h.textContent), ['Ссылки', 'Бриф']);
+    assert.deepEqual([...window.document.querySelectorAll('main h2')].map(h => h.textContent), ['Задание', 'Диагностика задачи', 'Ссылки']);
     const nativeId = goal.id;
     store.update(goal.id, { personal: true });
     window.location.hash = ''; await until(() => window.document.querySelector(`[data-action="pin"][data-id="${nativeId}"]`));
     (window.document.querySelector('[data-action="refresh"]') as HTMLButtonElement).click();
     await until(() => /личное/.test(window.document.querySelector(`[data-id="${nativeId}"]`)?.closest('.row')?.textContent ?? ''));
     assert.match(window.document.querySelector(`[data-id="${nativeId}"]`)?.closest('.row')?.textContent ?? '', /личное/);
-    assert.ok([...(window.document.getElementById('kind') as HTMLSelectElement).options].some(o => o.textContent === 'Личное'));
+    assert.ok([...window.document.querySelectorAll('[data-kind]')].some(o => o.textContent === 'Личное'));
     (window.document.querySelector(`[data-action="pin"][data-id="${nativeId}"]`) as HTMLButtonElement).click();
     const focus = () => window.document.getElementById('overview-focus');
     await until(() => focus()?.querySelector('h2')?.textContent?.includes('1'));
@@ -267,14 +355,14 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal(window.location.hash, '', 'the pin button does not open the task');
     const taskButtons = () => [...window.document.querySelectorAll(`[data-task-action][data-id="${nativeId}"]`)] as HTMLButtonElement[];
     assert.deepEqual([...focus()!.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action')), ['start', 'pause', 'close', 'decline']);
-    assert.match(focus()?.textContent ?? '', /В очереди/);
+    assert.match(focus()?.textContent ?? '', /Готова к запуску/);
     const beforeStart = mutations;
     delayRequest = true;
     const startButtons = taskButtons().filter(b => b.dataset.taskAction === 'start');
     startButtons[0].click(); startButtons[1].click();
     assert.equal(mutations, beforeStart + 1, 'duplicate focus/overview controls send one command while pending');
     assert.ok(taskButtons().every(b => b.disabled), 'all controls for the task are disabled');
-    assert.match(focus()?.textContent ?? '', /Выполняется/);
+    assert.match(focus()?.textContent ?? '', /Отправляем/);
     releaseRequest!();
     await until(() => taskButtons().length && taskButtons().every(b => !b.disabled));
     assert.equal(window.location.hash, '', 'list action does not navigate');
@@ -287,7 +375,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.ok(taskButtons().every(b => !b.disabled), 'failure restores the buttons for retry');
     taskButtons().find(b => b.dataset.taskAction === 'pause')!.click();
     await until(() => taskButtons().some(b => !b.disabled && b.dataset.taskAction === 'unhold'));
-    assert.match(focus()?.textContent ?? '', /Припаркована/);
+    assert.match(focus()?.textContent ?? '', /Отложена вами/);
     const confirm = () => (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     for (const paused of [true, false]) {
       if (!paused) {
@@ -322,7 +410,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal((window.document.querySelector(`main section a[href="#${nativeId}"]`) as HTMLAnchorElement | null)?.textContent, 'UI цель', 'a row opens the goal card');
     (window.document.querySelector(`main section a[href="#${nativeId}"]`)?.closest('.row')?.querySelector('small') as HTMLElement).click();
     await until(() => window.location.hash === `#${nativeId}`);
-    const buttons = async (hash: string) => { window.location.hash = hash; window.dispatchEvent(new window.HashChangeEvent('hashchange')); await until(() => window.document.querySelector('.page-heading .eyebrow')?.textContent?.includes(`· ${hash} ·`)); return [...window.document.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action')); };
+    const buttons = async (hash: string) => { window.location.hash = hash; window.dispatchEvent(new window.HashChangeEvent('hashchange')); await until(() => window.document.querySelector('.page-heading details code')?.textContent === hash); return [...window.document.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action')); };
     const env = { ...process.env }; for (const name of Object.keys(env)) if (name.startsWith('FM_')) delete env[name]; env.FM_HOME = store.firstmate.home;
     run(join(store.firstmate.home, 'bin', 'fm-captain-hold.sh'), ['hold', 'ui-call', '--title', 'Вопрос капитану', '--reason', 'Нужен выбор'], store.firstmate.home, 45000, env);
     assert.deepEqual(await buttons('ui-call'), ['answer', 'later', 'close']);
@@ -342,7 +430,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal(store.firstmate.show(obsolete).state, 'queued');
     assert.equal(window.document.getElementById('dialog-submit')?.textContent, 'Закрыть как неактуальную');
     const dismiss = window.document.getElementById('dialog-close') as HTMLButtonElement;
-    assert.equal(dismiss.textContent, '×', 'the modal uses an icon to dismiss, distinct from closing the task');
+    assert.ok(dismiss.querySelector('svg[aria-hidden="true"]'), 'the modal uses an icon to dismiss, distinct from closing the task');
     assert.equal(dismiss.getAttribute('aria-label'), 'Закрыть диалог');
     assert.equal(dismiss.type, 'button', 'dismiss never submits the confirmation');
     assert.equal((window.document.getElementById('dialog-submit') as HTMLButtonElement).disabled, false, 'confirmation is enabled before submission');
@@ -387,7 +475,7 @@ test('browser app uses the real router for goal forms, the card and task actions
 
     run(join(store.firstmate.home, 'bin', 'fm-captain-hold.sh'), ['hold', nativeId, '--reason', 'Какой вариант брать?\nA или B'], store.firstmate.home, 45000, env);
     // The card reloads asynchronously on the same hash, so wait for the new state before reading its buttons.
-    const asking = () => /В работе · ждёт ответа/.test(window.document.querySelector('.page-heading .eyebrow')?.textContent ?? '');
+    const asking = () => /Ждёт ответа/.test(window.document.querySelector('.page-heading .eyebrow')?.textContent ?? '');
     const shown = () => [...window.document.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action'));
     await buttons(goal.id); await until(asking);
     assert.deepEqual(shown(), ['answer'], 'the answer remains available while existing stop/close requests stay pending');
@@ -474,7 +562,7 @@ test('«Новый агент» appears only on an open дело, defaults its f
     document.getElementById('dialog-form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     await until(() => /Новый агент: задача/.test(document.querySelector('.message')?.textContent ?? ''));
     const task = store.getCase(c.id).tasks[0]!;
-    assert.match(document.querySelector('.message')!.textContent!, new RegExp(`задача ${task.id}\\. Firstmate сейчас занят; просьба сохранена`));
+    assert.match(document.querySelector('.message')!.textContent!, new RegExp(`задача ${task.id}\\. Просьба сохранена`));
     assert.equal(store.firstmate.show(task.id).body, `Дело: ${c.id}\nИсполнитель: codex\nИнтерактивно\nПапка: ${folder}\n\n${input('direction').value}`);
 
     mkdirSync(join(store.firstmate.home, 'state'), { recursive: true });
@@ -576,18 +664,18 @@ test('a deep link renders its card before overview and unchanged refresh preserv
     await until(() => window.document.querySelector('main h1')?.textContent === 'Сохранено до обзора');
     assert.equal(store.get(goal.id).title, 'Сохранено до обзора', 'an accepted edit finishes while overview is gated');
     release(); await new Promise(resolve => setTimeout(resolve, 20));
-    window.location.hash = ''; await until(() => window.document.getElementById('kind'));
-    const filter = window.document.getElementById('kind'); filter.focus();
+    window.location.hash = ''; await until(() => window.document.querySelector('[data-kind=""]'));
+    const filter = window.document.querySelector('[data-kind=""]'); filter.focus();
     await tick();
-    assert.equal(window.document.getElementById('kind'), filter, 'generated timestamp alone does not rebuild the overview');
+    assert.equal(window.document.querySelector('[data-kind=""]'), filter, 'generated timestamp alone does not rebuild the overview');
     assert.equal(window.document.activeElement, filter);
     holdCard = true;
     const before = paths.filter(p => p === `/api/goals/${goal.id}`).length;
     window.location.hash = goal.id;
     await until(() => paths.filter(p => p === `/api/goals/${goal.id}`).length > before);
-    window.location.hash = ''; await until(() => window.document.getElementById('kind'));
+    window.location.hash = ''; await until(() => window.document.querySelector('[data-kind=""]'));
     releaseCard(); await new Promise(resolve => setTimeout(resolve, 40));
-    assert.equal(window.document.getElementById('kind'), filter, 'a late card response cannot replace the overview after navigating back');
+    assert.equal(window.document.querySelector('[data-kind=""]'), filter, 'a late card response cannot replace the overview after navigating back');
   } finally { release(); releaseCard(); window.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -646,7 +734,7 @@ test('task cards expose full status, blockers, PR/report and native prose while 
     await until(() => heading().textContent?.includes('Идёт проверка'));
     window.location.hash = managed.id;
     await until(() => document.querySelector('main h1')?.textContent === managed.title);
-    assert.deepEqual([...document.querySelectorAll('details dd')].map(e => e.textContent), ['Причина', 'Готово', 'Контекст', 'Не терять']);
+    assert.deepEqual([...document.querySelectorAll('#task-assignment dd')].map(e => e.textContent), ['Причина', 'Готово', 'Контекст', 'Не терять']);
     assert.equal(store.get(managed.id).managedBrief, true);
     assert.equal(store.get(goal.id).managedBrief, false);
   } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
@@ -677,17 +765,17 @@ test('request feedback shows pending and accepted without claiming execution or 
     await until(control); control()!.click();
     await until(() => text().includes('Запуск запрошен'));
     assert.equal(control(), null);
-    assert.match(text(), /В очереди/);
+    assert.match(text(), /Готова к запуску/);
     assert.doesNotMatch(document.getElementById('message')!.textContent!, /delo-start-|can_receive|posture/);
     const note = store.firstmate.receipts().pending[0];
     run(join(store.firstmate.home, 'bin', 'fm-inbox.sh'), ['drain', '--ack', note.id], store.firstmate.home, 45000, { ...process.env, FM_HOME: store.firstmate.home });
     now += 2001; (document.querySelector('[data-action="refresh"]') as HTMLButtonElement).click();
-    await until(() => text().includes('Запуск принят'));
-    assert.equal(control(), null); assert.match(text(), /В очереди/);
+    await until(() => text().includes('Firstmate подтвердил приём просьбы о запуске'));
+    assert.equal(control(), null); assert.match(text(), /Готова к запуску/);
     assert.equal(store.firstmate.show(task.id).state, 'queued');
     window.location.hash = task.id;
     await until(() => document.querySelector('main h1')?.textContent === task.title);
-    assert.equal(control(), null); assert.match(text(), /Запуск принят/);
+    assert.equal(control(), null); assert.match(text(), /Firstmate подтвердил приём просьбы о запуске/);
     const technical = [...document.querySelectorAll('details')].find(e => e.querySelector('summary')?.textContent === 'Технические детали просьб');
     assert.ok(technical); assert.equal(technical.open, false);
     assert.match(technical.textContent!, /delo-start-/);
