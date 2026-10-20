@@ -516,7 +516,7 @@ EOF
   # Once a recipient is configured, reviewed email is the captain's only blocker
   # email path; its critic, not this drain, decides whether a listed blocker
   # truly needs the captain.
-  if [ "$blocked" = true ] && [ -n "${FM_CAPTAIN_ALERT_TO:-$(fmx_env_get FM_CAPTAIN_ALERT_TO "$FM_HOME/.env")}" ]; then
+  if [ "$blocked" = true ] && [ -n "${FM_CAPTAIN_ALERT_TO:-$(fmx_env_first FM_CAPTAIN_ALERT_TO "$FM_HOME/.env")}" ]; then
     printf 'OPEN DECISIONS: a blocker only the captain can clear goes to reviewed email: bin/fm-mail.sh alert <request.json> (format: bin/fm-captain-alert.py header)\n' || return 1
   fi
 }

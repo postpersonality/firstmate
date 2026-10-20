@@ -232,6 +232,19 @@ test_blocked_decision_names_reviewed_email_once_configured() {
     || fail "drain failed with a configured recipient"
   grep -F 'goes to reviewed email: bin/fm-mail.sh alert <request.json>' "$out" >/dev/null \
     || fail "reviewed email was not offered for an open blocker: $(cat "$out")"
+  # bin/fm-mail.sh keeps the first nonempty assignment, so a later empty one
+  # leaves alert configured and the hint must stay.
+  printf 'FM_CAPTAIN_ALERT_TO=\n' >> "$dir/.env"
+  env -u FM_CAPTAIN_ALERT_TO FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "drain failed with a later empty recipient assignment"
+  grep -F 'goes to reviewed email: bin/fm-mail.sh alert <request.json>' "$out" >/dev/null \
+    || fail "a later empty assignment hid reviewed email that fm-mail.sh would still send: $(cat "$out")"
+  printf 'FM_CAPTAIN_ALERT_TO=""\n' > "$dir/.env"
+  env -u FM_CAPTAIN_ALERT_TO FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "drain failed with only an empty recipient assignment"
+  if grep -F 'bin/fm-mail.sh alert' "$out" >/dev/null; then
+    fail "reviewed email was offered for an empty recipient: $(cat "$out")"
+  fi
   pass "an open blocker names reviewed email only once a recipient is configured"
 }
 
