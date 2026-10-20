@@ -3673,27 +3673,95 @@ test_workspace_find_matches_only_this_homes_own_label() {
   pass "fm_backend_herdr_workspace_find: matches only THIS home's own label among several coexisting workspaces"
 }
 
-# --- list_live: scoped to this home's own workspace only ---------------------
+# --- list_live: metadata is home ownership even in a shared project Space ----
 
 test_list_live_scoped_to_this_homes_workspace_only() {
   local dir log resp fb out home
   dir="$TMP_ROOT/list-live-scoped"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
-  home="$TMP_ROOT/list-live-scoped-home"; mkdir -p "$home"; printf 'bravo-b2\n' > "$home/.fm-secondmate-home"
-  # 1: workspace_find's `workspace list` - two homes coexist, secondmate's is w2
-  printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"w2","label":"2ndmate-bravo-b2"}]}}\n' > "$resp/1.out"
-  # 2: tab list --workspace w2 (this secondmate's own tabs only)
-  printf '{"result":{"tabs":[{"tab_id":"w2:t1","label":"fm-secondmatetask"}]}}\n' > "$resp/2.out"
-  # 3: pane_for_tab's `pane list --workspace w2`
-  printf '{"result":{"panes":[{"pane_id":"w2:p1","tab_id":"w2:t1"}]}}\n' > "$resp/3.out"
+  home="$dir/home"; mkdir -p "$home/state"
+  printf 'backend=herdr\nherdr_session=fmtest\nwindow=fmtest:w2:p1\nherdr_workspace_id=w2\nherdr_tab_id=w2:t1\nherdr_pane_id=w2:p1\n' > "$home/state/secondmatetask.meta"
+  printf '{"result":{"pane":{"pane_id":"w2:p1","tab_id":"w2:t1","workspace_id":"w2"}}}\n' > "$resp/1.out"
   fb=$(make_herdr_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_HOME="$home" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_list_live fmtest' "$ROOT" )
-  [ "$out" = $'fmtest:w2:p1\tfm-secondmatetask' ] || fail "list_live should report only this home's own tab, got '$out'"
-  assert_contains "$(cat "$log")" $'\x1f''tab'$'\x1f''list'$'\x1f''--workspace'$'\x1f''w2' \
-    "list_live did not scope the tab list call to this home's own workspace (w2)"
-  assert_not_contains "$(cat "$log")" $'\x1f''tab'$'\x1f''list'$'\x1f''--workspace'$'\x1f''w1' \
-    "list_live must never query the primary's (or a sibling secondmate's) workspace"
-  pass "fm_backend_herdr_list_live: scoped to this home's own workspace, never a sibling home's"
+    bash -c '. "$0/bin/fm-backend.sh"; fm_backend_source herdr; fm_backend_herdr_list_live fmtest' "$ROOT" )
+  [ "$out" = $'fmtest:w2:p1\tfm-secondmatetask' ] || fail "list_live should report only this home's recorded endpoint, got '$out'"
+  assert_contains "$(cat "$log")" $'\x1f''pane'$'\x1f''get'$'\x1f''w2:p1' "list_live did not verify recorded endpoint"
+  assert_not_contains "$(cat "$log")" $'\x1f''list' "list_live must never sweep a shared project Space"
+  pass "fm_backend_herdr_list_live: only this home's recorded endpoints, no shared Space sweep"
+}
+
+# Project resolution uses native repository paths before pane initial cwd and
+# refuses conflicting/unknown candidates or unreadable inventory.
+test_project_workspace_path_and_ambiguity_matrix() {
+  local dir project other mode log resp fb out rc
+  dir="$TMP_ROOT/project-matrix"; mkdir -p "$dir"
+  project="$dir/project"; other="$dir/other"
+  git init -q "$project"; git init -q "$other"
+  for mode in native cwd foreign duplicate unknown numbered numbered-stale mixed malformed; do
+    mkdir -p "$dir/$mode/responses"
+    log="$dir/$mode/log"; resp="$dir/$mode/responses"; : > "$log"
+    case "$mode" in
+      native)
+        jq -n --arg p "$project" '{result:{workspaces:[{workspace_id:"w1",label:"renamed",worktree:{repo_root:$p}}]}}' > "$resp/1.out"
+        jq -n --arg p "$other" '{result:{panes:[{workspace_id:"w1",cwd:$p}]}}' > "$resp/2.out" ;;
+      cwd|foreign)
+        printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"renamed"}]}}\n' > "$resp/1.out"
+        if [ "$mode" = cwd ]; then out=$project; else out=$other; fi
+        jq -n --arg p "$out" '{result:{panes:[{workspace_id:"w1",cwd:$p}]}}' > "$resp/2.out" ;;
+      duplicate)
+        printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"},{"workspace_id":"w2","label":"project"}]}}\n' > "$resp/1.out"
+        jq -n --arg p "$project" '{result:{panes:[{workspace_id:"w1",cwd:$p},{workspace_id:"w2",cwd:$p}]}}' > "$resp/2.out" ;;
+      unknown|numbered|numbered-stale)
+        if [ "$mode" != unknown ]; then out='[7] project'; else out=project; fi
+        jq -n --arg name "$out" '{result:{workspaces:[{workspace_id:"w1",number:7,label:$name}]}}' > "$resp/1.out"
+        if [ "$mode" = numbered-stale ]; then
+          sed 's/"number": 7/"number": 8/' "$resp/1.out" > "$resp/stale"
+          mv "$resp/stale" "$resp/1.out"
+        fi
+        printf '{"result":{"panes":[]}}\n' > "$resp/2.out" ;;
+      mixed)
+        printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"}]}}\n' > "$resp/1.out"
+        jq -n --arg p "$project" --arg o "$other" '{result:{panes:[{workspace_id:"w1",cwd:$p},{workspace_id:"w1",cwd:$o}]}}' > "$resp/2.out" ;;
+      malformed)
+        printf '{"result":{}}\n' > "$resp/1.out"
+        printf '{"result":{"panes":[]}}\n' > "$resp/2.out" ;;
+    esac
+    printf '{"result":{"workspace":{"workspace_id":"wnew"},"tab":{"tab_id":"seed"}}}\n' > "$resp/3.out"
+    fb=$(make_herdr_fakebin "$dir/$mode")
+    out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+      bash -c '. "$0/bin/fm-backend.sh"; fm_backend_source herdr; . "$0/bin/fm-wake-lib.sh"; fm_backend_herdr_project_workspace_ensure fmtest "$1" || exit; printf "%s" "$FM_BACKEND_HERDR_WS_ID"' "$ROOT" "$project" 2> "$dir/$mode/err")
+    rc=$?
+    case "$mode" in
+      native|cwd) [ "$rc" = 0 ] && [ "$out" = w1 ] || fail "$mode project match failed: $out" ;;
+      foreign) [ "$rc" = 0 ] && [ "$out" = wnew ] || fail 'distinct project should create its own Space' ;;
+      *)
+        [ "$rc" -ne 0 ] || fail "$mode inventory should refuse"
+        assert_not_contains "$(cat "$log")" $'\x1f''create' "$mode must not create any endpoint" ;;
+    esac
+  done
+  pass 'project Space resolution prefers native paths and fails closed on duplicate, mixed, unknown and malformed identity'
+}
+
+# The current checkout may itself be linked. Mask only its origin read, without
+# altering shared Git config or creating another checkout, to exercise the
+# originless primary-root contract against Git's real worktree inventory.
+test_originless_identity_uses_primary_checkout() {
+  local expected out dir real_git
+  expected=$(git -C "$ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')
+  expected=$(cd "$expected" && pwd -P)
+  real_git=$(command -v git)
+  dir="$TMP_ROOT/originless-git"; mkdir -p "$dir"
+  cat > "$dir/git" <<'SH'
+#!/usr/bin/env bash
+# Simulate absent origin configuration while keeping the real linked inventory.
+if [ "${1:-}" = -C ] && [ "${3:-} ${4:-} ${5:-}" = 'remote get-url origin' ]; then exit 2; fi
+exec "$FM_REAL_GIT" "$@"
+SH
+  chmod +x "$dir/git"
+  out=$(PATH="$dir:$PATH" FM_REAL_GIT="$real_git" \
+    bash -c '. "$0/bin/fm-wake-lib.sh"; fm_treehouse_project_identity "$0"' "$ROOT")
+  [ "$out" = "$expected" ] || fail "originless identity did not resolve the primary checkout: $out"
+  pass 'originless project identity resolves the primary root without changing shared Git config'
 }
 
 # --- target parsing, key normalization ---------------------------------------
@@ -5985,6 +6053,8 @@ test_projection_reclaim_replaces_only_exact_husk_and_advances_binding
 test_projection_recovery_is_read_only_and_refuses_live_duplicate_risk
 test_workspace_find_matches_only_this_homes_own_label
 test_list_live_scoped_to_this_homes_workspace_only
+test_project_workspace_path_and_ambiguity_matrix
+test_originless_identity_uses_primary_checkout
 test_parse_target
 test_normalize_key
 test_capture_calls_pane_read
