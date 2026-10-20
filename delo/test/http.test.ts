@@ -102,3 +102,44 @@ test('pin and task POSTs return receipts without waiting for an overview', async
     assert.equal(calls, 1, 'only the authoritative pin check needs a snapshot');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('a service restart rejects only the stale token; fresh same-origin cases retain all request guards', async () => {
+  const { router } = await import('../src/server.ts');
+  const root = mkdtempSync(join(tmpdir(), 'delo-http-restart-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  try {
+    for (const host of ['localhost', '127.0.0.1', '[::1]']) {
+      const origin = `http://${host}:4317`; const before = router(store); const after = router(store);
+      const meta = async (handle: ReturnType<typeof router>) => {
+        const response = await handle(new Request(`${origin}/api/meta`));
+        assert.equal(response.headers.get('cache-control'), 'no-store'); return response.json();
+      };
+      const old = await meta(before); const fresh = await meta(after);
+      assert.notEqual(old.csrf, fresh.csrf);
+      const request = (token: string, headers: Record<string, string> = {}, hostOrigin = origin) => new Request(`${hostOrigin}/api/cases`, {
+        method: 'POST', headers: { origin, 'content-type': 'application/json', 'x-delo-csrf': token, ...headers },
+        body: JSON.stringify({ title: 'https://example.com/discussion', sources: '', why: '', doneWhen: '', context: '', constraints: '' }),
+      });
+      const count = store.list().length;
+      const stale = await after(request(old.csrf)); assert.equal(stale.status, 403);
+      assert.equal((await stale.json()).code, 'CSRF_MISMATCH');
+      assert.equal(store.list().length, count, 'token rejection happens before creating a case');
+      const success = await after(request(fresh.csrf)); assert.equal(success.status, 201);
+      const created = await success.json(); assert.equal(created.title, 'Новое дело');
+      assert.deepEqual(created.sources, ['https://example.com/discussion']);
+      const rejectedHeaders: Record<string, string>[] = [
+        { origin: 'https://evil.example' }, { origin: 'null' }, { origin: 'http://localhost:9999' },
+        { origin: origin.replace(host, host === 'localhost' ? '127.0.0.1' : 'localhost') },
+        { 'x-delo-csrf': '' }, { 'content-type': 'text/plain' },
+        { origin: 'https://evil.example', 'x-forwarded-host': host, 'x-forwarded-proto': 'http' },
+      ];
+      for (const headers of rejectedHeaders) {
+        const rejected = await after(request(fresh.csrf, headers)); assert.equal(rejected.status, 403);
+        if (headers['x-delo-csrf'] !== '') assert.equal((await rejected.json()).code, undefined, 'only a token mismatch invites refresh');
+      }
+      assert.equal((await after(request(fresh.csrf, {}, 'http://evil.example:4317'))).status, 403);
+      assert.equal((await after(new Request(`${origin}/api/meta`, { headers: { origin: 'https://evil.example' } }))).status, 403);
+      assert.equal(store.list().length, count + 1, 'rejected requests never reach the store');
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -15,7 +15,7 @@ const { JSDOM } = require('jsdom') as any;
 
 test('browser app uses the real router for goal forms, the card and task actions', async () => {
   const root = mkdtempSync(join(tmpdir(), 'delo-ui-'));
-  const store = new Store({ firstmateHome: firstmateHome(root) }); const handle = router(store);
+  const store = new Store({ firstmateHome: firstmateHome(root) }); let handle = router(store);
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
   const source = stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8'));
   const dom = new JSDOM(html, { url: 'http://localhost:4317/', runScripts: 'outside-only' });
@@ -74,6 +74,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal((window.document.querySelector('[name=personal]') as HTMLInputElement).checked, true);
     (window.document.querySelector('[name=body]') as HTMLTextAreaElement).value = 'Правка из карточки';
     (window.document.querySelector('[name=personal]') as HTMLInputElement).checked = false;
+    handle = router(store); // The shared helper also recovers PATCH requests after a restart.
     (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     await until(() => store.get(goal.id).body === 'Правка из карточки');
     assert.equal(window.document.querySelector('[data-action="launch"]'), null, 'a goal has no own agent launch');
@@ -534,4 +535,82 @@ test('request feedback shows pending and accepted without claiming execution or 
     assert.equal(store.firstmate.receipts().pending[0].request_id, `delo-start-${task.id}-2`);
 
   } finally { dom.window.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('an open case form survives a server restart and refreshes its token once', async () => {
+  for (const host of ['localhost', '127.0.0.1']) {
+    const root = mkdtempSync(join(tmpdir(), 'delo-ui-restart-'));
+    const store = new Store({ firstmateHome: firstmateHome(root) });
+    let handle = router(store);
+    const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: `http://${host}:4317/`, runScripts: 'outside-only' });
+    const { window } = dom; const document = window.document;
+    window.setInterval = (() => 0) as typeof window.setInterval;
+    window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+    window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+    const requests: { path: string; status: number }[] = [];
+    let unavailableMeta = false; let restartOnRefresh = false; let foreign = false; let failure = '';
+    (window as any).fetch = async (input: string, init: RequestInit = {}) => {
+      const url = new URL(input, window.location.href); const headers = new Headers(init.headers);
+      if (init.method !== 'GET') headers.set('origin', foreign ? 'https://evil.example' : url.origin);
+      if (url.pathname === '/api/meta' && unavailableMeta) throw new Error('offline');
+      if (url.pathname === '/api/cases' && init.method === 'POST' && failure) {
+        requests.push({ path: url.pathname, status: 500 });
+        if (failure === 'network') throw new Error('offline');
+        return Response.json({ error: 'Не удалось сохранить' }, { status: 500 });
+      }
+      const response = await handle(new Request(url, { ...init, headers }));
+      requests.push({ path: url.pathname, status: response.status });
+      if (url.pathname === '/api/meta' && restartOnRefresh) handle = router(store);
+      return response;
+    };
+    const until = async (check: () => unknown) => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 25)); assert.ok(check()); };
+    const submit = async () => {
+      requests.length = 0;
+      document.getElementById('dialog-form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+      await until(() => !document.getElementById('dialog-submit')!.hasAttribute('disabled'));
+    };
+    const error = () => document.getElementById('dialog-error')!.textContent!;
+    try {
+      window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+      await until(() => document.querySelector('main h1'));
+      document.getElementById('new-case')!.click();
+      const title = document.querySelector('[name=title]') as HTMLInputElement;
+      title.value = 'https://example.com/discussion';
+      const why = document.querySelector('[name=why]') as HTMLTextAreaElement; why.value = 'Сохранить контекст';
+      handle = router(store); // A new service instance invalidates the page's startup token.
+      await submit();
+      assert.equal(error(), '', host);
+      assert.equal(store.list().length, 1, 'only one case is created');
+      assert.deepEqual(requests.filter(r => ['/api/meta', '/api/cases'].includes(r.path)), [
+        { path: '/api/cases', status: 403 }, { path: '/api/meta', status: 200 }, { path: '/api/cases', status: 201 },
+      ]);
+      assert.equal((document.getElementById('dialog') as HTMLDialogElement).open, false);
+      await until(() => document.querySelector('main h1')?.textContent === 'Новое дело');
+      document.getElementById('new-case')!.click();
+      const draft = document.querySelector('[name=title]') as HTMLInputElement; draft.value = 'Черновик';
+      const context = document.querySelector('[name=context]') as HTMLTextAreaElement; context.value = 'Не терять';
+      handle = router(store); unavailableMeta = true;
+      await submit();
+      assert.match(error(), /Повторите отправку/);
+      assert.equal(draft.value, 'Черновик'); assert.equal(context.value, 'Не терять');
+      assert.equal((document.getElementById('dialog') as HTMLDialogElement).open, true);
+      assert.equal(store.list().length, 1);
+      unavailableMeta = false; restartOnRefresh = true;
+      await submit();
+      assert.match(error(), /Повторите отправку/);
+      assert.deepEqual(requests.map(r => r.status), [403, 200, 403], 'a second restart does not cause an unbounded retry');
+      assert.equal(draft.value, 'Черновик'); assert.equal(context.value, 'Не терять');
+      restartOnRefresh = false; foreign = true;
+      await submit();
+      assert.deepEqual(requests.map(r => r.status), [403], 'a foreign-origin failure is never refreshed or replayed');
+      assert.match(error(), /другого сайта/);
+      foreign = false;
+      for (failure of ['server', 'network']) {
+        await submit();
+        assert.deepEqual(requests.map(r => r.status), [500], 'ambiguous failures are never replayed');
+        assert.equal(draft.value, 'Черновик'); assert.equal(context.value, 'Не терять');
+        assert.equal(store.list().length, 1);
+      }
+    } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
+  }
 });

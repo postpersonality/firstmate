@@ -24,8 +24,16 @@ function renderMain(html: string) {
 }
 
 async function api<T = any>(path: string, body?: unknown, method?: string): Promise<T> {
-  const response = await fetch(path, { method: method ?? (body === undefined ? 'GET' : 'POST'), headers: { 'content-type': 'application/json', 'x-delo-csrf': csrf }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-  const value = await response.json(); if (!response.ok) throw new Error(value.error ?? `Ошибка ${response.status}`); return value;
+  const verb = method ?? (body === undefined ? 'GET' : 'POST');
+  const request = () => fetch(path, { method: verb, cache: 'no-store', headers: { 'content-type': 'application/json', 'x-delo-csrf': csrf }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  let response = await request(); let value = await response.json();
+  // Only this pre-mutation refusal is safe to replay; network and action failures may already have applied.
+  if (!['GET', 'HEAD'].includes(verb) && response.status === 403 && value.code === 'CSRF_MISMATCH') {
+    try { csrf = (await api('/api/meta')).csrf; }
+    catch { throw new Error('Не удалось обновить проверку страницы. Повторите отправку, когда Дело снова будет доступно.'); }
+    response = await request(); value = await response.json();
+  }
+  if (!response.ok) throw new Error(value.error ?? `Ошибка ${response.status}`); return value;
 }
 let messageTimer: number | undefined;
 function message(text: string, error = false, undo?: () => Promise<void>) {

@@ -18,14 +18,17 @@ export function router(store: Store, opener = 'xdg-open') {
     const url = new URL(req.url);
     if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return send({ error: 'Разрешён только локальный адрес' }, 403);
     if (req.headers.get('origin') && req.headers.get('origin') !== url.origin) return send({ error: 'Запрос с другого сайта запрещён' }, 403);
-    if (!['GET', 'HEAD'].includes(req.method) && (req.headers.get('x-delo-csrf') !== csrf || !req.headers.get('content-type')?.startsWith('application/json'))) return send({ error: 'Запрос не прошёл проверку происхождения' }, 403);
+    if (!['GET', 'HEAD'].includes(req.method)) {
+      if (!req.headers.get('content-type')?.startsWith('application/json')) return send({ error: 'Запрос не прошёл проверку происхождения' }, 403);
+      if (req.headers.get('x-delo-csrf') !== csrf) return send({ error: 'Не удалось подтвердить страницу. Повторите отправку.', code: 'CSRF_MISMATCH' }, 403);
+    }
     try {
       if (req.method === 'GET' && ['/', '/index.html', '/app.js', '/style.css'].includes(url.pathname)) {
         const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
         const content = name === 'app.js' ? stripTypeScriptTypes(readFileSync(`${web}/app.ts`, 'utf8')) : readFileSync(`${web}/${name}`, 'utf8');
         return new Response(content, { headers: { 'content-type': { 'index.html': 'text/html; charset=utf-8', 'style.css': 'text/css; charset=utf-8', 'app.js': 'text/javascript; charset=utf-8' }[name]!, 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'", 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' } });
       }
-      if (req.method === 'GET' && url.pathname === '/api/meta') return send({ csrf });
+      if (req.method === 'GET' && url.pathname === '/api/meta') return Response.json({ csrf }, { headers: { 'cache-control': 'no-store' } });
       if (req.method === 'GET' && url.pathname === '/api/overview') return send(await store.overview());
       const pin = /^\/api\/tasks\/([^/]+)\/pin$/.exec(url.pathname);
       if (req.method === 'POST' && pin) {
