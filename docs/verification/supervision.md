@@ -56,6 +56,7 @@ bash bin/fm-test-run.sh --jobs 1 \
 Observed result: `FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0`.
 That sandbox does not run under the app-server holding the lock, so its confirmation shows thread-id matching, not attachment exclusivity; no check covers the sandboxed tools of a duplicate attachment, and the hook-side refusal does not extend to them.
 The opt-in `tests/fm-codex-stop-watch-live-e2e.test.sh` refreshes native evidence after its generated hooks and invocation-local trust scope are separately reviewed.
+Its driver also restarts its own app-server, resumes the persisted primary thread with one recovery turn, and expects the native `resume` SessionStart to rebind that thread to the new host, sandboxed tools to only confirm it, and one native continuation to handle a worker completion recorded before the restart; no native run has executed that phase.
 This proves the supported native return path with an executing trusted hook and functioning handler; it does not deploy or establish hook trust for any current client.
 The exact guarantee and failure boundary remain in [Codex API Stop ownership](../turnend-guard.md#codex-api-stop-ownership).
 
