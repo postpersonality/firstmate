@@ -9,7 +9,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
-| Worker permissions, accounts, or environment | [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), and [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist) |
+| Worker permissions, accounts, or environment | [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker effort pin](#worker-effort-pin-configcrew-effort), and [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
@@ -972,6 +972,48 @@ A remote secondmate is launched on its host from its own home's configuration, s
 
 [`bin/fm-worker-account-lib.sh`](../bin/fm-worker-account-lib.sh) owns parsing, the sign-in check, and the full list of credentials a Claude launch unsets; [runtime backend verification](verification/runtime-backends.md#worker-account-pin-sign-in-check) records the check against the real runners.
 
+## Worker effort pin (config/crew-effort)
+
+The optional local, gitignored `config/crew-effort` pins the reasoning effort of every worker launch from this home, so a routine launch cannot quietly run at a lower level.
+With no file, every launch is unchanged.
+
+Activate it with one level, for example `printf 'xhigh\n' > config/crew-effort`, and remove the file to return to unpinned launches.
+The file must hold exactly one of `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`, with surrounding whitespace ignored.
+Any other content, or an unreadable or nonregular file, refuses every launch and names the file to fix.
+The file is read on every launch, so a change reaches the next worker or relaunch without a restart.
+
+### What a pinned launch does
+
+The pin covers ship, scout, and batch spawns, local and remote secondmate agents, and relaunches.
+A launch that names no effort, or `default` where that command accepts it, runs at the pinned level, and the task record shows that level.
+A relaunch with no explicit effort also takes the pin rather than the effort recorded for the previous run.
+A launch that names a different effort, through `--effort`, a dispatch profile, or a `config/secondmate-harness` effort token, refuses; the pin never raises or lowers a requested level for it.
+Align those profiles and tokens with the pin, or omit their effort.
+
+Every refusal happens before a new worker's endpoint, local copy, or task record exists, and before a relaunch stops the running worker.
+
+### Runtime support
+
+A pinned launch must carry the level through the runtime's own verified setting, so a runtime that would record the level and omit it from the launch refuses instead.
+For an `xhigh` pin:
+
+| Runtime | With an `xhigh` pin |
+| --- | --- |
+| `claude`, `codex`, `pi`, `pi-signed`, `omp`, `muse` | Launches with the runtime's native effort setting. |
+| `opencode` | Launches only with an `openai/<id>` model, whose variant list carries `xhigh`; any other model refuses. |
+| `grok`, `agy`, `rovo`, `kimi`, `cursor`, `gemini`, `devin` | Refuses, because the runtime has no verified `xhigh` setting. |
+| A raw launch command | Refuses, because Firstmate cannot verify which effort a raw command applies. |
+
+Other levels follow the same native mappings, owned by [`bin/fm-worker-effort-lib.sh`](../bin/fm-worker-effort-lib.sh).
+
+The pin guards Firstmate's own launch path; it does not stop an operator from editing the file or starting a runtime outside Firstmate.
+
+### Inheritance
+
+The file is inherited into secondmate homes under the primary-authoritative contract owned by [`secondmate-provisioning`](../.agents/skills/secondmate-provisioning/SKILL.md), so a secondmate's own workers launch on the same pin.
+The launching home also applies its own pin before it asks a remote host to launch or relaunch a remote secondmate.
+A remote relaunch must therefore name the runtime, because a runtime left for the host to choose cannot be verified to carry the pin.
+
 ## Lavish server address (config/lavish-axi-host)
 
 The optional local, gitignored `config/lavish-axi-host` contains one non-empty address without whitespace for the per-machine Lavish server.
@@ -1186,13 +1228,13 @@ This single-provider table is separate from the frozen legacy mapping used by `f
 
 **Model, effort, and fallback behavior**
 
-- `ultra` is native-only: the model-aware validation contract and launch mapping are owned by `bin/fm-harness.sh validate-native-effort` and `bin/fm-spawn.sh` respectively.
+- `ultra` is native-only: the model-aware validation contract and launch mapping are owned by `bin/fm-harness.sh validate-native-effort` and `bin/fm-worker-effort-lib.sh` respectively.
 - Codex `max` is valid when the profile selects `gpt-5.6-luna`, whose installed catalog entry supports that reasoning level.
-- An omitted model or effort means the selected harness uses its own default for that axis.
+- An omitted model or effort means the selected harness uses its own default for that axis, unless the [worker effort pin](#worker-effort-pin-configcrew-effort) sets the effort.
 - OpenCode receives the effort as its default `build` agent's `variant`, keyed to the resolved model, inside the `OPENCODE_CONFIG_CONTENT` JSON its launch already writes (the per-model reasoning-effort field of the config schema, verified on opencode 1.18.32); with no model resolved, the effort is recorded in task metadata but omitted from the launch.
 - Every profile array is an implicit quota-aware choice resolved through `quota-array-dispatch`.
 - If no dispatch rule fits, firstmate resolves `default` through the same object-or-array path before falling back to `config/crew-harness`.
-- Except for `ultra`, which refuses unsupported profiles under the native-effort contract above, an effort value the chosen harness does not accept is recorded as `effort=` in task meta for traceability but omitted from the launch flags.
+- Except for `ultra`, which refuses unsupported profiles under the native-effort contract above, an effort value the chosen harness does not accept is recorded as `effort=` in task meta for traceability but omitted from the launch flags; under the worker effort pin such a launch refuses instead.
 - Bootstrap reports unsupported harness/model/effort combinations as a `CREW_DISPATCH` diagnostic when they are visible in the file.
 
 See [`docs/examples/crew-dispatch.json`](examples/crew-dispatch.json) for a starting point to copy into local `config/crew-dispatch.json`; its Pi default declares the `claude` provider required for typed resolution of that Anthropic model.

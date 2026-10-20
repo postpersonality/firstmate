@@ -79,6 +79,11 @@
 #              The same pre-stop refusal applies to this home's worker tool
 #              exclusions (bin/fm-exclude-tools-lib.sh): a malformed list, or a
 #              replacement runtime that cannot hide the listed tools.
+#              Under this home's worker effort pin (bin/fm-worker-effort-lib.sh)
+#              an omitted or default effort resolves to the pin instead of the
+#              recorded one, and a different effort, or a replacement runtime
+#              that cannot carry the pin natively, refuses before the old agent
+#              stops.
 #              --note is required for a ship or scout, whose replacement
 #              inherits the local copy but none of the conversation; a
 #              secondmate reconciles its own home's records at startup, so its
@@ -181,6 +186,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-worker-account-lib.sh"
 # shellcheck source=bin/fm-exclude-tools-lib.sh
 . "$SCRIPT_DIR/fm-exclude-tools-lib.sh"
+# shellcheck source=bin/fm-worker-effort-lib.sh
+. "$SCRIPT_DIR/fm-worker-effort-lib.sh"
 
 POLL=${FM_CONTROL_POLL:-0.5}
 SETTLE_WAIT=${FM_CONTROL_SETTLE_WAIT:-5}
@@ -942,15 +949,20 @@ resolve_relaunch_profile() {
   else
     TARGET_MODEL=default
   fi
+  local config=${FM_CONFIG_OVERRIDE:-$FM_HOME/config} effort_pin
+  effort_pin=$(fm_worker_effort_pin "$config") || return 1
   if [ "$EFFORT_SET" = 1 ]; then
     TARGET_EFFORT=$NEW_EFFORT
   elif [ "$HARNESS_SET" = 0 ] && [ -n "$CONFIG_HARNESS" ]; then
     TARGET_EFFORT=${CONFIG_EFFORT:-default}
-  elif [ "$TARGET_HARNESS" = "$PRIOR_HARNESS" ]; then
+  elif [ "$TARGET_HARNESS" = "$PRIOR_HARNESS" ] && [ -z "$effort_pin" ]; then
+    # A pin replaces the recorded effort, which may predate it.
     TARGET_EFFORT=$PRIOR_EFFORT
   else
     TARGET_EFFORT=default
   fi
+  # The launch owner applies the same pin, but only after the old agent stops.
+  TARGET_EFFORT=$(fm_worker_effort_apply "$config" "$TARGET_EFFORT" "$TARGET_HARNESS" "$TARGET_MODEL" 0) || return 1
   if [ "$TARGET_EFFORT" = ultra ]; then
     "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$TARGET_HARNESS" "$TARGET_MODEL" "$TARGET_EFFORT" || return 1
   fi
