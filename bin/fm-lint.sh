@@ -143,7 +143,9 @@ fm_lint_worker_stop() {
 
 fm_lint_now_ms() {
   if [ -n "${EPOCHREALTIME:-}" ]; then
-    local seconds=${EPOCHREALTIME%.*} micros=${EPOCHREALTIME#*.}
+    # The decimal separator follows LC_NUMERIC (a comma under ru_RU, for example).
+    local now=$EPOCHREALTIME
+    local seconds=${now%[!0-9]*} micros=${now#*[!0-9]}
     printf '%s\n' "$((seconds * 1000 + 10#${micros:0:3}))"
   else
     printf '%s\n' "$(($(date +%s) * 1000))"
