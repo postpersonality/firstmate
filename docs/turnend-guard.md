@@ -315,7 +315,7 @@ Once the lock records this thread and supervision work is pending, Stop fails cl
 A Stop from a thread the lock does not record never parks and never claims the lock.
 While another live session holds the lock, that Stop is read-only: it gets a notice and is not blocked.
 Under a free, stale, PID-1 or legacy PID-only lock with supervision work pending, it keeps the one-block guard bounded by `stop_hook_active`, and the block names the upgrade below; an empty fleet stays silent.
-The recorded thread attached to another app-server is not blocked either while the app-server holding the lock is live: it is read-only, so it gets a notice and starts no checkpoint.
+The Stop of the recorded thread attached to another app-server is not blocked either while the app-server holding the lock is live: it gets a read-only notice and starts no checkpoint. That attachment's sandboxed model tools are not refused; see the sandbox limitation below.
 Native interruption cancels the synchronous return owner; an empty fleet or held/parked backlog alone starts no supervision work.
 The existing away daemon remains a legitimate alternate owner.
 
@@ -327,8 +327,12 @@ Native SessionStart `startup`, `clear` and `compact` run `bin/fm-session-start.s
 A different recorded thread cannot acquire or park that home merely because it shares the daemon PID.
 
 Inside the native Linux tool sandbox the model's shell sees `codex-linux-sandbox` as PID 1, not the host app-server.
-There `bin/fm-lock.sh` only confirms a lock whose sidecar already records the thread beside a host PID, leaving both files unchanged.
+There `bin/fm-lock.sh` only confirms a lock whose sidecar already records the tool's thread id beside a PID other than 1, leaving both files unchanged.
 It refuses every other lock, including a free, PID-only, stale or PID-1 lock, so a sandboxed tool never publishes PID 1 and stays read-only until a native hook records its thread.
+That confirmation compares thread ids only: the sandbox exposes nothing that names the app-server hosting the tool, so it cannot tell the recorded owner from the same thread attached to another live app-server.
+Such a duplicate's tools get `lock acquired`, and its `bin/fm-session-start.sh` runs without `READ-ONLY SESSION`, although its native hooks refuse it.
+No native run has attached one thread to two live app-servers, so whether the runtime reaches that state is unmeasured.
+Closing the gap needs a per-app-server value that the host hook can record beside the lock and only that app-server's sandboxed tools observe; current evidence provides none.
 
 To upgrade a primary that took the helm before thread binding:
 

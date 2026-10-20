@@ -39,8 +39,8 @@ A second actual thread in the same app-server executed the lock command, receive
 An interrupted primary produced no further Stops or leftover watcher; an empty primary completed with guard exit 0 and no watcher beacon.
 
 [`runtime-backends.md`](runtime-backends.md#native-codex-api-primary-identity) records the measured hook/tool identity distinction.
-The portable regression covers an existing healthy watcher, pending delivery across the boundary, idempotent acknowledgement, fail-closed repeated watcher failure, unhandled duplicate wakes and checkpoint-lock contention, foreign ownership, a read-only duplicate attachment of the recorded thread, free, stale, PID-1 and legacy PID-only locks that Stop never adopts with its one-block guard and an empty fleet keeps silent, a live legacy PID-only lock that no thread adopts, host-side SessionStart resume binding after an app-server restart, a sandboxed lock writer in a real PID namespace that never publishes PID 1 or replaces a PID-only, stale or PID-1 lock, a timeout fallback whose kill escalation returns 137, and held-only backlog.
-The native proof above predates the legacy guard and its extension to free, stale and PID-1 locks, the live legacy-lock adoption refusal, the duplicate-attachment refusal, the 137 handling, the sandboxed lock refusal and native SessionStart binding; only the portable regression covers them:
+The portable regression covers an existing healthy watcher, pending delivery across the boundary, idempotent acknowledgement, fail-closed repeated watcher failure, unhandled duplicate wakes and checkpoint-lock contention, foreign ownership, a read-only Stop of the recorded thread attached to another app-server, free, stale, PID-1 and legacy PID-only locks that Stop never adopts with its one-block guard and an empty fleet keeps silent, a live legacy PID-only lock that no thread adopts, host-side SessionStart resume binding after an app-server restart, a sandboxed lock writer in a real PID namespace that confirms a host-bound lock by thread id alone and never publishes PID 1 or replaces a PID-only, stale or PID-1 lock, a timeout fallback whose kill escalation returns 137, and held-only backlog.
+The native proof above predates the legacy guard and its extension to free, stale and PID-1 locks, the live legacy-lock adoption refusal, the duplicate-attachment Stop refusal, the 137 handling, the sandboxed lock refusal and native SessionStart binding; only the portable regression covers them:
 
 ```sh
 bash bin/fm-test-run.sh --jobs 1 \
@@ -48,8 +48,11 @@ bash bin/fm-test-run.sh --jobs 1 \
 ```
 
 Observed result: `FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0`.
+That sandbox does not run under the app-server holding the lock, so its confirmation shows thread-id matching, not attachment exclusivity; no check covers the sandboxed tools of a duplicate attachment, and the hook-side refusal does not extend to them.
 The opt-in `tests/fm-codex-stop-watch-live-e2e.test.sh` refreshes native evidence after its generated hooks and invocation-local trust scope are separately reviewed.
-Its driver also restarts its own app-server, resumes the persisted primary thread with one recovery turn, and expects the native `resume` SessionStart to rebind that thread to the new host, sandboxed tools to only confirm it, and one native continuation to handle a worker completion recorded before the restart; no native run has executed that phase.
+Its driver also restarts its own app-server, resumes the persisted primary thread with one recovery turn, and expects the native `resume` SessionStart to rebind that thread to the new host, sandboxed tools to only confirm it, and one native continuation to handle a worker completion recorded before the restart.
+Its foreign thread gets only a read-only instruction; that thread's native SessionStart refusal and the unchanged primary PID and sidecar are the refusal evidence.
+No native run has executed that phase or this foreign step.
 This proves the supported native return path with an executing trusted hook and functioning handler; it does not deploy or establish hook trust for any current client.
 The exact guarantee and failure boundary remain in [Codex API Stop ownership](../turnend-guard.md#codex-api-stop-ownership).
 
