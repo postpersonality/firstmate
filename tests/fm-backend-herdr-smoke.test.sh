@@ -220,8 +220,17 @@ if [ -z "$SM_TAB_ID" ] || [ -z "$SM_PANE_ID" ]; then
 fi
 pass "real herdr: a task spawned into the secondmate-shaped home lands as a tab inside the secondmate's OWN workspace"
 
+# Recovery consumes exact owned records, not labels in a shared project Space.
+PRIMARY_HOME="$SM_SCRATCH/primary-home"
+mkdir -p "$PRIMARY_HOME/state" "$SM_HOME/state"
+record_endpoint() {
+  printf 'backend=herdr\nherdr_session=%s\nwindow=%s:%s\nherdr_workspace_id=%s\nherdr_tab_id=%s\nherdr_pane_id=%s\n' \
+    "$SESSION" "$SESSION" "$4" "$2" "$3" "$4" > "$1"
+}
+record_endpoint "$PRIMARY_HOME/state/smoke1.meta" "${CONTAINER#*:}" "$TAB_ID" "$PANE_ID"
+record_endpoint "$SM_HOME/state/smtask1.meta" "${SM_CONTAINER#*:}" "$SM_TAB_ID" "$SM_PANE_ID"
 # list_live for each home must never see the OTHER home's task.
-PRIMARY_LIVE=$(fm_backend_herdr_list_live "$SESSION")
+PRIMARY_LIVE=$(FM_HOME="$PRIMARY_HOME" fm_backend_herdr_list_live "$SESSION")
 case "$PRIMARY_LIVE" in
   *"$SM_TASK_LABEL"*) fail "the primary home's list_live must not see a secondmate-shaped home's task"$'\n'"$PRIMARY_LIVE" ;;
 esac
@@ -356,10 +365,11 @@ TASK_IDS2=$(fm_backend_herdr_create_task "$CONTAINER" "$LABEL2" /tmp "$SEEDED_TA
 read -r _TAB_ID2 PANE_ID2 <<EOF
 $TASK_IDS2
 EOF
-live=$(fm_backend_herdr_list_live "$SESSION")
+record_endpoint "$PRIMARY_HOME/state/smoke2.meta" "${CONTAINER#*:}" "$_TAB_ID2" "$PANE_ID2"
+live=$(FM_HOME="$PRIMARY_HOME" fm_backend_herdr_list_live "$SESSION")
 assert_contains_local() { case "$1" in *"$2"*) : ;; *) fail "$3"$'\n'"--- got ---"$'\n'"$1" ;; esac; }
 assert_contains_local "$live" "$LABEL2" "list_live did not report the freshly created task tab by label"
-pass "real herdr: list_live discovers a live task tab by fm-<id> label"
+pass "real herdr: list_live verifies a recorded live task endpoint"
 
 fm_backend_herdr_kill "$SESSION:$PANE_ID2"
 

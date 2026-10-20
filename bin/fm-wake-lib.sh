@@ -1536,11 +1536,10 @@ fm_local_firstmate_state_dirs() {  # <first-state>
 # below it, including a remote-seeded home and its own local descendants -
 # derives the identical path. Its identity is the project's resolved origin, so
 # separate clones of one origin share a single lock; an origin-less local-only
-# project falls back to its own worktree top instead of failing to resolve.
-fm_treehouse_project_lock_path() {  # <project-dir>
-  local project=$1 root origin identity hash top
+# project falls back to its primary worktree root, shared by its linked copies.
+fm_treehouse_project_identity() {  # <project-dir> -> resolved origin or local repository root
+  local project=$1 origin identity top
   [ -d "$project" ] || return 1
-  root=$(fm_firstmate_root_home "$FM_HOME") || return 1
   origin=$(git -C "$project" remote get-url origin 2>/dev/null || true)
   if [ -n "$origin" ]; then
     case "$origin" in
@@ -1550,10 +1549,18 @@ fm_treehouse_project_lock_path() {  # <project-dir>
     esac
     identity=$origin
   else
-    top=$(git -C "$project" rev-parse --show-toplevel 2>/dev/null) || return 1
+    top=$(git -C "$project" worktree list --porcelain 2>/dev/null | awk '/^worktree / { sub(/^worktree /, ""); print; exit }') || return 1
+    [ -n "$top" ] || return 1
     top=$(CDPATH='' cd -- "$top" 2>/dev/null && pwd -P) || return 1
     identity=$top
   fi
+  printf '%s' "$identity"
+}
+
+fm_treehouse_project_lock_path() {  # <project-dir>
+  local root identity hash
+  root=$(fm_firstmate_root_home "$FM_HOME") || return 1
+  identity=$(fm_treehouse_project_identity "$1") || return 1
   hash=$(printf '%s' "$identity" | git hash-object --stdin 2>/dev/null) || return 1
   [ -d "$root/state" ] || return 1
   printf '%s/.treehouse-project-%s.lock\n' "$root/state" "$hash"

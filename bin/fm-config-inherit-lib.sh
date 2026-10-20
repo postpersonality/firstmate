@@ -9,11 +9,8 @@
 # hand-edit backlog files too, primary config/backend pins that home's local
 # runtime-backend default for future spawns, primary config/startup-memory-budget
 # bounds that home's startup-memory curation, and primary
-# config/herdr-presentation-spaces carries the same Herdr presentation-projection
-# preference - an absent primary file and an absent destination file both mean
-# the same unconfigured default, so the generic absence mirror below converges
-# a secondmate without deciding the release-dependent floor; explicit "on" and
-# "off" preferences propagate as files. Primary
+# config/herdr-presentation-spaces retains the historical preference as a
+# compatibility file; new project-Space placement does not consume it. Primary
 # config/trace-context is copied at the launch convergence point as part of the
 # default-off W3C trace-context setup, while live convergence leaves it unchanged.
 # Primary config/lavish-axi-host carries the one per-machine Lavish server address

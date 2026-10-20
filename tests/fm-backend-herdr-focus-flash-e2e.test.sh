@@ -374,8 +374,8 @@ case "$FLOOR_VERDICT" in
   *) fail "herdr $LIVE_VERSION (protocol $LIVE_PROTOCOL) could not be classified against the presentation floor" ;;
 esac
 
-# The end-user gate: an unconfigured home must project only at or above the
-# floor, and an explicit opt-in must survive either way.
+# The historical preference helper remains release-aware for compatibility;
+# new worker placement uses project Spaces independently of that preference.
 FLOOR_CONFIG="$TMP_ROOT/floor-config"
 FLOOR_STATE="$TMP_ROOT/floor-state"
 mkdir -p "$FLOOR_CONFIG" "$FLOOR_STATE"

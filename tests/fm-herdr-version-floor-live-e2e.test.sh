@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Default-on live guard for the Herdr presentation version floor.
+# Live compatibility guard for the historical Herdr presentation floor.
+# New project-Space placement does not consume this preference classifier.
 #
 # Protocol is the floor's structural signal, and its mapping to real releases
 # is a vendor-supplied fact that no fixture can prove. The runtime gate checks
@@ -13,7 +14,7 @@
 # A run downloads upstream release binaries over the network but submits no
 # prompt, so the shared live gate runs it by default wherever its tools exist.
 # Run it after every Herdr upgrade and before trusting a refreshed
-# docs/verification/runtime-backends.md "Presentation version floor" entry.
+# historical preference classifier; project placement has its own lab proof.
 #
 # Every Herdr invocation, including the downloaded binaries', is routed through
 # bin/fm-herdr-lab.sh against a named non-default lab session. Only the
