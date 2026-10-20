@@ -22,13 +22,19 @@ async function api<T = any>(path: string, body?: unknown, method?: string): Prom
   const response = await fetch(path, { method: method ?? (body === undefined ? 'GET' : 'POST'), headers: { 'content-type': 'application/json', 'x-delo-csrf': csrf }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const value = await response.json(); if (!response.ok) throw new Error(value.error ?? `Ошибка ${response.status}`); return value;
 }
-function message(text: string, error = false) {
+let messageTimer: number | undefined;
+function message(text: string, error = false, undo?: () => Promise<void>) {
+  window.clearTimeout(messageTimer);
   $('message').textContent = text; $('message').className = `message${error ? ' error' : ''}`; $('message').hidden = false;
-  window.setTimeout(() => { $('message').hidden = true; }, 5000);
+  if (undo) {
+    const button = document.createElement('button'); button.textContent = 'Вернуть';
+    button.onclick = async () => { button.disabled = true; try { await undo(); } catch (e: any) { message(e.message, true); } };
+    $('message').append(' ', button);
+  } else messageTimer = window.setTimeout(() => { $('message').hidden = true; }, 5000);
 }
 function modal(title: string, body: string, action: (form: FormData) => Promise<void>, submit = 'Сохранить') {
   $('dialog-title').textContent = title; $('dialog-body').innerHTML = body; $('dialog-error').textContent = '';
-  $('dialog-submit').textContent = submit;
+  $('dialog-submit').textContent = submit; $('dialog-cancel').hidden = true;
   submitDialog = action; $('dialog-submit').hidden = !submit;
   ($('dialog') as HTMLDialogElement).showModal();
 }
@@ -74,29 +80,41 @@ async function newAgent(c: ViewCase) {
   const interactive = document.querySelector<HTMLInputElement>('#dialog-body [name=interactive]')!;
   interactive.onchange = () => { if (interactive.checked) document.querySelector<HTMLSelectElement>('#dialog-body [name=harness]')!.value = 'codex'; };
 }
-const actionLabels: Record<string, string> = { start: 'Взять в работу', pause: 'Пауза', unhold: 'Снять паузу', close: 'Закрыть', decline: 'Отказ', answer: 'Ответить', release: 'Разрешить работу', later: 'Позже', reopen: 'Вернуть' };
+const actionLabels: Record<string, string> = { start: 'Взять в работу', pause: 'Пауза', unhold: 'Снять паузу', close: 'Закрыть', decline: 'Отказ', answer: 'Ответить', release: 'Разрешить работу', later: 'Позже', reopen: 'Вернуть', stop: 'Запросить остановку' };
 const taskState = (g: { state?: Goal['state']; holdKind?: string; inFlight?: boolean }) => g.state === 'done' ? 'Закрыта' : g.inFlight ? 'В работе' : g.holdKind === 'captain' ? 'Ждёт решения' : g.state === 'paused' ? 'На паузе' : g.state === 'active' ? 'В очереди' : '';
-function taskControls(g: Pick<Goal, 'id' | 'actions' | 'holdKind' | 'inFlight'>) {
+function taskControls(g: Pick<Goal, 'id' | 'title' | 'actions' | 'holdKind' | 'inFlight'>) {
   const pending = pendingTasks.has(g.id);
-  return `<div class="actions task-actions">${g.actions.map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}" ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
+  return `<div class="actions task-actions">${g.actions.map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}" ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
 }
 function taskPending(id: string, on: boolean) {
   if (on) pendingTasks.add(id); else pendingTasks.delete(id);
   document.querySelectorAll<HTMLButtonElement>('[data-task-action], [data-action="pin"]').forEach(b => { if (b.dataset.id === id) b.disabled = on; });
   document.querySelectorAll<HTMLElement>('[data-task-pending]').forEach(e => { if (e.dataset.id === id) e.hidden = !on; });
 }
-async function taskAction(g: Pick<Goal, 'id' | 'holdKind' | 'inFlight'>, action: string) {
+async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'>, action: string) {
   const path = `/api/tasks/${encodeURIComponent(g.id)}/${action}`;
   const run = async (body: Record<string, unknown> = {}) => {
     if (pendingTasks.has(g.id)) return;
     taskPending(g.id, true);
     try {
       const result = await api(path, body);
-      message(result.note ? receipt(result) : `${actionLabels[action]}: готово.`);
       await reload();
+      if (action === 'stop' || action === 'close' && g.inFlight) {
+        message(action === 'stop' ? 'Просьба об остановке с сохранением сделанного сохранена. Ждём обработки firstmate; задача остаётся открытой, остановка ещё не подтверждена.' : 'Просьба закрыть задачу сохранена. Ждём обработки firstmate; задача пока остаётся в работе.');
+      } else if (action === 'close' && result.task) {
+        message(`Задача «${g.title}» закрыта.`, false, () => taskAction(g, 'reopen'));
+      } else message(result.note ? receipt(result) : `${actionLabels[action]}: готово.`);
     } finally { taskPending(g.id, false); }
   };
-  if (action === 'close' && g.holdKind === 'captain' && !g.inFlight) modal('Закрыть задачу', '<p>Задача больше не актуальна? Она будет закрыта, а ваш выбор сохранится в её истории.</p>', () => run(), 'Закрыть как неактуальную');
+  if (action === 'close' || action === 'stop') {
+    const consequence = action === 'stop' ? 'Firstmate получит просьбу остановить работу, сохранить сделанное и оставить задачу открытой. Это не немедленная остановка; ждём обработки просьбы.'
+      : g.inFlight ? 'Firstmate получит просьбу закрыть задачу. Исполнитель не будет остановлен этим нажатием; ждём обработки просьбы.'
+      : g.holdKind === 'captain' ? 'Задача будет закрыта как неактуальная, а ваш выбор сохранится в её истории.'
+      : `Задача уйдёт в «Сделано». После закрытия её можно вернуть кнопкой «Вернуть».${g.holdKind === 'parked' ? ' Сохранённая пауза останется.' : ''}`;
+    const label = action === 'stop' ? actionLabels.stop : g.inFlight ? 'Запросить закрытие' : g.holdKind === 'captain' ? 'Закрыть как неактуальную' : 'Закрыть';
+    modal(label, `<p>Задача «${esc(g.title)}»</p><p>${consequence}</p>`, () => run(), label);
+    $('dialog-cancel').hidden = false;
+  }
   else if (action === 'decline') modal('Отказ', field('reason', 'Причина отказа', '', false, true), async f => run({ reason: f.get('reason') }), 'Отказаться');
   else if (action === 'answer') modal('Ответить', field('answer', 'Ответ', '', false, true), async f => run({ answer: f.get('answer') }), 'Ответить');
   else if (action === 'release') modal('Разрешить работу', field('answer', 'Комментарий (необязательно)'), async f => run(f.get('answer') ? { answer: f.get('answer') } : {}), 'Разрешить работу');
@@ -218,11 +236,11 @@ async function reload() {
 }
 $('new-goal').onclick = () => { newGoal().catch(e => message(e.message, true)); };
 $('new-case').onclick = newCase;
-$('dialog-close').onclick = () => ($('dialog') as HTMLDialogElement).close();
+$('dialog-close').onclick = $('dialog-cancel').onclick = () => ($('dialog') as HTMLDialogElement).close();
 $('dialog-form').onsubmit = async event => { event.preventDefault(); if (($('dialog-submit') as HTMLButtonElement).disabled) return; $('dialog-submit').setAttribute('disabled', ''); try { await submitDialog(new FormData($('dialog-form') as HTMLFormElement)); ($('dialog') as HTMLDialogElement).close(); } catch (e: any) { $('dialog-error').textContent = e.message; } finally { $('dialog-submit').removeAttribute('disabled'); } };
 $('main').onclick = async event => {
   const taskButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-task-action]');
-  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight }, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } return; }
+  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, title: taskButton.dataset.title!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight }, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } return; }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
   if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, button, input, select, textarea, label, .task-actions, .row-actions')) go.querySelector('a')?.click(); return; }
   try { if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'open-report') { button.disabled = true; await api(`/api/reports/${encodeURIComponent(button.dataset.id!)}/open`, {}); return; } if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }

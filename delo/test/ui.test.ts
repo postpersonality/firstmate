@@ -114,6 +114,35 @@ test('browser app uses the real router for goal forms, the card and task actions
     taskButtons().find(b => b.dataset.taskAction === 'pause')!.click();
     await until(() => taskButtons().some(b => b.dataset.taskAction === 'unhold'));
     assert.match(focus()?.textContent ?? '', /На паузе/);
+    const confirm = () => (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    for (const paused of [true, false]) {
+      if (!paused) {
+        taskButtons().find(b => b.dataset.taskAction === 'unhold')!.click();
+        await until(() => taskButtons().some(b => b.dataset.taskAction === 'start'));
+      }
+      const before = mutations;
+      taskButtons().find(b => b.dataset.taskAction === 'close')!.click();
+      assert.equal(window.location.hash, '', 'closure is available directly from the list');
+      assert.match(window.document.getElementById('dialog-body')!.textContent!, /UI цель.*Сделано.*Вернуть/);
+      assert.equal(mutations, before, 'confirmation does not mutate');
+      window.document.getElementById('dialog-cancel')!.click();
+      assert.equal(dialogOpen(), false);
+      assert.equal(store.firstmate.show(nativeId).state, 'queued');
+      assert.equal(store.get(nativeId).state, paused ? 'paused' : 'active');
+      taskButtons().find(b => b.dataset.taskAction === 'close')!.click();
+      confirm(); confirm();
+      await until(() => taskButtons().some(b => b.dataset.taskAction === 'reopen') && window.document.querySelector('#message button'));
+      assert.equal(mutations, before + 1, 'double confirmation closes once');
+      const undo = window.document.querySelector('#message button') as HTMLButtonElement;
+      assert.equal(undo.textContent, 'Вернуть');
+      undo.click();
+      await until(() => taskButtons().some(b => b.dataset.taskAction === (paused ? 'unhold' : 'start')));
+      assert.equal(store.firstmate.show(nativeId).state, 'queued');
+      assert.equal(store.firstmate.show(nativeId).held, paused ? 'yes' : 'no', 'undo preserves the existing parked hold');
+    }
+    taskButtons().find(b => b.dataset.taskAction === 'pause')!.click();
+    await until(() => taskButtons().some(b => b.dataset.taskAction === 'unhold'));
+
     taskButtons().find(b => b.dataset.taskAction === 'unhold')!.click();
     await until(() => taskButtons().some(b => b.dataset.taskAction === 'start'));
     assert.equal((window.document.querySelector(`main section a[href="#${nativeId}"]`) as HTMLAnchorElement | null)?.textContent, 'UI цель', 'a row opens the goal card');
@@ -162,7 +191,26 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal(store.firstmate.show(obsolete).state, 'done');
     assert.match(store.firstmate.show(obsolete).body, /Answer: Закрыть как неактуальную/);
     store.firstmate.start(nativeId);
-    assert.deepEqual(await buttons(goal.id), ['close'], 'an In flight row is closed by a note for firstmate');
+    assert.deepEqual(await buttons(goal.id), ['stop', 'close'], 'an In flight row is closed by a note for firstmate');
+    for (const action of ['stop', 'close']) {
+      const before = mutations;
+      const button = () => window.document.querySelector(`[data-task-action="${action}"]`) as HTMLButtonElement;
+      button().click();
+      assert.match(window.document.getElementById('dialog-body')!.textContent!, /UI цель/);
+      if (action === 'stop') assert.match(window.document.getElementById('dialog-body')!.textContent!, /сохранить сделанное.*оставить задачу открытой.*не немедленная остановка/);
+      window.document.getElementById('dialog-cancel')!.click();
+      assert.equal(mutations, before);
+      button().click(); delayRequest = true; confirm(); confirm();
+      assert.equal(mutations, before + 1);
+      releaseRequest!();
+      await until(() => !dialogOpen());
+      assert.equal(store.firstmate.show(nativeId).state, 'in_flight');
+      assert.match(window.document.getElementById('message')!.textContent!, /Просьба.*сохранена/);
+      button().click(); confirm();
+      await until(() => !dialogOpen());
+      assert.equal(store.inbox(nativeId).requests.filter(r => r.requestId.startsWith(`delo-${action}-${nativeId}-`)).length, 1);
+    }
+
     window.document.getElementById('new-case')?.click();
     assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'sources', 'why', 'doneWhen', 'context', 'constraints']);
     (window.document.querySelector('[name=title]') as HTMLInputElement).value = 'UI дело';
@@ -176,6 +224,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     await until(() => window.document.querySelector(`[data-task-action="close"][data-id="${member}"]`));
     const caseHash = window.location.hash;
     (window.document.querySelector(`[data-task-action="close"][data-id="${member}"]`) as HTMLButtonElement).click();
+    (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     await until(() => window.document.querySelector(`[data-task-action="reopen"][data-id="${member}"]`));
     assert.equal(window.location.hash, caseHash, 'a case list action keeps the case page open');
     (window.document.querySelector(`[data-task-action="reopen"][data-id="${member}"]`) as HTMLButtonElement).click();

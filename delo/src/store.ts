@@ -233,9 +233,9 @@ export class Store {
     const task = this.firstmate.show(taskId);
     if (!actions(task).includes(action)) throw new Error('Это действие недоступно для задачи в её состоянии');
     const need = <T>(value: T | undefined, what: string) => { if (!value) throw new Error(`Укажите ${what}`); return value; };
-    if (action === 'start' || action === 'close' && task.state === 'in_flight') {
-      const kind = action === 'start' ? 'start' : 'close';
-      const text = kind === 'start' ? `Дело: возьми в работу задачу ${task.id}` : `Дело: закрой задачу ${task.id}`;
+    if (action === 'start' || action === 'stop' || action === 'close' && task.state === 'in_flight') {
+      const kind = action === 'start' ? 'start' : action === 'stop' ? 'stop' : 'close';
+      const text = kind === 'start' ? `Дело: возьми в работу задачу ${task.id}` : kind === 'stop' ? `Дело: останови работу по задаче ${task.id}, сохрани сделанное, задачу не закрывай` : `Дело: закрой задачу ${task.id}`;
       const note = this.firstmate.note(text, this.requestId(kind, task.id), kind === 'start' ? task.id : undefined);
       return { note, ready: this.firstmate.ready() };
     }
@@ -259,7 +259,7 @@ export class Store {
   }
 
   // A repeated click on a request firstmate has not acknowledged reuses its id, so fm-inbox replays it.
-  private requestId(kind: 'start' | 'close', taskId: string) {
+  private requestId(kind: 'start' | 'close' | 'stop', taskId: string) {
     const prefix = `delo-${kind}-${taskId}-`;
     const { pending = [], handled = [] } = this.firstmate.receipts();
     const ours = [...pending, ...handled].filter((r: any) => typeof r.request_id === 'string' && r.request_id.startsWith(prefix) && /^\d+$/.test(r.request_id.slice(prefix.length)));
@@ -272,7 +272,7 @@ export class Store {
   inbox(taskId: string) {
     const { pending = [], handled = [] } = this.firstmate.receipts();
     const requests = [...pending.map((r: any) => ({ ...r, state: 'pending' })), ...handled.map((r: any) => ({ ...r, state: 'handled' }))]
-      .filter(r => [`delo-start-${taskId}-`, `delo-close-${taskId}-`].some(p => r.request_id?.startsWith(p)))
+      .filter(r => [`delo-start-${taskId}-`, `delo-close-${taskId}-`, `delo-stop-${taskId}-`].some(p => r.request_id?.startsWith(p)))
       .map(r => ({ requestId: r.request_id, at: r.at, state: r.state, acknowledged: !!r.acknowledged, reply: r.reply ?? null }));
     return { requests, ready: requests.some(r => r.state === 'pending') ? this.firstmate.ready() : undefined };
   }

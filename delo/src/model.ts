@@ -27,10 +27,10 @@ export const actionInput = z.object({ reason: line.optional(), answer: line.refi
 export const personalLine = 'Личное';
 
 // Card buttons by backlog row state (plan section 5); the server refuses any action not listed here.
-export type Action = 'start' | 'pause' | 'unhold' | 'close' | 'decline' | 'answer' | 'release' | 'later' | 'reopen';
+export type Action = 'start' | 'pause' | 'unhold' | 'close' | 'decline' | 'answer' | 'release' | 'later' | 'reopen' | 'stop';
 export function actions(task: { state: string; held?: string | boolean; hold_kind?: string; kind?: string }): Action[] {
   if (task.kind === 'program') return []; // A дело has its own buttons on its page.
-  if (task.state === 'in_flight') return ['close'];
+  if (task.state === 'in_flight') return ['stop', 'close'];
   if (task.state === 'done') return task.kind === 'captain' || task.hold_kind === 'captain' ? [] : ['reopen'];
   if (task.hold_kind === 'captain') return [task.kind === 'captain' ? 'answer' : 'release', 'later', 'close'];
   if (task.held === true || task.held === 'yes') return ['unhold', 'close', 'decline'];

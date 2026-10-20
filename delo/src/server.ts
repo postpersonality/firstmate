@@ -32,7 +32,7 @@ export function router(store: Store, opener = 'xdg-open') {
         const taskId = decodeURIComponent(pin[1]); id.parse(taskId);
         return send(store.pin(taskId, z.object({ pinned: z.boolean() }).parse(await req.json()).pinned));
       }
-      const act = /^\/api\/tasks\/([^/]+)\/(start|pause|unhold|close|decline|answer|release|later|reopen)$/.exec(url.pathname);
+      const act = /^\/api\/tasks\/([^/]+)\/(start|pause|unhold|close|stop|decline|answer|release|later|reopen)$/.exec(url.pathname);
       if (req.method === 'POST' && act) {
         const taskId = decodeURIComponent(act[1]); id.parse(taskId);
         return send(store.act(taskId, act[2] as Action, await req.json()));

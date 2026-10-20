@@ -13,7 +13,7 @@ test('card actions follow the backlog row state', () => {
   assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'parked', kind: 'ship' }), ['unhold', 'close', 'decline']);
   assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'captain', kind: 'captain' }), ['answer', 'later', 'close']);
   assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'captain', kind: 'scout' }), ['release', 'later', 'close']);
-  assert.deepEqual(actions({ state: 'in_flight', held: 'no', kind: 'ship' }), ['close']);
+  assert.deepEqual(actions({ state: 'in_flight', held: 'no', kind: 'ship' }), ['stop', 'close']);
   assert.deepEqual(actions({ state: 'done', held: 'no', kind: 'ship' }), ['reopen']);
   assert.deepEqual(actions({ state: 'done', held: 'no', kind: 'captain' }), []);
 });
@@ -36,6 +36,7 @@ test('card actions reach Firstmate through notes, answers and backlog commands',
     assert.deepEqual(store.inbox(row).requests.map(r => [r.requestId, r.state]), [[`delo-start-${row}-1`, 'pending']]);
     assert.equal(store.firstmate.show(row).state, 'queued');
 
+    assert.throws(() => store.act(row, 'stop', {}), /недоступно/);
     store.act(row, 'pause', {});
     assert.equal(store.firstmate.show(row).hold_kind, 'parked');
     assert.throws(() => store.act(row, 'start', {}), /недоступно/);
@@ -52,8 +53,16 @@ test('card actions reach Firstmate through notes, answers and backlog commands',
 
     const flying = store.create({ title: 'В работе' }).id;
     store.firstmate.start(flying);
-    assert.deepEqual(store.get(flying).actions, ['close']);
+    assert.deepEqual(store.get(flying).actions, ['stop', 'close']);
+    assert.equal(store.act(flying, 'stop', {}).note.outcome, 'created');
+    assert.equal(store.act(flying, 'stop', {}).note.outcome, 'replay');
+    const stop = store.firstmate.receipts().pending.find((n: any) => n.request_id === `delo-stop-${flying}-1`);
+    assert.equal(stop.body, `Дело: останови работу по задаче ${flying}, сохрани сделанное, задачу не закрывай`);
+    assert.deepEqual([stop.kind, stop.task], [null, null]);
+    assert.equal(store.firstmate.show(flying).state, 'in_flight');
+    assert.equal(store.inbox(flying).requests.filter(r => r.requestId === `delo-stop-${flying}-1`).length, 1);
     assert.equal(store.act(flying, 'close', {}).note.outcome, 'created');
+    assert.equal(store.act(flying, 'close', {}).note.outcome, 'replay');
     assert.equal(store.firstmate.show(flying).state, 'in_flight');
     assert.ok(store.inbox(flying).requests.some(r => r.requestId === `delo-close-${flying}-1`));
     hold('hold', flying, '--reason', 'Нужен выбор во время работы');
