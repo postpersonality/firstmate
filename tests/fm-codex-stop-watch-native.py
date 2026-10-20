@@ -158,25 +158,45 @@ else:
             {"type": "command", "command": 'bash "$FM_HOME/native-hook.sh"', "timeout": 30},
         ]}]}}
         (self.user / "hooks.json").write_text(json.dumps(hooks))
-        self.err = (self.home / "server.stderr").open("w")
-        self.proc = subprocess.Popen([BINARY, "app-server", "--stdio"], cwd=self.home,
-                                     env=self.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=self.err, start_new_session=True, preexec_fn=one_cpu)
-        self.buf = b""
-        self.records = []
-        self.seq = 0
         self.thread = None
-        self.turn = None
+        self.spawn()
         try:
             self.start()
         except BaseException:
             self.close()
             raise
 
+    def spawn(self):
+        self.err = (self.home / "server.stderr").open("a")
+        self.proc = subprocess.Popen([BINARY, "app-server", "--stdio"], cwd=self.home,
+                                     env=self.env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=self.err, start_new_session=True, preexec_fn=one_cpu)
+        self.buf = b""
+        self.records = []
+        self.seq = 0
+        self.turn = None
+        try:
+            self.request("initialize", {"clientInfo": {"name": "firstmate_native_stop_guard", "version": "1"},
+                                        "capabilities": {"experimentalApi": True}})
+            self.send({"method": "initialized"})
+        except BaseException:
+            self.close()
+            raise
+
+    def restart(self, host):
+        self.close()
+        deadline = time.monotonic() + 5
+        while Path(f"/proc/{host}").exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not Path(f"/proc/{host}").exists(), "the owned host app-server outlived its restart"
+        self.spawn()
+        result = self.request("thread/resume", {
+            "threadId": self.thread, "cwd": str(self.home), "model": MODEL, "approvalPolicy": "never",
+            "sandbox": "workspace-write", "config": {"bypass_hook_trust": True, "project_doc_max_bytes": 0},
+        })
+        assert result["thread"]["id"] == self.thread, "thread/resume did not reopen the persisted primary thread"
+
     def start(self):
-        self.request("initialize", {"clientInfo": {"name": "firstmate_native_stop_guard", "version": "1"},
-                                    "capabilities": {"experimentalApi": True}})
-        self.send({"method": "initialized"})
         result = self.request("thread/start", {
             "cwd": str(self.home), "model": MODEL, "approvalPolicy": "never",
             "sandbox": "workspace-write", "ephemeral": False,
@@ -272,14 +292,16 @@ else:
                 return True
         return False
 
-    def bound(self):
+    def bound(self, source=None):
         start = [row for row in self.rows("native-starts.jsonl")
                  if row["payload"].get("session_id") == self.thread]
-        assert start and "lock acquired: harness pid" in start[0]["output"], \
+        assert start and source in (None, start[-1]["payload"].get("source")) \
+            and "lock acquired: harness pid" in start[-1]["output"], \
             "native SessionStart did not bind the primary thread outside the tool sandbox"
         lock = (self.home / "state/.lock").read_text().strip()
-        assert lock != "1" and b"app-server" in Path(f"/proc/{lock}/cmdline").read_bytes(), \
-            "native SessionStart did not record the live host app-server"
+        assert lock != "1" and os.getpgid(int(lock)) == self.proc.pid \
+            and b"app-server" in Path(f"/proc/{lock}/cmdline").read_bytes(), \
+            "native SessionStart did not record this lab's live host app-server"
         assert (self.home / "state/.lock-session").read_text().strip() == self.thread
         return lock
 
@@ -297,6 +319,28 @@ else:
             os.killpg(self.proc.pid, signal.SIGKILL)
             self.proc.wait()
         self.err.close()
+
+
+def tools_confirmed(native, host):
+    native.until(lambda: (native.home / "tool-unowned-status").exists())
+    assert (native.home / "tool-lock-status").read_text().strip() == "0 0", "native model tool cannot confirm its SessionStart-bound lock"
+    assert (native.home / "tool-lock-before").read_bytes() == (native.home / "tool-lock-after").read_bytes(), "model tool replaced the SessionStart-bound host PID"
+    assert (native.home / "tool-unowned-status").read_text().strip() == "1 1", "sandboxed model tool claimed a legacy or free lock"
+    assert (native.home / "legacy-state/.lock").read_text().strip() == host, "sandboxed model tool replaced a live legacy host PID"
+    assert not (native.home / "legacy-state/.lock-session").exists(), "sandboxed model tool bound a legacy lock"
+    assert not (native.home / "free-state/.lock").exists(), "sandboxed model tool published PID 1"
+    assert (native.home / "tool-checkpoint-status").read_text().strip() in ("0", "124"), "model tool checkpoint failed"
+
+
+def stays_interrupted(native):
+    native.request("turn/interrupt", {"threadId": native.thread, "turnId": native.turn})
+    native.until(lambda: native.completed("interrupted"), seconds=15)
+    count = len(native.rows("native-stops.jsonl"))
+    end = time.monotonic() + 3
+    while time.monotonic() < end:
+        native.poll()
+    assert len(native.rows("native-stops.jsonl")) == count, "native interruption restarted supervision"
+    assert not (native.home / "state/.watch.lock/pid").exists(), "native interruption leaked its watcher"
 
 
 for control in (True, False):
@@ -320,15 +364,7 @@ for control in (True, False):
             assert not inbox.exists(), "negative control unexpectedly continued"
             print(f"ok - {VERSION}: old API Stop stayed idle after the late worker completion", flush=True)
         else:
-            native.until(lambda: (native.home / "tool-lock-status").exists())
-            assert (native.home / "tool-lock-status").read_text().strip() == "0 0", "native model tool cannot confirm its SessionStart-bound lock"
-            assert (native.home / "tool-lock-before").read_bytes() == (native.home / "tool-lock-after").read_bytes(), "model tool replaced the SessionStart-bound host PID"
-            native.until(lambda: (native.home / "tool-unowned-status").exists())
-            assert (native.home / "tool-unowned-status").read_text().strip() == "1 1", "sandboxed model tool claimed a legacy or free lock"
-            assert (native.home / "legacy-state/.lock").read_text().strip() == host, "sandboxed model tool replaced a live legacy host PID"
-            assert not (native.home / "legacy-state/.lock-session").exists(), "sandboxed model tool bound a legacy lock"
-            assert not (native.home / "free-state/.lock").exists(), "sandboxed model tool published PID 1"
-            assert (native.home / "tool-checkpoint-status").read_text().strip() in ("0", "124"), "model tool checkpoint failed"
+            tools_confirmed(native, host)
             native.until(inbox.exists)
             native.until(native.sent_then_acked)
             assert "already authorized validation" in inbox.read_text()
@@ -342,14 +378,7 @@ for control in (True, False):
             results = native.rows("native-results.jsonl")
             assert any(row["status"] == 2 and "checkpoint:" in row["feedback"] for row in results), "quiet boundary had no native continuation"
             assert any(row["payload"].get("stop_hook_active") and row["status"] == 2 for row in results), "cross-hook continuation bypass was not exercised"
-            native.request("turn/interrupt", {"threadId": native.thread, "turnId": native.turn})
-            native.until(lambda: native.completed("interrupted"), seconds=15)
-            count = len(native.rows("native-stops.jsonl"))
-            end = time.monotonic() + 3
-            while time.monotonic() < end:
-                native.poll()
-            assert len(native.rows("native-stops.jsonl")) == count, "native interruption restarted supervision"
-            assert not (native.home / "state/.watch.lock/pid").exists(), "native interruption leaked its watcher"
+            stays_interrupted(native)
             owner = (native.home / "state/.lock-session").read_text()
             foreign = native.request("thread/start", {
                 "cwd": str(native.home), "model": MODEL, "approvalPolicy": "never",
@@ -372,6 +401,36 @@ for control in (True, False):
                        for row in native.rows("native-starts.jsonl")), "another thread's native SessionStart was not refused"
             print(f"ok - {VERSION}: quiet and late API Stop continuations performed one worker validation; interruption stayed stopped", flush=True)
             print(f"ok - {VERSION}: SessionStart bound the host lock; sandboxed tools only confirmed it, refused legacy and free locks, ran drain/ack/send/checkpoint; another actual thread refused", flush=True)
+            with (native.home / "state/worker.status").open("a") as stream:
+                stream.write("done: ready for already authorized validation after the host restart\n")
+            prior = len(native.rows("native-results.jsonl"))
+            native.restart(host)
+            for name in ("tool-lock-status", "tool-unowned-status", "tool-checkpoint-status",
+                         "tool-lock-before", "tool-lock-after"):
+                (native.home / name).unlink()
+            for name in ("legacy-state", "free-state"):
+                shutil.rmtree(native.home / name)
+            native.turn = native.request("turn/start", {"threadId": native.thread, "effort": "xhigh", "input": [{
+                "type": "text", "text": "This lab's host app-server was deliberately restarted and this primary thread resumed. "
+                "Reply exactly 'Resumed.' now. On the next hook continuation or firstmate watcher wake, follow your original "
+                "handler instructions once more, except that the worker instruction text is now "
+                '"Proceed with the already authorized validation after the host restart".',
+            }]})["turn"]["id"]
+            native.until(lambda: any(row["payload"].get("session_id") == native.thread
+                                     and row["payload"].get("source") == "resume"
+                                     for row in native.rows("native-starts.jsonl")))
+            lock = native.bound("resume")
+            assert lock != host, "native resume kept the exited host PID"
+            tools_confirmed(native, lock)
+            steer = inbox.parent / "002.msg"
+            native.until(steer.exists)
+            native.until(native.sent_then_acked)
+            assert "after the host restart" in steer.read_text()
+            assert not (inbox.parent / "003.msg").exists(), "worker was steered twice after resume"
+            assert any(row["payload"].get("session_id") == native.thread and row["status"] == 2
+                       for row in native.rows("native-results.jsonl")[prior:]), "resumed thread had no native continuation"
+            stays_interrupted(native)
+            print(f"ok - {VERSION}: owned app-server restart; native resume SessionStart rebound the persisted thread to the new host, sandboxed tools only confirmed it, and one native continuation handled the pending worker completion", flush=True)
     finally:
         native.close()
 
