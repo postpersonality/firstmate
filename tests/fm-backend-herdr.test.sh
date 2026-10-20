@@ -1544,93 +1544,6 @@ test_create_task_creates_with_no_focus_flag() {
   pass "fm_backend_herdr_create_task: tab create passes --no-focus"
 }
 
-# --- legacy cleanup release floor ------------------------------------------
-
-# The exact release identities measured against the real macOS aarch64 release
-# binaries on 2026-08-05 and recorded in docs/verification/runtime-backends.md.
-AT_FLOOR_PROTOCOL=19
-AT_FLOOR_VERSION=0.8.0
-BELOW_FLOOR_PROTOCOL=17
-BELOW_FLOOR_VERSION=0.7.5
-
-
-
-
-
-
-
-
-
-
-# The floor classifier is pure, so these cases pin it against every release
-# identity measured from the real binaries plus the deliberate signal-loss and
-# signal-divergence shapes that decide which signal carried a verdict.
-release_floor_verdict() {  # <protocol> <version> -> above|below|indeterminate
-  bash -c '
-    . "$0/bin/backends/herdr.sh"
-    status=0
-    fm_backend_herdr_release_floor_verdict "$1" "$2" || status=$?
-    case "$status" in
-      0) printf "above\n" ;;
-      1) printf "below\n" ;;
-      *) printf "indeterminate\n" ;;
-    esac
-  ' "$ROOT" "$1" "$2"
-}
-
-test_release_floor_verdict_matches_the_measured_releases() {
-  local expected protocol version got case_line
-  # protocol<TAB>version<TAB>expected, from the 2026-08-05 measurement.
-  while IFS=$'\t' read -r protocol version expected; do
-    [ -n "$expected" ] || continue
-    got=$(release_floor_verdict "$protocol" "$version")
-    [ "$got" = "$expected" ] \
-      || fail "protocol '$protocol' version '$version' should be $expected, got $got"
-  done <<'CASES'
-16	0.7.3	below
-16	0.7.4	below
-17	0.7.5	below
-17	0.7.5-preview.2026-07-21-0f10e1453a7f	below
-18	0.7.5-preview.2026-07-29-44b3adb12552	below
-19	0.8.0-preview.2026-08-04-d78e3d3b5126	above
-19	0.8.0	above
-20	0.9.0	above
-CASES
-  case_line=$(release_floor_verdict 19 '')
-  [ "$case_line" = above ] || fail "a floor protocol alone must carry an above verdict, got $case_line"
-  case_line=$(release_floor_verdict 17 '')
-  [ "$case_line" = below ] || fail "a below-floor protocol alone must carry a below verdict, got $case_line"
-  case_line=$(release_floor_verdict '' 0.8.0)
-  [ "$case_line" = above ] || fail "a floor version alone must carry an above verdict, got $case_line"
-  case_line=$(release_floor_verdict '' 0.7.5)
-  [ "$case_line" = below ] || fail "a below-floor version alone must carry a below verdict, got $case_line"
-  case_line=$(release_floor_verdict '' '')
-  [ "$case_line" = indeterminate ] || fail "losing both signals must be indeterminate, got $case_line"
-  case_line=$(release_floor_verdict 'not-a-number' 'not-a-version')
-  [ "$case_line" = indeterminate ] || fail "two unparseable signals must be indeterminate, got $case_line"
-  pass "herdr presentation floor: every measured release, and each signal alone, classifies correctly"
-}
-
-test_release_floor_verdict_survives_losing_either_signal() {
-  local got
-  # Divergence, asserted explicitly so neither half can go vacuous: with a
-  # floor protocol and a below-floor version the protocol carries the verdict,
-  # and removing it flips the answer, which proves it was load-bearing there.
-  got=$(release_floor_verdict 19 0.7.5)
-  [ "$got" = above ] || fail "the protocol signal must carry an above verdict on its own, got $got"
-  got=$(release_floor_verdict '' 0.7.5)
-  [ "$got" = below ] || fail "the divergent case must flip once the protocol signal is gone, got $got"
-  # The mirror image: a floor version with a stale protocol, and the same
-  # removal check.
-  got=$(release_floor_verdict 16 0.9.0)
-  [ "$got" = above ] || fail "the version signal must carry an above verdict on its own, got $got"
-  got=$(release_floor_verdict 16 '')
-  [ "$got" = below ] || fail "the divergent case must flip once the version signal is gone, got $got"
-  pass "herdr presentation floor: either signal alone can carry an above verdict, and each divergence is real"
-}
-
-
-
 test_projection_journal_v2_binds_and_advances_exact_endpoint() {
   local dir state home home_real out token
   dir="$TMP_ROOT/projection-journal-v2"; state="$dir/state"; home="$dir/home"
@@ -5500,8 +5413,6 @@ test_create_task_refuses_when_agent_state_ambiguous
 test_create_task_husk_replacement_creates_before_closing
 test_create_task_creates_and_parses_ids
 test_create_task_creates_with_no_focus_flag
-test_release_floor_verdict_matches_the_measured_releases
-test_release_floor_verdict_survives_losing_either_signal
 test_projection_journal_v2_binds_and_advances_exact_endpoint
 test_projection_focus_snapshot_requires_exact_workspace_and_tab
 test_projection_close_restores_exact_prior_focus

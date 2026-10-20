@@ -83,22 +83,6 @@ FM_BACKEND_HERDR_MIN_EVENTS_PROTOCOL=16
 # presentation path uses one narrowly whitelisted raw-socket request after
 # verifying the exact method and parameter schema.
 FM_BACKEND_HERDR_MIN_WORKSPACE_MOVE_PROTOCOL=16
-# The version floor for DEFAULT-ON presentation projection. Projection turns
-# every crewmate teardown into a workspace-emptying removal, and the focus-safe
-# removal plan can only avoid Herdr's focus-stealing explicit close while the
-# doomed pane holds a provably lone idle childless shell; a persistent child of
-# that shell (gitstatusd, a zsh-async worker, direnv) makes the plan fall back
-# to the plain explicit close, which steals focus on every release without the
-# two upstream focus fixes (PR #1877 commit 165dca45, PR #1912 commit a979916).
-# Herdr 0.8.0 is the first release carrying both; retained legacy cleanup
-# uses this classifier even though new workers no longer create projections.
-# Protocol 19 is the structural signal for that floor, measured against the real
-# macOS aarch64 release binaries (docs/verification/runtime-backends.md
-# "Presentation version floor"): 0.7.3 and 0.7.4 report 16, 0.7.5 reports 17,
-# the first post-fix preview reports 18, and 0.8.0 reports 19. No build lacking
-# both fixes reaches 19, and the pre-fix builds top out at 17.
-FM_BACKEND_HERDR_MIN_PRESENTATION_PROTOCOL=19
-FM_BACKEND_HERDR_MIN_PRESENTATION_VERSION=0.8.0
 # Per-pane escalation dedupe marker prefix, under the state dir. One marker per
 # window (keyed like the watcher's own .stale-<key>): set when a ->blocked edge
 # is enqueued, cleared on any working edge, so exactly one wake fires per
@@ -118,109 +102,6 @@ FM_BACKEND_HERDR_SECONDMATE_MARKER=".fm-secondmate-home"
 # spawn can replace one verified agent-free husk under the session lock.
 # No send, capture, Treehouse, or general task-ownership path reads it.
 FM_BACKEND_HERDR_PRESENTATION_JOURNAL_SUFFIX=".herdr-presentation"
-
-# fm_backend_herdr_version_at_least <candidate> <floor>: numeric dotted-release
-# comparison. Return codes: 0 candidate >= floor, 1 candidate < floor, 2 the
-# candidate is unparseable. Any prerelease or build suffix is stripped first, so
-# a 0.8.0-preview build compares as 0.8.0 (it is built from the 0.8.0 line and
-# carries its fixes) while a 0.7.5-preview build compares as 0.7.5.
-fm_backend_herdr_version_at_least() {  # <candidate> <floor>
-  local candidate=${1:-} floor=${2:-} c f
-  candidate=${candidate%%[-+]*}
-  case "$candidate" in ''|*[!0-9.]*) return 2 ;; esac
-  while [ -n "$floor" ]; do
-    c=${candidate%%.*}
-    f=${floor%%.*}
-    [ -n "$c" ] || c=0
-    [ "$c" -gt "$f" ] 2>/dev/null && return 0
-    [ "$c" -lt "$f" ] 2>/dev/null && return 1
-    case "$candidate" in *.*) candidate=${candidate#*.} ;; *) candidate= ;; esac
-    case "$floor" in *.*) floor=${floor#*.} ;; *) floor= ;; esac
-  done
-  return 0
-}
-
-# fm_backend_herdr_release_floor_verdict <protocol> <version>: the pure
-# classifier for the presentation version floor. Return codes: 0 at or above the
-# floor, 1 provably below it, 2 indeterminate.
-# Two independent signals are read so no single field is load-bearing, and
-# either one can carry a positive verdict: the protocol number, which is the
-# structural signal this adapter already uses for every other capability gate,
-# and the release core of the version string. A signal that is unreadable or
-# unparseable simply cannot carry a verdict; a readable protocol below the floor
-# is decisive on its own, and only losing BOTH signals reports indeterminate.
-fm_backend_herdr_release_floor_verdict() {  # <protocol> <version>
-  local protocol=${1:-} version=${2:-} protocol_known=0 version_status=0
-  case "$protocol" in
-    ''|*[!0-9]*) ;;
-    *)
-      protocol_known=1
-      [ "$protocol" -ge "$FM_BACKEND_HERDR_MIN_PRESENTATION_PROTOCOL" ] && return 0
-      ;;
-  esac
-  fm_backend_herdr_version_at_least "$version" "$FM_BACKEND_HERDR_MIN_PRESENTATION_VERSION" \
-    || version_status=$?
-  [ "$version_status" -eq 0 ] && return 0
-  { [ "$protocol_known" -eq 1 ] || [ "$version_status" -eq 1 ]; } && return 1
-  return 2
-}
-
-# fm_backend_herdr_presentation_release_supported: run the floor classifier
-# against the installed client and, when one exists, the selected session's
-# running server. A running server and client compose conservatively: both must
-# be supported. When status positively reports no running server, only the
-# client that will start it is applicable. Same return codes as
-# fm_backend_herdr_release_floor_verdict, and sets
-# FM_BACKEND_HERDR_PRESENTATION_RELEASE to the identifier a caller's warning
-# names. An unreadable server-running state is indeterminate rather than
-# permission to substitute the client release.
-fm_backend_herdr_presentation_release_supported() {  # [<session>]
-  local session=${1:-} status running client_protocol client_version client_verdict=0
-  local server_protocol server_version server_verdict=0
-  FM_BACKEND_HERDR_PRESENTATION_RELEASE="an unreadable release"
-  command -v herdr >/dev/null 2>&1 || return 2
-  command -v jq >/dev/null 2>&1 || return 2
-  [ -n "$session" ] || session=$(fm_backend_herdr_session)
-  status=$(fm_backend_herdr_cli "$session" status --json 2>/dev/null) || return 2
-  client_protocol=$(printf '%s' "$status" | jq -r '.client.protocol // empty' 2>/dev/null) || return 2
-  client_version=$(printf '%s' "$status" | jq -r '.client.version // empty' 2>/dev/null) || return 2
-  fm_backend_herdr_release_floor_verdict "$client_protocol" "$client_version" || client_verdict=$?
-  running=$(printf '%s' "$status" | jq -r '
-    if .server.running == true then "true"
-    elif .server.running == false then "false"
-    else "unknown"
-    end
-  ' 2>/dev/null) || return 2
-  case "$running" in
-    true)
-      server_protocol=$(printf '%s' "$status" | jq -r '.server.protocol // empty' 2>/dev/null) || return 2
-      server_version=$(printf '%s' "$status" | jq -r '.server.version // empty' 2>/dev/null) || return 2
-      fm_backend_herdr_release_floor_verdict "$server_protocol" "$server_version" || server_verdict=$?
-      if [ "$server_verdict" -eq 1 ]; then
-        FM_BACKEND_HERDR_PRESENTATION_RELEASE="server version ${server_version:-unknown} (protocol ${server_protocol:-unknown})"
-        return 1
-      fi
-      if [ "$client_verdict" -eq 1 ]; then
-        FM_BACKEND_HERDR_PRESENTATION_RELEASE="version ${client_version:-unknown} (protocol ${client_protocol:-unknown})"
-        return 1
-      fi
-      if [ "$server_verdict" -ne 0 ]; then
-        FM_BACKEND_HERDR_PRESENTATION_RELEASE="server version ${server_version:-unknown} (protocol ${server_protocol:-unknown})"
-        return 2
-      fi
-      if [ "$client_verdict" -ne 0 ]; then
-        FM_BACKEND_HERDR_PRESENTATION_RELEASE="version ${client_version:-unknown} (protocol ${client_protocol:-unknown})"
-        return 2
-      fi
-      return 0
-      ;;
-    false)
-      FM_BACKEND_HERDR_PRESENTATION_RELEASE="version ${client_version:-unknown} (protocol ${client_protocol:-unknown})"
-      return "$client_verdict"
-      ;;
-    *) return 2 ;;
-  esac
-}
 
 # fm_backend_herdr_workspace_label: the per-firstmate-HOME herdr workspace
 # label (docs/herdr-backend.md "Default task container shape"). The PRIMARY home (no
@@ -953,18 +834,17 @@ fm_backend_herdr_projection_close_pane_focus_preserving() {  # <session> <pane-i
 # lone, childless, and idle - a persistent gitstatusd, zsh-async worker, or
 # direnv fails that proof permanently - and on a release without both fixes the
 # fallback is the focus-stealing close itself, so the mitigation is conditional
-# rather than unconditional and a version gate IS required. Historical
-# creation used a release floor, but new workers no longer create
-# projections. Existing journals can still survive a downgrade. Session-start
-# cleanup deliberately retires a leftover projection husk on every release,
-# including below the floor. The accepted exposure is limited to the rare
-# downgrade path where a home projected on Herdr 0.8.0 or newer and then moved
-# to a 0.7.x release, and occurs once per leftover workspace at session start
-# rather than once per task teardown; the exact prior-tab restore bounds it.
-# Refusing that close below the floor would leak workspaces that nothing else
-# removes and block teardown because fm-teardown treats an unconfirmed close as
-# a hard stop. That cleanup is therefore authorized containment rather than a
-# second gate; the shared release classifier remains the capability owner.
+# rather than unconditional. New workers no longer create projections, so no
+# release gate remains, but existing journals can still survive a downgrade.
+# Session-start cleanup deliberately retires a leftover projection husk on
+# every release, including those without both fixes. The accepted exposure is
+# limited to the rare downgrade path where a home projected on Herdr 0.8.0 or
+# newer and then moved to a 0.7.x release, and occurs once per leftover
+# workspace at session start rather than once per task teardown; the exact
+# prior-tab restore bounds it. Refusing that close on such a release would leak
+# workspaces that nothing else removes and block teardown because fm-teardown
+# treats an unconfirmed close as a hard stop. That cleanup is therefore
+# authorized containment rather than a version gate.
 
 # fm_backend_herdr_workspace_move_capable: verify that one guarded raw
 # workspace.move request is possible in <session>: python3 for the transport,
@@ -990,7 +870,7 @@ fm_backend_herdr_workspace_move_capable() {  # <session>
 
 # fm_backend_herdr_emptying_close_plan: choose the focus-safe removal for one
 # exact pane. The LAST echoed line is the plan: "plain" (use the ordinary
-# explicit close; below the presentation version floor the exact-tab restore
+# explicit close; on a release without both focus fixes the exact-tab restore
 # backstop masks the focus move it causes when it empties a non-focused
 # workspace) or "death <shell-pid>" (end the proved lone idle shell so Herdr
 # removes the emptied workspace through its focus-preserving pane-death path).

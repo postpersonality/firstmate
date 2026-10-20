@@ -1505,8 +1505,7 @@ It reported `steal_live=0 floor_verdict=0 default-session-tripwire=armed`, with 
 
 Part C is the case the suite could not reach before: a doomed pane whose shell holds a persistent background child fails the lone-idle-shell proof on every sample, so the plan takes the plain explicit close, in the geometry where the closing workspace's right neighbour is a spacer rather than the focused anchor.
 On 0.7.5 that fallback exposed a bounded four-sample wrong-focus window and restored the anchor exactly; on 0.8.0 the same fallback exposed none.
-The floor messages above describe the historical preference helper; current placement is covered under [Project Space placement](#project-space-placement-and-launcher-identity).
-The suite also cross-checks its own Part A measurement against the floor classifier on whatever release it runs, so a drifted protocol-to-release mapping fails there rather than silently gating on the wrong thing.
+The `version floor` messages and `floor_verdict` values above are historical output from the retired presentation floor classifier, which has since been removed together with its checks; current placement is covered under [Project Space placement](#project-space-placement-and-launcher-identity).
 
 ### Attached foreground viewer
 
