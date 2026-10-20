@@ -41,7 +41,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     await until(() => window.document.querySelector('main h1'));
     assert.equal(window.document.title, 'Дело — что происходит');
     assert.equal(window.document.getElementById('sidebar'), null);
-    assert.deepEqual([...window.document.querySelectorAll('main h2')].map(h => h.firstChild?.textContent?.trim()), ['Дела', 'В фокусе', 'Ждёт меня', 'В работе', 'Дальше', 'Сделано']);
+    assert.deepEqual([...window.document.querySelectorAll('main h2')].map(h => h.firstChild?.textContent?.trim()), ['Ждёт меня', 'В работе', 'Дальше', 'Сделано']);
     const dialogOpen = () => (window.document.getElementById('dialog') as HTMLDialogElement).open;
     const product = join(root, 'product'); mkdirSync(product);
     window.document.getElementById('new-goal')?.click(); await until(dialogOpen);
@@ -89,7 +89,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.match(window.document.querySelector(`[data-id="${nativeId}"]`)?.closest('.row')?.textContent ?? '', /личное/);
     assert.ok([...(window.document.getElementById('kind') as HTMLSelectElement).options].some(o => o.textContent === 'Личное'));
     (window.document.querySelector(`[data-action="pin"][data-id="${nativeId}"]`) as HTMLButtonElement).click();
-    const focus = () => window.document.querySelectorAll('main section')[1];
+    const focus = () => window.document.getElementById('overview-focus');
     await until(() => focus()?.querySelector('h2')?.textContent?.includes('1'));
     assert.match(focus()?.textContent ?? '', /UI цель/, 'a pinned row shows in focus');
     assert.equal(window.location.hash, '', 'the pin button does not open the task');
