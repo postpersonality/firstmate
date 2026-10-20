@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { stripTypeScriptTypes } from 'node:module';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { z, ZodError } from 'zod';
 import type { Store } from './store.ts';
@@ -28,7 +28,7 @@ export function router(store: Store, opener = 'xdg-open') {
         const content = name === 'app.js' ? stripTypeScriptTypes(readFileSync(`${web}/app.ts`, 'utf8')) : readFileSync(`${web}/${name}`, 'utf8');
         return new Response(content, { headers: { 'content-type': { 'index.html': 'text/html; charset=utf-8', 'style.css': 'text/css; charset=utf-8', 'app.js': 'text/javascript; charset=utf-8' }[name]!, 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'", 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' } });
       }
-      if (req.method === 'GET' && url.pathname === '/api/meta') return Response.json({ csrf }, { headers: { 'cache-control': 'no-store' } });
+      if (req.method === 'GET' && url.pathname === '/api/meta') return Response.json({ csrf, draftScope: createHash('sha256').update(store.firstmate.home).digest('hex') }, { headers: { 'cache-control': 'no-store' } });
       if (req.method === 'GET' && url.pathname === '/api/overview') return send(await store.overview());
       const terminal = /^\/api\/tasks\/([^/]+)\/terminal\/open$/.exec(url.pathname);
       if (req.method === 'POST' && terminal) {
@@ -52,6 +52,7 @@ export function router(store: Store, opener = 'xdg-open') {
       if (req.method === 'GET' && url.pathname === '/api/cases') return send(store.closedCases());
       if (req.method === 'GET' && url.pathname === '/api/review-projects') return send(store.reviewProjects());
       if (req.method === 'GET' && url.pathname === '/api/folders') return send(store.folders());
+      if (req.method === 'GET' && url.pathname === '/api/project-folders') return send(store.projectFolders());
       const report = /^\/api\/reports\/([^/]+)$/.exec(url.pathname);
       const reportOpen = /^\/api\/reports\/([^/]+)\/open$/.exec(url.pathname);
       if ((req.method === 'GET' && report) || (req.method === 'POST' && reportOpen)) {

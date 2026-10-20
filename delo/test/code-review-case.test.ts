@@ -176,11 +176,11 @@ test('New case exposes code review with one required link and starts its scout t
     const visible = (e: HTMLElement) => { for (let p: HTMLElement | null = e; p; p = p.parentElement) if (p.hidden || p.style.display === 'none') return false; return true; };
     const urlLabel = [...document.querySelectorAll<HTMLLabelElement>('#dialog-body label')].find(l => /Jira.*pull request|pull request.*Jira/i.test(l.textContent ?? '') && visible(l));
     assert.ok(urlLabel); const url = urlLabel.querySelector<HTMLInputElement>('input')!;
-    assert.ok(url?.required, 'the link is mandatory in the form');
+    assert.equal(url?.required, false, 'a link in the description is sufficient; the optional override stays typed');
     const sourceList = document.querySelector<HTMLTextAreaElement>('#dialog-body [name=sources]');
     assert.ok(!sourceList || !visible(sourceList), 'code review does not offer an arbitrary list of links');
-    assert.ok(![...document.querySelectorAll<HTMLLabelElement>('#dialog-body label')].some(l => /документ СА|ссылка.*СА/i.test(l.textContent ?? '') && visible(l)), 'no additional SA link is required');
-    document.querySelector<HTMLInputElement>('#dialog-body [name=title]')!.value = 'Код-ревью из UI';
+    assert.equal(document.querySelector<HTMLInputElement>('[name=document]')!.disabled, true, 'code review disables the separate SA document input');
+    document.querySelector<HTMLInputElement>('#dialog-body [name=description]')!.value = 'Код-ревью из UI';
     url.value = 'https://github.com/org/repo'; submit();
     await until(() => /ссылк.*Jira.*pull request/i.test(document.getElementById('dialog-error')!.textContent ?? ''));
     assert.equal((await store.firstmate.list()).length, 0, 'invalid URL leaves the dialog open and writes nothing');

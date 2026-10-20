@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, id } from './model.ts';
 import type { Goal, Action } from './model.ts';
 import { validateReview, reviewProjects, reviewOf, reviewLine, reviewInstructions, readReviewProgress } from './review.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
+import { checkFolder } from './folder.ts';
 import { type Overview, overview, position, requestsByTask, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
 
 const sections = ['Обложка', 'Зачем', 'Критерий готовности', 'Контекст', 'Ограничения'];
@@ -22,7 +22,7 @@ function section(body: string, heading: string) {
 
 // A дело's `Источник:` lines come before its brief.
 function managedBody(body: string) {
-  body = body.replace(/^(?:(?:Источник|Вид дела|Папка): .*\n)+/, '');
+  body = body.replace(/^(?:(?:Источник|Вид дела|Папка|Delo description): .*\n)+/, '');
   return /^## Зачем\s*(?:\r?\n|$)/.test(body) && /^## Зачем\s*(?:\r?\n|$)[\s\S]*^## Критерий готовности\s*(?:\r?\n|$)[\s\S]*^## Контекст\s*(?:\r?\n|$)[\s\S]*^## Ограничения\s*(?:\r?\n|$)/m.test(body);
 }
 
@@ -52,15 +52,7 @@ export function titleSources(value: string) {
 const dutyLine = 'Вид дела: duty';
 const folderLine = 'Папка: ';
 export const folderOf = (body: string) => body.split('\n').find(l => l.startsWith(folderLine))?.slice(folderLine.length).trim() ?? '';
-export function checkFolder(value: string) {
-  const typed = value.trim();
-  if (!typed) return '';
-  const path = typed === '~' || typed.startsWith('~/') ? join(homedir(), typed.slice(1)) : typed;
-  if (!isAbsolute(path)) throw new Error(`Папка: нужен абсолютный путь или ~/…, а не «${typed}»`);
-  let directory = false; try { directory = statSync(path).isDirectory(); } catch { /* A missing path is refused below. */ }
-  if (!directory) throw new Error(`Папка: нет такой папки ${path}`);
-  return resolve(path);
-}
+export { checkFolder } from './folder.ts';
 
 // The body exactly as typed, with source lines first and the personal marker as its own last line.
 // A changed folder line goes right after the leading reference lines; an unchanged one stays put, so a rename keeps the body byte-for-byte.
@@ -81,9 +73,27 @@ const interactiveLine = 'Интерактивно';
 export const harnessOf = (body: string) => body.split('\n').find(l => l.startsWith(harnessLine))?.slice(harnessLine.length).trim() ?? '';
 // The title is the direction's first sentence, cut to the title limit.
 export const firstSentence = (text: string) => (/^.*?[.!?…](?=\s|$)/.exec(text.trim().split('\n')[0])?.[0] ?? text.trim().split('\n')[0]).slice(0, 500);
+function creationTitle(title: string, description: string) {
+  if (title.trim()) return titleSources(title);
+  const extracted = { ...titleSources(firstSentence(description)), sources: titleSources(description).sources };
+  if (extracted.title !== 'Новое дело') return extracted;
+  const ref = extracted.sources[0]?.slice('Источник: '.length);
+  if (ref) {
+    const url = new URL(ref);
+    return { ...extracted, title: `${url.hostname}${url.pathname === '/' ? '' : url.pathname}`.slice(0, 500) };
+  }
+  return extracted;
+}
+// tasks-axi normalizes trailing whitespace; the JSON line retains the exact submitted description.
+const descriptionPrefix = 'Delo description: ';
+const descriptionLine = (description?: string) => description === undefined ? [] : [descriptionPrefix + JSON.stringify(description)];
+function descriptionOf(body: string): string | undefined {
+  const line = body.split('\n').find(l => l.startsWith(descriptionPrefix));
+  try { const value = JSON.parse(line?.slice(descriptionPrefix.length) ?? ''); return typeof value === 'string' ? value : undefined; } catch { return undefined; }
+}
 const sourceLine = 'Источник: ';
-const caseBody = (c: { why: string; doneWhen: string; context: string; constraints: string[]; sources: string[]; caseType?: string; folder?: string }) =>
-  composeBody([...c.sources.map(s => `${sourceLine}${s}`), ...(c.caseType === 'duty' ? [dutyLine] : []), '## Зачем', c.why, '## Критерий готовности', c.doneWhen, '## Контекст', c.context, '## Ограничения', ...c.constraints.map(s => `- ${s}`)].join('\n'), [], false, c.folder ?? '');
+const caseBody = (c: { description?: string; why: string; doneWhen: string; context: string; constraints: string[]; sources: string[]; caseType?: string; folder?: string }) =>
+  composeBody([...descriptionLine(c.description), ...c.sources.map(s => `${sourceLine}${s}`), ...(c.caseType === 'duty' ? [dutyLine] : []), '## Зачем', c.why, '## Критерий готовности', c.doneWhen, '## Контекст', c.context, '## Ограничения', ...c.constraints.map(s => `- ${s}`)].join('\n'), [], false, c.folder ?? '');
 const lines = (value: string) => value.split('\n').map(l => l.trim()).filter(Boolean);
 const isPersonal = (body: string) => body.split('\n').some(l => l.trim() === personalLine);
 const field = (v: unknown) => typeof v === 'string' && v && v !== '-' ? v : undefined;
@@ -101,14 +111,16 @@ export class Store {
     this.firstmate = new Firstmate(options.firstmateHome || process.env.DELO_FIRSTMATE_HOME || defaultFirstmateHome());
   }
 
-  // Creation writes only the Firstmate backlog: no template, never --start.
+  // Creation writes only the Firstmate backlog, never --start.
   create(input: unknown): Goal {
     this.invalidateOverview();
     const data = goalInput.parse(input);
-    const { title, sources } = titleSources(data.title);
+    const { title, sources } = creationTitle(data.title, data.description ?? data.body);
     if (data.caseId) { const c = this.firstmate.show(data.caseId); if (c.kind !== 'program' || c.state === 'done') throw new Error('Такого открытого дела нет'); }
-    const body = [data.caseId ? `Дело: ${data.caseId}` : '', composeBody(data.body, sources, data.personal, checkFolder(data.folder))].filter(Boolean).join('\n');
-    const task = this.firstmate.add(undefined, title, body, { kind: data.kind, repo: data.repo, blockedBy: data.blockedBy });
+    const content = data.description === undefined ? data.body : [...descriptionLine(data.description), data.description].join('\n');
+    const body = [data.caseId ? `Дело: ${data.caseId}` : '', composeBody(content, sources, data.personal, checkFolder(data.folder))].filter(Boolean).join('\n');
+    const repo = data.description === undefined ? data.repo : this.checkProject(data.repo);
+    const task = this.firstmate.add(undefined, title, body, { kind: data.kind, repo, blockedBy: data.blockedBy });
     if (data.holdUntil) this.firstmate.hold(task.id, `Отложено до ${data.holdUntil}`, 'parked', data.holdUntil);
     return this.get(task.id);
   }
@@ -123,12 +135,12 @@ export class Store {
   createCase(input: unknown) {
     this.invalidateOverview();
     const data = caseInput.parse(input);
-    const { title, sources } = titleSources(data.title);
+    const { title, sources } = creationTitle(data.title, data.description);
     if (data.caseType === 'duty' && data.review) throw new Error('Дежурство не совмещается с ревью');
-    const folder = checkFolder(data.folder);
-    if (data.caseType === 'duty' && !folder) throw new Error('Для дежурства нужна папка материалов только для чтения');
     const repo = this.checkProject(data.repo);
-    const body = caseBody({ ...data, folder, constraints: lines(data.constraints).map(l => l.replace(/^- /, '')), sources: [...sources.map(l => l.slice(sourceLine.length)), ...lines(data.sources).map(l => l.replace(/^Источник:\s*/, ''))] });
+    const folder = checkFolder(data.folder || (data.caseType === 'duty' ? reviewProjects(this.firstmate.home).find(p => p.name === repo)?.path ?? repo : ''));
+    if (data.caseType === 'duty' && !folder) throw new Error('Для дежурства нужна папка материалов только для чтения');
+    const body = caseBody({ ...data, description: data.description || undefined, context: [data.description, data.context].filter(Boolean).join('\n\n'), folder, constraints: lines(data.constraints).map(l => l.replace(/^- /, '')), sources: [...sources.map(l => l.slice(sourceLine.length)), ...lines(data.sources).map(l => l.replace(/^Источник:\s*/, ''))] });
     if (data.review) {
       if (!data.requestId) throw new Error('Для ревью нужен requestId');
       const review = validateReview(data.review, this.firstmate.home);
@@ -139,7 +151,7 @@ export class Store {
       if (existing?.state !== 'done') {
         if (!existing || existing.state !== 'in_flight') this.firstmate.start(caseId);
         const child = [...this.firstmate.list(), ...this.firstmate.archive()].find(t => t.id === childId);
-        if (!child) this.firstmate.add(childId, `${review.kind === 'sa' ? 'Ревью СА' : 'Код-ревью'}: ` + title.slice(0, 480), `Дело: ${caseId}\n${reviewInstructions(review, this.firstmate.home, childId)}`, { kind: 'scout', repo: review.repo });
+        if (!child) this.firstmate.add(childId, `${review.kind === 'sa' ? 'Ревью СА' : 'Код-ревью'}: ` + title.slice(0, 480), [`Дело: ${caseId}`, ...descriptionLine(data.description || undefined), reviewInstructions(review, this.firstmate.home, childId), ...(data.description ? ['', data.description] : [])].join('\n'), { kind: 'scout', repo: review.repo });
       }
       return this.getCase(caseId);
     }
@@ -241,7 +253,7 @@ export class Store {
     const reviewReport = !!review && existsSync(join(this.firstmate.home, reportPath(task.id)));
     return {
       id: task.id, title: task.title, state: task.state === 'done' ? 'done' : held(task) ? 'paused' : 'active',
-      body, managedBrief: managed, prUrl: field(task.pr_url) ?? linkEntries(task.links).find((ref): ref is string => typeof ref === 'string' && ref.startsWith('pr:'))?.slice(3), reason: field(task.hold_reason), blockers: taskBlockers(task, records), kind: field(task.kind), repo: field(task.repo), personal: isPersonal(body), actions: actions(task),
+      body, description: descriptionOf(body), managedBrief: managed, prUrl: field(task.pr_url) ?? linkEntries(task.links).find((ref): ref is string => typeof ref === 'string' && ref.startsWith('pr:'))?.slice(3), reason: field(task.hold_reason), blockers: taskBlockers(task, records), kind: field(task.kind), repo: field(task.repo), personal: isPersonal(body), actions: actions(task),
       holdKind: field(task.hold_kind), inFlight: task.state === 'in_flight',
       why: managed ? section(body, 'Зачем') : '', doneWhen: managed ? section(body, 'Критерий готовности') : '', context: managed ? section(body, 'Контекст') : body,
       constraints: managed ? section(body, 'Ограничения').split('\n').filter(s => s.startsWith('- ')).map(s => s.slice(2)) : [],
@@ -373,6 +385,15 @@ export class Store {
 
   // Suggestions for the folder field: every folder an open backlog task names.
   folders() { return [...new Set(this.list().map(g => g.folder).filter(Boolean))].sort(); }
+
+  projectFolders() {
+    const projects = reviewProjects(this.firstmate.home);
+    const tasks = [...this.firstmate.list(), ...this.firstmate.archive()].sort((a, b) => (b.created ?? b.closed ?? '').localeCompare(a.created ?? a.closed ?? ''));
+    return [...new Set(tasks.flatMap(t => {
+      const repo = t.repo && t.repo !== '-' ? projects.find(p => p.name === t.repo)?.path ?? t.repo : '';
+      try { return repo ? [checkFolder(repo)] : []; } catch { return []; }
+    }))].slice(0, 20);
+  }
 
   reviewProjects() { return reviewProjects(this.firstmate.home); }
 

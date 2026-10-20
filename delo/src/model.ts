@@ -7,16 +7,16 @@ export const id = z.string().regex(/^[\p{L}\p{N}][\p{L}\p{N}_.-]{0,120}$/u, 'Н�
 export const state = z.enum(['active', 'paused', 'done', 'dropped']);
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Нужна дата ГГГГ-ММ-ДД');
 export const goalInput = z.object({
-  title: line.min(1), kind: z.enum(['ship', 'scout']).default('ship'), repo: line.default(''), body: text.default(''),
+  title: line.default(''), description: text.optional(), kind: z.enum(['ship', 'scout']).default('ship'), repo: line.default(''), body: text.default(''),
   blockedBy: z.union([id, z.literal('')]).default(''), holdUntil: z.union([day, z.literal('')]).default(''), personal: z.boolean().default(false),
   caseId: z.union([id, z.literal('')]).default(''), folder: line.default(''),
-});
+}).refine(v => !!(v.title.trim() || (v.description ?? v.body).trim()), 'Добавьте описание');
 // A дело is a backlog row of kind program whose body is the managed brief after its `Источник:` lines.
 export const caseInput = z.object({
   requestId: z.string().uuid().optional(), review: reviewInput.optional(),
   caseType: z.enum(['ordinary', 'duty']).default('ordinary'), repo: line.default(''), folder: line.default(''),
-  title: line.min(1), why: text.default(''), doneWhen: text.default(''), context: text.default(''), constraints: text.default(''), sources: text.default(''),
-});
+  title: line.default(''), description: text.default(''), why: text.default(''), doneWhen: text.default(''), context: text.default(''), constraints: text.default(''), sources: text.default(''),
+}).refine(v => !!(v.title.trim() || v.description.trim()), 'Добавьте описание');
 // shortcut: список повторяет AGENTS.md, раздел 4, и установленные программы; править при смене списка
 export const harnesses = ['claude', 'codex', 'opencode', 'pi', 'grok', 'kimi', 'gemini', 'agy'] as const;
 // «Новый агент» on an open дело; an empty harness leaves the choice to firstmate and writes no line.
@@ -49,6 +49,6 @@ export type TaskRequest = { action: 'start' | 'stop' | 'close'; requestId: strin
 export type Goal = {
   review?: Review; reviewProgress?: ReviewProgress; caseType?: 'ordinary' | 'duty';
   id: string; title: string; state: z.infer<typeof state>; body: string; kind?: string; repo?: string; personal: boolean; actions: Action[]; requests?: TaskRequest[];
-  managedBrief?: boolean; prUrl?: string; reason?: string; blockers?: { id: string; title: string }[];
+  description?: string; managedBrief?: boolean; prUrl?: string; reason?: string; blockers?: { id: string; title: string }[];
   why: string; doneWhen: string; context: string; constraints: string[]; holdKind?: string; inFlight?: boolean; links: string[]; report: boolean; folder: string; harness: string;
 };

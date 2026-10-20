@@ -33,9 +33,9 @@ test('New case SA fields validate, suggest registry projects, deduplicate double
     document.getElementById('new-case').click();
     input('reviewKind').value = 'sa'; input('reviewKind').dispatchEvent(new window.Event('change'));
     await until(() => document.querySelector('#reviewRepo-list option'));
-    assert.equal(input('document').required, true); assert.equal(input('reviewRepo').required, true);
-    assert.equal(document.querySelector('#reviewRepo-list option').value, 'avia');
-    input('title').value = 'Ревью СА через форму'; input('document').value = 'file:///tmp/spec'; input('reviewRepo').value = 'avia';
+    assert.equal(input('document').required, false); assert.equal(input('reviewRepo').required, true);
+    assert.equal(document.querySelector('#reviewRepo-list option').value, join(store.firstmate.home, 'projects/avia'));
+    input('description').value = 'Ревью СА через форму'; input('document').value = 'file:///tmp/spec'; input('reviewRepo').value = 'avia';
     assert.equal(input('document').checkValidity(), false);
     submit(); await until(() => document.getElementById('dialog-error').textContent);
     assert.equal(store.list().length, 0, 'server refuses bad URL even if browser validation is bypassed');
@@ -59,7 +59,7 @@ test('New case SA fields validate, suggest registry projects, deduplicate double
     document.querySelector('[data-action=agent-case]').click();
     await until(() => input('repo'));
     assert.equal(input('repo').value, c.repo, 'SA New agent inherits the project');
-    assert.ok(document.querySelector('[data-project-choice=repo]'));
+    assert.ok(document.querySelector('[name=repo][list=repo-list]'));
     assert.equal(store.firstmate.receipts().pending.length, 0, 'opening New agent never starts it');
   } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
 });

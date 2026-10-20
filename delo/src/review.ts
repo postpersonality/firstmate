@@ -1,5 +1,6 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
+import { checkFolder } from './folder.ts';
 import { z } from 'zod';
 import { codeReviewInput, codeReviewInstructions } from './code-review.ts';
 
@@ -33,8 +34,7 @@ export function validateReview(input: Review, home: string): Review {
   const data = reviewInput.parse(input);
   if (data.kind === 'code' && !data.repo.trim()) return { ...data, repo: '' };
   const repo = reviewProjects(home).find(p => p.name === data.repo)?.path ?? data.repo;
-  if (!isAbsolute(repo)) throw new Error('Проект ревью: выберите проект или укажите абсолютный путь');
-  try { if (statSync(repo).isDirectory()) return { ...data, repo: realpathSync(repo) }; } catch { /* Refuse below. */ }
+  try { return { ...data, repo: realpathSync(checkFolder(repo)) }; } catch { /* Refuse below. */ }
   throw new Error('Проект ревью: нет такой папки');
 }
 export function readReviewProgress(home: string, taskId: string): ReviewProgress | undefined {

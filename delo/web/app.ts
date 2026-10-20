@@ -12,10 +12,12 @@ const badge = (title: string) => `<span class="badge">${esc(title)}</span>`;
 // Only a task's own `data/<id>/report.md` link opens as «Отчёт»; other refs stay as they are.
 const ownReport = (taskId: string) => `data/${taskId}/report.md`;
 const reportAnchor = (taskId: string) => `<a class="report-link" href="#report:${encodeURIComponent(taskId)}">Отчёт</a>`;
+const bodyText = (g: Goal) => g.body.replace(/^Delo description: .*\n?/m, '');
 const closed = (g: Goal) => g.state === 'done' || g.state === 'dropped';
 const field = (name: string, label: string, value = '', multiline = false, required = false) => `<label>${esc(label)}${multiline ? `<textarea name="${name}" ${required ? 'required' : ''}>${esc(value)}</textarea>` : `<input name="${name}" value="${esc(value)}" ${required ? 'required' : ''} maxlength="500">`}</label>`;
-let csrf = ''; let view: Overview | undefined;
+let csrf = ''; let draftScope = ''; let view: Overview | undefined;
 let kind = ''; let current: ViewGoal | undefined;
+let dialogGeneration = 0;
 let submitDialog: (form: FormData) => Promise<void> = async () => {};
 const pendingTasks = new Set<string>();
 let markup = ''; let navigation = 0; let refreshRequest = 0;
@@ -30,7 +32,7 @@ async function api<T = any>(path: string, body?: unknown, method?: string): Prom
   let response = await request(); let value = await response.json();
   // Only this pre-mutation refusal is safe to replay; network and action failures may already have applied.
   if (!['GET', 'HEAD'].includes(verb) && response.status === 403 && value.code === 'CSRF_MISMATCH') {
-    try { csrf = (await api('/api/meta')).csrf; }
+    try { const meta = await api('/api/meta'); if (meta.draftScope !== draftScope) throw new Error('Дом Firstmate изменился'); csrf = meta.csrf; }
     catch { throw new Error('Не удалось обновить проверку страницы. Повторите отправку, когда Дело снова будет доступно.'); }
     response = await request(); value = await response.json();
   }
@@ -47,6 +49,8 @@ function message(text: string, error = false, undo?: () => Promise<void>) {
   } else messageTimer = window.setTimeout(() => { $('message').hidden = true; }, 5000);
 }
 function modal(title: string, body: string, action: (form: FormData) => Promise<void>, submit = 'Сохранить') {
+  saveDraft(); draftKey = ''; dialogGeneration++;
+  $('dialog-submit').removeAttribute('disabled');
   $('dialog-title').textContent = title; $('dialog-body').innerHTML = body; $('dialog-error').textContent = '';
   $('dialog-submit').textContent = submit; $('dialog-cancel').hidden = true;
   submitDialog = action; $('dialog-submit').hidden = !submit;
@@ -54,57 +58,89 @@ function modal(title: string, body: string, action: (form: FormData) => Promise<
 }
 const personalLine = 'Личное';
 const personalBox = (on = false) => `<label class="checkbox"><input type="checkbox" name="personal" ${on ? 'checked' : ''}> Личное</label>`;
-// The folder is the body's `Папка:` line; suggestions are the folders other backlog tasks name.
+// Project folders and optional read-only materials share one path input with suggestions.
 const folderLine = 'Папка: ';
 type ProjectChoice = { name: string; path: string };
-const pathField = (name: string, label: string, choices: { value: string; label?: string }[], value = '', required = false) => `<label>${esc(label)}<input name="${name}" value="${esc(value)}" list="${name}-list" maxlength="500" ${required ? 'required' : ''} placeholder="${name === 'folder' ? 'абсолютный путь или ~/…' : 'проект из списка или полный путь к папке'}"><datalist id="${name}-list">${choices.map(f => `<option value="${esc(f.value)}">${esc(f.label)}</option>`).join('')}</datalist></label>${name === 'folder' ? '' : `<label>Зарегистрированный проект<select data-project-choice="${name}" aria-label="${esc(label)}: зарегистрированные проекты"><option value="">Выбрать зарегистрированный проект…</option>${choices.map(f => `<option value="${esc(f.value)}">${esc(f.label || f.value)}</option>`).join('')}</select></label>`}`;
-const projectField = (name: string, projects: ProjectChoice[], value = '', required = false) => pathField(name, 'Проект (необязательно)', projects.map(p => ({ value: p.name, label: `${p.name} · ${p.path}` })), value, required);
-function projectChoices(name: string, projects: ProjectChoice[]) {
-  const options = projects.map(p => `<option value="${esc(p.name)}">${esc(p.name)} · ${esc(p.path)}</option>`).join('');
+const pathField = (name: string, label: string, choices: { value: string; label?: string }[], value = '', required = false) => `<label>${esc(label)}<input name="${name}" value="${esc(value)}" list="${name}-list" maxlength="500" ${required ? 'required' : ''} placeholder="абсолютный путь или ~/…"><datalist id="${name}-list">${choices.map(f => `<option value="${esc(f.value)}">${esc(f.label || f.value)}</option>`).join('')}</datalist></label>`;
+const projectField = (name: string, projects: ProjectChoice[], value = '', required = false) => pathField(name, 'Проект: папка', projects.map(p => ({ value: p.path, label: p.name })), value, required);
+const folderField = (folders: string[], value = '') => pathField('folder', 'Дополнительная папка материалов (только чтение)', folders.map(value => ({ value })), value);
+function loadProjectChoices(name: string) {
   const list = document.getElementById(`${name}-list`);
-  const select = document.querySelector(`[data-project-choice="${name}"]`);
-  if (!list || !select) return;
-  list.innerHTML = options;
-  select.innerHTML = '<option value="">Выбрать зарегистрированный проект…</option>' + options;
+  const folderList = document.getElementById('folder-list');
+  if (folderList && !folderList.children.length) api<string[]>('/api/folders').then(folders => { if (folderList.isConnected) folderList.innerHTML = folders.map(p => `<option value="${esc(p)}"></option>`).join(''); }).catch(() => {});
+  return Promise.all([api<ProjectChoice[]>('/api/review-projects'), api<string[]>('/api/project-folders')]).then(([projects, recent]) => {
+    if (list?.isConnected) list.innerHTML = recent.map(p => `<option value="${esc(p)}">Недавно использовали</option>`).join('') + projects.filter(p => !recent.includes(p.path)).map(p => `<option value="${esc(p.path)}">${esc(p.name)}</option>`).join('');
+  }).catch(() => { /* Suggestions never prevent typing any existing folder. */ });
 }
-$('dialog-body').addEventListener('change', e => {
-  const select = e.target as HTMLSelectElement;
-  if (select.dataset.projectChoice && select.value) {
-    const input = document.querySelector<HTMLInputElement>(`#dialog-body [name=${select.dataset.projectChoice}]`)!;
-    input.value = select.value; input.dispatchEvent(new Event('input', { bubbles: true }));
-    select.value = '';
-  }
-});
-const folderField = (folders: string[], value = '') => pathField('folder', 'Материалы для чтения: папка', folders.map(value => ({ value })), value) + '<p class="muted">Необязательно для обычного исследования. Агент читает эту папку без права менять её файлы. Для правок выберите «Изменение файлов» и проект.</p>';
+let draftKey = '';
+const draftMemory = new Map<string, string>();
+function draftValues() {
+  return Object.fromEntries([...$('dialog-body').querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[name]')].map(e => [e.name, e instanceof HTMLInputElement && e.type === 'checkbox' ? e.checked : e.value]));
+}
+function saveDraft() {
+  if (!draftKey) return;
+  const value = JSON.stringify(draftValues()); draftMemory.set(draftKey, value);
+  try { localStorage.setItem(draftKey, value); }
+  catch { $('dialog-error').textContent = 'Черновик хранится только до перезагрузки страницы: браузер не разрешил сохранение.'; }
+}
+function restoreDraft(form: string) {
+  if (!draftScope) return;
+  draftKey = `delo:draft:${draftScope}:${form}`;
+  try {
+    const value = JSON.parse(draftMemory.get(draftKey) ?? localStorage.getItem(draftKey) ?? '{}');
+    for (const e of $('dialog-body').querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[name]')) {
+      if (e instanceof HTMLInputElement && e.type === 'checkbox') { if (typeof value[e.name] === 'boolean') e.checked = value[e.name]; }
+      else if (typeof value[e.name] === 'string') e.value = value[e.name];
+    }
+  } catch { /* An unavailable store or corrupt draft leaves the usable form intact. */ }
+}
+function acceptedDraft(key: string, submitted: string) {
+  if (draftMemory.get(key) !== submitted) return;
+  draftMemory.delete(key);
+  try { if (localStorage.getItem(key) === submitted) localStorage.removeItem(key); } catch { /* The in-page draft is already cleared. */ }
+  if (draftKey === key) draftKey = '';
+}
+$('dialog-body').addEventListener('input', saveDraft);
+$('dialog-body').addEventListener('change', saveDraft);
+$('dialog').addEventListener('cancel', saveDraft);
+$('dialog').addEventListener('close', saveDraft);
+window.addEventListener('pagehide', saveDraft);
+const extraDetails = (html: string) => `<details class="create-details"><summary>Дополнительные сведения</summary>${html}</details>`;
 async function newGoal() {
-  const folders = await api<string[]>('/api/folders');
-  const repos = view?.repos ?? [];
   const cases = view?.cases ?? [];
-  modal('Новая задача', `${field('title', 'Название', '', false, true)}${personalBox()}<label>Дело<select name="caseId"><option value="">Без дела</option>${cases.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select></label><label>Вид<select name="kind"><option value="ship">Изменение файлов</option><option value="scout">Исследование</option></select></label><label>Проект<input name="repo" list="repo-list" maxlength="500"><datalist id="repo-list">${repos.map(r => `<option value="${esc(r)}">`).join('')}</datalist></label>${folderField(folders)}${field('body', 'Описание', '', true)}${field('blockedBy', 'После задачи (id)')}<label>Отложить до<input type="date" name="holdUntil"></label>`, async f => {
-    const g = await api<Goal>('/api/goals', { title: f.get('title'), kind: f.get('kind'), repo: f.get('repo'), body: f.get('body'), blockedBy: f.get('blockedBy'), holdUntil: f.get('holdUntil'), personal: f.has('personal'), caseId: f.get('caseId'), folder: f.get('folder') });
-    location.hash = g.id; refresh();
+  modal('Новая задача', `${field('description', 'Описание', '', true, true)}<label>Вид задачи<select name="kind"><option value="ship">Изменение файлов</option><option value="scout">Исследование</option></select></label>${projectField('repo', [])}${extraDetails(`${personalBox()}<label>Дело<select name="caseId"><option value="">Без дела</option>${cases.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select></label><div id="task-source">${folderField([])}</div>${field('blockedBy', 'После задачи (id)')}<label>Отложить до<input type="date" name="holdUntil"></label>`)}`, async f => {
+    const key = draftKey, submitted = JSON.stringify(draftValues());
+    const g = await api<Goal>('/api/goals', { description: f.get('description'), kind: f.get('kind'), repo: f.get('repo'), blockedBy: f.get('blockedBy'), holdUntil: f.get('holdUntil'), personal: f.has('personal'), caseId: f.get('caseId'), folder: f.get('kind') === 'scout' ? f.get('folder') : '' });
+    acceptedDraft(key, submitted); location.hash = g.id; refresh();
   }, 'Завести задачу');
+  restoreDraft('goal');
+  const select = document.querySelector<HTMLSelectElement>('#dialog-body [name=kind]')!;
+  const mode = () => { $('task-source').hidden = select.value !== 'scout'; document.querySelector<HTMLInputElement>('#dialog-body [name=folder]')!.disabled = select.value !== 'scout'; };
+  select.onchange = mode; mode(); loadProjectChoices('repo');
 }
 function newCase() {
-  const requestId = crypto.randomUUID();
-  modal('Новое дело', `${field('title', 'Название', '', false, true)}<label>Вид дела<select name="reviewKind"><option value="">Обычное дело</option><option value="duty">Дежурство</option><option value="sa">Ревью системной аналитики</option><option value="code">Код-ревью</option></select></label>${projectField('reviewRepo', [])}<p class="muted">Проект задаёт контекст агенту. Правки выполняются в отдельном рабочем дереве выбранного проекта. Личное дело можно оставить без проекта.</p><div id="review-fields"></div><div id="duty-fields" hidden>${folderField([])}<p class="muted">Для дежурства папка обязательна. Дежурный исследует обращение и готовит отчёт и черновики. Публикация и правки файлов не выполняются.</p></div><div id="case-sources">${field('sources', 'Источники, по одной ссылке в строке', '', true)}</div>${field('why', 'Зачем', '', true)}${field('doneWhen', 'Критерий готовности', '', true)}${field('context', 'Контекст', '', true)}${field('constraints', 'Ограничения, по одному в строке', '', true)}`, async f => {
-    const review = f.get('reviewKind') === 'sa' ? { kind: 'sa', document: f.get('document'), repo: f.get('reviewRepo') } : f.get('reviewKind') === 'code' ? { kind: 'code', url: f.get('url'), repo: f.get('reviewRepo') } : undefined;
-    const c = await api<Goal>('/api/cases', { ...Object.fromEntries(['title', 'sources', 'why', 'doneWhen', 'context', 'constraints'].map(k => [k, f.get(k)])), repo: f.get('reviewRepo'), caseType: f.get('reviewKind') === 'duty' ? 'duty' : 'ordinary', folder: f.get('reviewKind') === 'duty' ? f.get('folder') : '', ...(review ? { review, requestId, ...(review.kind === 'code' ? { sources: '' } : {}) } : {}) });
-    location.hash = `case:${c.id}`; refresh();
+  modal('Новое дело', `${field('description', 'Описание', '', true, true)}<label>Вид дела<select name="reviewKind"><option value="">Обычное дело</option><option value="duty">Дежурство</option><option value="sa">Ревью системной аналитики</option><option value="code">Код-ревью</option></select></label>${projectField('reviewRepo', [])}<p id="case-mode-help" class="muted"></p>${extraDetails(`<input type="hidden" name="requestId" value="${crypto.randomUUID()}"><div id="sa-fields"><label>Документ для ревью (если ссылка отсутствует в описании)<input name="document" type="url" pattern="https?://.+" maxlength="2000"></label></div><div id="code-fields"><label>Задача Jira или pull request (если ссылка отсутствует в описании)<input name="url" type="url" maxlength="2000"></label></div><div id="duty-fields">${folderField([])}</div><div id="case-sources">${field('sources', 'Источники, по одной ссылке в строке', '', true)}</div>${field('why', 'Зачем', '', true)}${field('doneWhen', 'Критерий готовности', '', true)}${field('context', 'Дополнительный контекст', '', true)}${field('constraints', 'Ограничения, по одному в строке', '', true)}`)}`, async f => {
+    const key = draftKey, submitted = JSON.stringify(draftValues());
+    const description = String(f.get('description') ?? '');
+    const refs = description.match(/https?:\/\/[^\s<>"'«»]+/gi) ?? [];
+    const ref = refs.length === 1 ? refs[0].replace(/[.,;!?]+$/, '') : '';
+    const repo = f.get('reviewRepo');
+    const review = f.get('reviewKind') === 'sa' ? { kind: 'sa', document: f.get('document') || ref, repo } : f.get('reviewKind') === 'code' ? { kind: 'code', url: f.get('url') || ref, repo } : undefined;
+    const c = await api<Goal>('/api/cases', { ...Object.fromEntries(['description', 'sources', 'why', 'doneWhen', 'context', 'constraints'].map(k => [k, f.get(k) ?? ''])), repo, caseType: f.get('reviewKind') === 'duty' ? 'duty' : 'ordinary', folder: f.get('reviewKind') === 'duty' ? f.get('folder') : '', ...(review ? { review, requestId: f.get('requestId'), ...(review.kind === 'code' ? { sources: '' } : {}) } : {}) });
+    acceptedDraft(key, submitted); location.hash = `case:${c.id}`; refresh();
   }, 'Завести дело');
+  restoreDraft('case');
   const select = document.querySelector<HTMLSelectElement>('[name=reviewKind]')!;
   select.onchange = () => {
+    for (const [element, type] of [['sa-fields', 'sa'], ['code-fields', 'code'], ['duty-fields', 'duty']] as const) {
+      $(element).hidden = select.value !== type;
+      $(element).querySelectorAll<HTMLInputElement>('input').forEach(e => { e.disabled = select.value !== type; });
+    }
     $('case-sources').hidden = select.value === 'code';
-    $('duty-fields').hidden = select.value !== 'duty';
-    const folder = document.querySelector<HTMLInputElement>('#dialog-body [name=folder]')!;
-    folder.disabled = select.value !== 'duty'; folder.required = select.value === 'duty';
-    const project = document.querySelector<HTMLInputElement>('[name=reviewRepo]')!;
-    project.required = select.value === 'sa';
-    project.closest('label')!.firstChild!.textContent = select.value === 'sa' ? 'Проект контекста' : 'Проект (необязательно)';
-    $('review-fields').innerHTML = select.value === 'sa' ? '<label>Документ для ревью<input name="document" type="url" pattern="https?://.+" maxlength="2000" required placeholder="https://confluence…"></label>' : select.value === 'code' ? '<label>Задача Jira или pull request<input name="url" type="url" maxlength="2000" required placeholder="https://jira.example.invalid/browse/…"></label>' : '';
+    document.querySelector<HTMLInputElement>('[name=reviewRepo]')!.required = select.value === 'sa' || select.value === 'duty';
+    $('case-mode-help').textContent = select.value === 'duty' ? 'Дежурный читает папку проекта, готовит отчёт и черновики. Другую папку материалов можно указать в дополнительных сведениях.' : select.value === 'sa' ? 'Добавьте ссылку на документ в описание и выберите папку контекста ревью.' : select.value === 'code' ? 'Добавьте ссылку на задачу Jira или конкретный pull request в описание. Папка контекста необязательна.' : 'Можно начать со ссылки. Название появится из описания; агент сможет его уточнить. Папка для личного дела необязательна.';
   };
-  select.onchange(new Event('change'));
-  api<ProjectChoice[]>('/api/review-projects').then(projects => projectChoices('reviewRepo', projects)).catch(error => { $('dialog-error').textContent = error.message; });
+  select.onchange(new Event('change')); loadProjectChoices('reviewRepo');
 }
 // The browser loads app.ts with types stripped, so it keeps a copy of `harnesses` from src/model.ts; edit both together.
 const harnesses = ['claude', 'codex', 'opencode', 'pi', 'grok', 'kimi', 'gemini', 'agy'];
@@ -120,10 +156,12 @@ async function newAgent(c: ViewCase) {
   const [folders, projects] = await Promise.all([api<string[]>('/api/folders'), api<ProjectChoice[]>('/api/review-projects')]);
   const duty = c.caseType === 'duty';
   modal('Новый агент', `${field('direction', 'Направление', defaultDirection, true, true)}<label>Режим работы<select name="kind"><option value="scout">Исследование: отчёт без изменения файлов</option>${duty ? '' : '<option value="ship">Изменение файлов: отдельное рабочее дерево проекта</option>'}</select></label><p id="agent-mode-help" class="muted"></p><div id="agent-repo">${projectField('repo', projects, c.repo || c.review?.repo || '')}</div><label>Исполнитель<select name="harness"><option value="">как решит firstmate</option>${(duty ? ['claude'] : harnesses).map(h => `<option value="${h}">${h}</option>`).join('')}</select></label>${duty ? '<p class="muted">Дежурство использует claude для доступа к материалам только для чтения.</p>' : '<label class="checkbox"><input type="checkbox" name="interactive"> Работаю в окне сам</label>'}<div id="agent-folder">${folderField(folders, c.folder)}</div>`, async f => {
+    const key = draftKey, submitted = JSON.stringify(draftValues());
     const result = await api(`/api/cases/${encodeURIComponent(c.id)}/agent`, { direction: f.get('direction'), kind: f.get('kind'), repo: f.get('repo'), harness: f.get('harness'), interactive: f.has('interactive'), folder: f.get('kind') === 'scout' ? f.get('folder') : '' });
-    message(`Новый агент: задача ${result.task.id}. ${receipt(result)}`);
+    acceptedDraft(key, submitted); message(`Новый агент: задача ${result.task.id}. ${receipt(result)}`);
     refresh();
   }, 'Запустить');
+  restoreDraft(`agent:${c.id}:${c.repo || c.review?.repo || ''}`); loadProjectChoices('repo');
   const kindSelect = document.querySelector<HTMLSelectElement>('#dialog-body [name=kind]')!;
   const updateMode = () => {
     const research = kindSelect.value === 'scout';
@@ -258,7 +296,7 @@ function renderGoal(g: ViewGoal) {
   const blockers = g.blockers?.length ? `<p>Ждёт: ${g.blockers.map(b => `<a href="#${encodeURIComponent(b.id)}">${esc(b.title)}</a>`).join(', ')}</p>` : '';
   const pr = g.worker?.prUrl || g.prUrl;
   const refs = [pr && /^https?:\/\//.test(pr) ? `<a href="${esc(pr)}" target="_blank" rel="noopener noreferrer">PR</a>` : '', g.report ? reportAnchor(g.id) : ''].filter(Boolean).join(' · ');
-  renderMain(`<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(g.id)} · ${esc(taskState({ ...g, phase: g.worker?.phase }))}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p>${esc(status)}</p>${reasons.map(reason => `<p class="prose">${esc(reason)}</p>`).join('')}${owner}${blockers}${refs ? `<p>${refs}</p>` : ''}${g.why ? `<p class="prose">${esc(g.why)}</p>` : ''}${executor(g)}${requests(g)}${reviewDetails(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${taskControls(g)}${terminalControl(g)}</div></div><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section><section class="section"><div class="section-heading"><h2>Бриф</h2></div>${g.managedBrief ? `<details class="brief-box"><summary>Зачем, критерий готовности и контекст</summary><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl>${closed(g) ? '<p class="disabled-note">Бриф заморожен после закрытия цели.</p>' : ''}</details>` : `<div class="brief-box prose">${esc(g.body)}</div>`}</section>`);
+  renderMain(`<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(g.id)} · ${esc(taskState({ ...g, phase: g.worker?.phase }))}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p>${esc(status)}</p>${reasons.map(reason => `<p class="prose">${esc(reason)}</p>`).join('')}${owner}${blockers}${refs ? `<p>${refs}</p>` : ''}${g.why ? `<p class="prose">${esc(g.why)}</p>` : ''}${executor(g)}${requests(g)}${reviewDetails(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${taskControls(g)}${terminalControl(g)}</div></div><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section><section class="section"><div class="section-heading"><h2>Бриф</h2></div>${g.managedBrief ? `<details class="brief-box"><summary>Зачем, критерий готовности и контекст</summary><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl>${closed(g) ? '<p class="disabled-note">Бриф заморожен после закрытия цели.</p>' : ''}</details>` : `<div class="brief-box prose">${esc(bodyText(g))}</div>`}</section>`);
 }
 
 const brief = (g: Goal) => `<div class="brief-box"><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl></div>`;
@@ -293,7 +331,8 @@ async function goalAction(action: string) {
   if (action !== 'edit') return;
   const [folders, projects] = await Promise.all([api<string[]>('/api/folders'), api<ProjectChoice[]>('/api/review-projects')]);
   const folder = g.kind !== 'program' || g.caseType === 'duty' || g.folder ? folderField(folders, g.folder) : '';
-  modal(g.kind === 'program' ? 'Править дело' : 'Править задачу', `${field('title', 'Название', g.title, false, true)}${g.kind === 'program' ? projectField('repo', projects, g.repo || g.review?.repo || '') : ''}${field('body', 'Описание', g.body.split('\n').filter(l => l !== personalLine && !(folder && l.startsWith(folderLine)) && l !== 'Вид дела: duty').join('\n'), true)}${folder}${personalBox(g.personal)}`, async f => { await api(base, { title: f.get('title'), body: f.get('body'), personal: f.has('personal'), ...(g.kind === 'program' ? { repo: f.get('repo') } : {}), folder: f.get('folder') ?? undefined }, 'PATCH'); refresh(); });
+  modal(g.kind === 'program' ? 'Править дело' : 'Править задачу', `${field('title', 'Название', g.title, false, true)}${g.kind === 'program' ? projectField('repo', projects, g.repo || g.review?.repo || '') : ''}${field('body', 'Описание', bodyText(g).split('\n').filter(l => l !== personalLine && !(folder && l.startsWith(folderLine)) && l !== 'Вид дела: duty').join('\n'), true)}${folder}${personalBox(g.personal)}`, async f => { await api(base, { title: f.get('title'), body: f.get('body'), personal: f.has('personal'), ...(g.kind === 'program' ? { repo: f.get('repo') } : {}), folder: f.get('folder') ?? undefined }, 'PATCH'); refresh(); });
+  if (g.kind === 'program') loadProjectChoices('repo');
 }
 
 async function caseAction(c: ViewCase, action: string) {
@@ -338,8 +377,15 @@ async function reload() {
 function refresh() { reload().catch(e => message(e.message, true)); }
 $('new-goal').onclick = () => { newGoal().catch(e => message(e.message, true)); };
 $('new-case').onclick = newCase;
-$('dialog-close').onclick = $('dialog-cancel').onclick = () => ($('dialog') as HTMLDialogElement).close();
-$('dialog-form').onsubmit = async event => { event.preventDefault(); if (($('dialog-submit') as HTMLButtonElement).disabled) return; $('dialog-submit').setAttribute('disabled', ''); try { await submitDialog(new FormData($('dialog-form') as HTMLFormElement)); ($('dialog') as HTMLDialogElement).close(); } catch (e: any) { $('dialog-error').textContent = e.message; } finally { $('dialog-submit').removeAttribute('disabled'); } };
+$('dialog-close').onclick = $('dialog-cancel').onclick = () => { saveDraft(); ($('dialog') as HTMLDialogElement).close(); };
+$('dialog-form').onsubmit = async event => {
+  event.preventDefault(); if (($('dialog-submit') as HTMLButtonElement).disabled) return;
+  const generation = dialogGeneration;
+  $('dialog-submit').setAttribute('disabled', '');
+  try { saveDraft(); await submitDialog(new FormData($('dialog-form') as HTMLFormElement)); if (generation === dialogGeneration) ($('dialog') as HTMLDialogElement).close(); }
+  catch (e: any) { if (generation === dialogGeneration) $('dialog-error').textContent = e.message; else message(e.message, true); }
+  finally { if (generation === dialogGeneration) $('dialog-submit').removeAttribute('disabled'); }
+};
 $('main').onclick = async event => {
   const taskButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-task-action]');
   if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, title: taskButton.dataset.title!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight, question: taskButton.dataset.question }, taskButton.dataset.taskAction!, taskButton.dataset.taskAttempt ? Number(taskButton.dataset.taskAttempt) : undefined); } catch (e: any) { message(e.message, true); } return; }
@@ -350,7 +396,7 @@ $('main').onclick = async event => {
   catch (e: any) { message(e.message, true); } finally { button.disabled = false; }
 };
 window.onhashchange = () => { navigate().catch(e => message(e.message, true)); };
-async function start() { const meta = await api('/api/meta'); csrf = meta.csrf; await reload(); }
+async function start() { const meta = await api('/api/meta'); csrf = meta.csrf; draftScope = meta.draftScope; await reload(); }
 start().catch(e => { if (markup) return message(e.message, true); renderMain(`<div class="empty"><h2>Не удалось прочитать задачи Firstmate</h2><p>${esc(e.message)}</p><button data-action="refresh">Повторить</button></div>`); });
 // The overview runs two Firstmate snapshots, so it refreshes only while the tab is visible.
 window.setInterval(async () => { if (document.visibilityState !== 'visible' || ($('dialog') as HTMLDialogElement).open) return; try { await reload(); } catch { /* The next refresh retries after the local server returns. */ } }, 30000);
