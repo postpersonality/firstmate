@@ -23,7 +23,7 @@ trap cleanup EXIT
 fail() { echo "not ok - $*" >&2; exit 1; }
 pass() { echo "ok - $*"; }
 REAL_PATH=$PATH
-mkdir -p "$TMP_ROOT/fakebin" "$TMP_ROOT/home/state" "$TMP_ROOT/home/config" "$TMP_ROOT/slots"
+mkdir -p "$TMP_ROOT/fakebin" "$TMP_ROOT/operator/firstmate/state" "$TMP_ROOT/operator/firstmate/config" "$TMP_ROOT/slots"
 export REAL_PATH HERDR_LAB_HELPER HERDR_LAB_SESSION TMP_ROOT
 # Every production call (including the client-only status read) crosses the
 # helper. A mismatched explicit session or lifecycle call fails closed there.
@@ -54,6 +54,7 @@ treehouse() {
   [ "$1" = get ] || return 1
   local slot
   slot=$(mktemp -d "$TMP_ROOT/slots/slot.XXXXXX") || return 1
+  printf '%s\n' "$PWD" > "$TMP_ROOT/$(basename "$slot").source"
   git clone --quiet "$PWD" "$slot" || return 1
   git -C "$slot" remote set-url origin "$(git remote get-url origin)" || return 1
   builtin cd "$slot"
@@ -75,7 +76,7 @@ export HERDR_AUTOMATIC_RENAME_CONFIG="$TMP_ROOT/rename-config.sh"
 printf 'NAME_TABS=0\nAUTO_INDEX=0\n' > "$HERDR_AUTOMATIC_RENAME_CONFIG"
 printf '[terminal]\ndefault_shell = "%s"\n' "$TMP_ROOT/shell" > "$HERDR_CONFIG_PATH"
 "$HERDR_LAB_HELPER" provision "$HERDR_LAB_SESSION"
-export HERDR_SESSION=$HERDR_LAB_SESSION FM_HOME="$TMP_ROOT/home" FM_ROOT_OVERRIDE="$ROOT" FM_SPAWN_NO_GUARD=1
+export HERDR_SESSION=$HERDR_LAB_SESSION FM_HOME="$TMP_ROOT/operator/firstmate" FM_ROOT_OVERRIDE="$ROOT" FM_SPAWN_NO_GUARD=1
 export PATH="$TMP_ROOT/fakebin:$REAL_PATH"
 lab() { env PATH="$REAL_PATH" "$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" "$@"; }
 # Prove the real pane uses our shell BEFORE sending any allocation command.

@@ -3080,13 +3080,13 @@ test_project_workspace_path_and_ambiguity_matrix() {
     rc=$?
     case "$mode" in
       native|cwd) [ "$rc" = 0 ] && [ "$out" = w1 ] || fail "$mode project match failed: $out" ;;
-      foreign|mixed) [ "$rc" = 0 ] && [ "$out" = wnew ] || fail 'distinct project should create its own Space' ;;
+      foreign|mixed|unowned-projection) [ "$rc" = 0 ] && [ "$out" = wnew ] || fail "$mode should create its own project Space" ;;
       *)
         [ "$rc" -ne 0 ] || fail "$mode inventory should refuse"
         assert_not_contains "$(cat "$log")" $'\x1f''create' "$mode must not create any endpoint" ;;
     esac
   done
-  pass 'project Space resolution prefers native paths and skips mixed containers and fails closed on duplicate, unknown and malformed identity'
+  pass 'project Space resolution prefers native paths, skips mixed and legacy containers, and refuses duplicate, unknown and malformed identity'
 }
 
 # The current checkout may itself be linked. Mask only its origin read, without
@@ -3173,29 +3173,107 @@ test_project_spaces_exclude_operating_homes_with_same_origin() {
   mkdir -p "$primary/projects/primary"
   git init -q "$primary/projects/primary"
   git -C "$primary/projects/primary" remote add origin https://example.invalid/firstmate.git
-  for mode in reuse absent source; do
+  for mode in reuse absent source bound bound-copy unbound symlink mismatch management native-home; do
     mkdir -p "$dir/$mode/responses"; resp="$dir/$mode/responses"; log="$dir/$mode/log"; : > "$log"
-    jq -n --arg mode "$mode" '{result:{workspaces:([{workspace_id:"wmain",label:"operator"},{workspace_id:"wmate",label:"companion"}]+if $mode=="reuse" then [{workspace_id:"wproject",label:"custom project"}] else [] end)}}' > "$resp/1.out"
-    jq -n --arg mode "$mode" --arg home "$primary" --arg mate "$mate" --arg project "$project" '{result:{panes:([{workspace_id:"wmain",cwd:$home},{workspace_id:"wmate",cwd:$mate}]+if $mode=="reuse" then [{workspace_id:"wproject",cwd:$project}] else [] end)}}' > "$resp/2.out"
+    jq -n --arg mode "$mode" --arg home "$primary" '
+      {result:{workspaces:([{workspace_id:"wmain",label:"operator"},{workspace_id:"wmate",label:"companion"}]
+      + if $mode=="absent" or $mode=="source" then []
+        else [{workspace_id:"wproject",label:"custom project"}
+          + if $mode=="native-home" then {worktree:{repo_root:$home}} else {} end] end)}}' > "$resp/1.out"
+    jq -n --arg mode "$mode" --arg home "$primary" --arg mate "$mate" --arg project "$project" '
+      {result:{panes:([{workspace_id:"wmain",tab_id:"wmain:t1",pane_id:"wmain:p1",cwd:$home},
+        {workspace_id:"wmate",tab_id:"wmate:t1",pane_id:"wmate:p1",cwd:$mate}]
+      + if $mode=="absent" or $mode=="source" then []
+        else [{workspace_id:"wproject",tab_id:"wproject:t1",pane_id:"wproject:p1",
+          cwd:(if $mode=="reuse" then $project else $home end)}] end
+      + if $mode=="management" then [{workspace_id:"wproject",tab_id:"wproject:t2",pane_id:"wproject:p2",cwd:$home}] else [] end)}}' > "$resp/2.out"
     printf '{"result":{"workspace":{"workspace_id":"wnew"},"tab":{"tab_id":"seed"}}}\n' > "$resp/3.out"
+    rm -f "$primary/state/home-worker.meta"
+    printf 'backend=herdr\nherdr_session=fmtest\nherdr_workspace_id=wproject\nherdr_tab_id=wproject:t1\nherdr_pane_id=wproject:p1\nwindow=fmtest:wproject:p1\n' > "$dir/record"
+    case "$mode" in
+      bound|bound-copy|management|native-home) cp "$dir/record" "$primary/state/home-worker.meta" ;;
+      symlink) ln -s "$dir/record" "$primary/state/home-worker.meta" ;;
+      mismatch) sed 's/window=.*/window=fmtest:wproject:p9/' "$dir/record" > "$primary/state/home-worker.meta" ;;
+    esac
     fb=$(make_herdr_fakebin "$dir/$mode")
-    if [ "$mode" = source ]; then candidate=$primary; else candidate=$project; fi
+    case "$mode" in
+      reuse|absent) candidate=$project ;;
+      bound-copy) candidate=$primary/projects/primary ;;
+      *) candidate=$primary ;;
+    esac
     out=$(PATH="$fb:$PATH" FM_HOME="$primary" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" bash -c '
       . "$0/bin/fm-backend.sh"; fm_backend_source herdr; . "$0/bin/fm-wake-lib.sh"
       fm_backend_herdr_project_workspace_ensure fmtest "$1" || exit
       printf "%s" "$FM_BACKEND_HERDR_WS_ID"
     ' "$ROOT" "$candidate" 2> "$dir/$mode/err"); rc=$?
-    if [ "$mode" = reuse ]; then
-      [ "$rc" = 0 ] && [ "$out" = wproject ] || fail "operating homes confused project reuse: $out $(cat "$dir/$mode/err")"
-      assert_not_contains "$(cat "$log")" $'\x1f''create' 'project reuse created a duplicate'
-    else
-      [ "$rc" = 0 ] && [ "$out" = wnew ] || fail "absent project adopted an operating home: $out"
-      if [ "$mode" = source ]; then
-        assert_contains "$(cat "$log")" "$primary/projects/primary" 'source-home placement did not use its registered project copy'
-      fi
-    fi
+    case "$mode" in
+      reuse|bound|bound-copy)
+        [ "$rc" = 0 ] && [ "$out" = wproject ] || fail "$mode: project Space was not reused: $out $(cat "$dir/$mode/err")"
+        assert_not_contains "$(cat "$log")" $'\x1f''create' "$mode: project reuse created a duplicate" ;;
+      *)
+        [ "$rc" = 0 ] && [ "$out" = wnew ] || fail "$mode: operating-home Space was adopted: $out"
+        if [ "$mode" != absent ]; then
+          assert_contains "$(cat "$log")" "$primary/projects/primary" "$mode: source-home creation did not use the project copy"
+        fi ;;
+    esac
   done
-  pass 'same-origin management and secondmate home Spaces do not select or block the project Space'
+  pass 'only exactly bound own home workers make a project Space reusable; unbound management, secondmate, symlink, mismatched and native-home evidence stays excluded'
+}
+
+# Discovery passes over old disposable Spaces without reading or rewriting
+# their ownership records. Exact recovery remains a separate operation.
+test_project_spaces_pass_over_legacy_projections() {
+  local dir home foreign project mode log resp fb out rc token before
+  dir="$TMP_ROOT/project-legacy-projections"; home="$dir/home"; foreign="$dir/foreign"; project="$dir/project"
+  mkdir -p "$home/state" "$foreign/state"; git init -q "$project"
+  token=$(bash -c '
+    . "$0/bin/backends/herdr.sh"
+    bind_fixture() {
+      herdr_fixture_journal_create "$1/state" "$2" >/dev/null &&
+        herdr_fixture_journal_bind "$1/state/$2.herdr-presentation" "$2" "$1" fmtest "$3" "$3:t1" "$3:p1" \
+          wparent firstmate "$(fm_backend_herdr_projection_workspace_label "$2" ABCDEFGHIJKLMNOPQRSTUV)" "fm-$2"
+    }
+    bind_fixture "$2" task-foreign wforeign && bind_fixture "$1" task-nometa wnometa &&
+      bind_fixture "$1" task-rebound wrebound && bind_fixture "$1" task-own wown &&
+      herdr_fixture_journal_create "$1/state" task-v1
+  ' "$ROOT" "$home" "$foreign") || fail 'could not serialize legacy fixtures'
+  printf 'backend=herdr\nherdr_session=fmtest\nherdr_workspace_id=wflat\nherdr_tab_id=wflat:t2\nherdr_pane_id=wflat:p2\nwindow=fmtest:wflat:p2\n' > "$home/state/task-rebound.meta"
+  printf 'backend=herdr\nherdr_session=fmtest\nherdr_workspace_id=wown\nherdr_tab_id=wown:t1\nherdr_pane_id=wown:p1\nwindow=fmtest:wown:p1\n' > "$home/state/task-own.meta"
+  before=$(cat "$home/state/"*.herdr-presentation "$foreign/state/"*.herdr-presentation | cksum)
+  for mode in reuse absent; do
+    mkdir -p "$dir/$mode/responses"; resp="$dir/$mode/responses"; log="$dir/$mode/log"; : > "$log"
+    jq -n --arg mode "$mode" --arg t "$token" '{result:{workspaces:([
+      {workspace_id:"wv1",label:("firstmate/task-v1 · p:" + $t)},
+      {workspace_id:"wmate",label:("2ndmate-mate/task-mate · p:" + $t)},
+      {workspace_id:"wforeign",label:("└ task-foreign · p:" + $t)},
+      {workspace_id:"wnometa",label:("└ task-nometa · p:" + $t)},
+      {workspace_id:"wrebound",label:("└ task-rebound · p:" + $t)},
+      {workspace_id:"wown",label:("└ task-own · p:" + $t)},
+      {workspace_id:"wrenamed",label:("[2] └ task-renamed · p:" + $t)}
+    ] + if $mode=="reuse" then [{workspace_id:"wproject",label:"project"}] else [] end)}}' > "$resp/1.out"
+    jq -n --arg p "$project" '{result:{panes:[
+      "wv1","wmate","wforeign","wnometa","wrebound","wown","wrenamed","wproject"
+      | {workspace_id:., tab_id:(. + ":t1"), pane_id:(. + ":p1"), cwd:$p}]}}' > "$resp/2.out"
+    printf '{"result":{"workspace":{"workspace_id":"wnew"},"tab":{"tab_id":"seed"}}}\n' > "$resp/3.out"
+    fb=$(make_herdr_fakebin "$dir/$mode")
+    out=$(PATH="$fb:$PATH" FM_HOME="$home" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" bash -c '
+      . "$0/bin/fm-backend.sh"; fm_backend_source herdr; . "$0/bin/fm-wake-lib.sh"
+      fm_backend_herdr_project_workspace_ensure fmtest "$1" || exit
+      printf "%s" "$FM_BACKEND_HERDR_WS_ID"
+    ' "$ROOT" "$project" 2> "$dir/$mode/err"); rc=$?
+    if [ "$mode" = reuse ]; then
+      [ "$rc" = 0 ] && [ "$out" = wproject ] || fail "legacy Spaces blocked project reuse: $out $(cat "$dir/$mode/err")"
+      assert_not_contains "$(cat "$log")" $'\x1f''create' 'reuse created a duplicate Space'
+    else
+      [ "$rc" = 0 ] && [ "$out" = wnew ] || fail "legacy Spaces blocked absent project placement: $out $(cat "$dir/$mode/err")"
+      assert_contains "$(cat "$log")" $'workspace\x1fcreate\x1f--cwd\x1f'"$project" 'creation used a legacy Space'
+    fi
+    for out in close rename move; do
+      assert_not_contains "$(cat "$log")" $'\x1f'"$out" "placement ran $out against a legacy Space"
+    done
+  done
+  [ "$(cat "$home/state/"*.herdr-presentation "$foreign/state/"*.herdr-presentation | cksum)" = "$before" ] || fail 'placement changed a legacy journal'
+  pass 'v1, foreign-home, metadata-less, rebound and owned legacy Spaces are passed over without mutation'
 }
 
 # --- target parsing, key normalization ---------------------------------------
@@ -5465,6 +5543,7 @@ test_workspace_find_matches_only_this_homes_own_label
 test_list_live_scoped_to_this_homes_workspace_only
 test_project_workspace_path_and_ambiguity_matrix
 test_project_spaces_exclude_operating_homes_with_same_origin
+test_project_spaces_pass_over_legacy_projections
 test_project_task_husk_requires_exact_own_binding
 test_originless_identity_uses_primary_checkout
 test_parse_target
