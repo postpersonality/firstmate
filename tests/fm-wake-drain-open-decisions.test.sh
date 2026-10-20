@@ -215,24 +215,24 @@ test_over_long_decision_note_is_capped_with_a_marker() {
   pass "an over-long open decision is cut to its per-item budget with the shared truncation marker"
 }
 
-test_blocked_decision_names_the_mail_gate_once_deployed() {
+test_blocked_decision_names_reviewed_email_once_configured() {
   local dir state out
-  dir=$(make_case mail-gate)
+  dir=$(make_case mail-alert)
   state="$dir/state"
   out="$dir/drain.out"
   printf 'blocked: waiting on a login only the captain holds\n' > "$state/task8.status"
 
-  env -u FM_CAPTAIN_ALERT_GATE FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+  env -u FM_CAPTAIN_ALERT_TO FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
     || fail "drain failed on an open blocker"
   if grep -F 'bin/fm-mail.sh alert' "$out" >/dev/null; then
-    fail "an undeployed mail gate was offered for a blocker: $(cat "$out")"
+    fail "reviewed email was offered without a recipient: $(cat "$out")"
   fi
-  printf 'FM_CAPTAIN_ALERT_GATE=/usr/local/libexec/firstmate/fm-captain-alert.py\n' > "$dir/.env"
-  env -u FM_CAPTAIN_ALERT_GATE FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
-    || fail "drain failed with a deployed mail gate"
+  printf 'FM_CAPTAIN_ALERT_TO=owner@example.invalid\n' > "$dir/.env"
+  env -u FM_CAPTAIN_ALERT_TO FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "drain failed with a configured recipient"
   grep -F 'goes to reviewed email: bin/fm-mail.sh alert <request.json>' "$out" >/dev/null \
-    || fail "a deployed mail gate was not offered for an open blocker: $(cat "$out")"
-  pass "an open blocker names the reviewed mail gate only once that gate is deployed"
+    || fail "reviewed email was not offered for an open blocker: $(cat "$out")"
+  pass "an open blocker names reviewed email only once a recipient is configured"
 }
 
 test_buried_decision_still_surfaces
@@ -244,4 +244,4 @@ test_no_open_decisions_prints_nothing
 test_open_decision_surfaces_even_with_an_unrelated_queued_wake
 test_buried_decision_surfaces_on_the_empty_queue_fast_path
 test_status_symlink_is_not_followed
-test_blocked_decision_names_the_mail_gate_once_deployed
+test_blocked_decision_names_reviewed_email_once_configured

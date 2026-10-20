@@ -43,12 +43,6 @@
 #   <exact message text; newlines are legal; a marked secondmate request keeps
 #    its from-firstmate marker and corr token verbatim in this body>
 #
-# A record is created 0600. When FM_CAPTAIN_ALERT_GATE_USER names the deployed
-# blocker-email gate account (environment, else $FM_HOME/.env), that account
-# alone also gets a named read ACL entry before the rename (group and others
-# keep no access), so the gate can review the record and its handled/ copy. A failed grant still publishes the
-# steer and warns; the gate then refuses that task's email naming the record.
-#
 # Sequence numbers are never reused within a task: allocation scans both the
 # inbox root and handled/, so a message is processed at most once per worker
 # lifetime even if every doorbell is duplicated. Concurrent writers serialize
@@ -106,8 +100,6 @@ _FM_TASK_INBOX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_FM_TASK_INBOX_LIB_DIR/fm-wake-lib.sh"
 # shellcheck source=/dev/null
 . "$_FM_TASK_INBOX_LIB_DIR/fm-backend.sh"
-# shellcheck source=bin/fm-env-lib.sh
-. "$_FM_TASK_INBOX_LIB_DIR/fm-env-lib.sh"
 
 FM_TASK_INBOX_SCHEMA='fm-task-inbox.v1'
 FM_TASK_INBOX_GRACE_DEFAULT=90
@@ -209,18 +201,6 @@ fm_task_inbox_lock_acquire() {  # <lock-path>
 
 # Write one record into the next sequence slot: temp-write, then atomic
 # rename. Prints the record path. Caller must hold .seq.lock.
-fm_task_inbox_gate_grant() {  # <staged-record> <record-path>
-  local user=${FM_CAPTAIN_ALERT_GATE_USER:-}
-  [ -n "$user" ] || [ -z "${FM_HOME:-}" ] || user=$(fmx_env_get FM_CAPTAIN_ALERT_GATE_USER "$FM_HOME/.env")
-  [ -n "$user" ] || return 0
-  case "$user" in
-    -*|*[!A-Za-z0-9._-]*) ;;
-    *) setfacl -m "u:$user:r" -- "$1" 2>/dev/null && return 0 ;;
-  esac
-  printf 'fm-task-inbox: gate account %s cannot be granted read access to %s; blocker email for this task stays refused until it can\n' \
-    "$user" "$2" >&2 || true
-}
-
 _fm_task_inbox_write_record_locked() {  # <inbox-dir> <text> [delivery-mode]
   local dir=$1 text=$2 delivery_mode=${3:-} seq tmp rec status=0
   seq=$(fm_task_inbox_next_seq "$dir")
@@ -232,7 +212,7 @@ _fm_task_inbox_write_record_locked() {  # <inbox-dir> <text> [delivery-mode]
     [ "$delivery_mode" != fire-and-forget ] || printf 'delivery=fire-and-forget\n'
     printf -- '--\n'
     printf '%s' "$text"
-  } > "$tmp" && { fm_task_inbox_gate_grant "$tmp" "$rec"; mv "$tmp" "$rec"; } || status=1
+  } > "$tmp" && mv "$tmp" "$rec" || status=1
   [ "$status" -eq 0 ] || { rm -f "$tmp"; return 1; }
   printf '%s' "$rec"
 }

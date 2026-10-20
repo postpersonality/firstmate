@@ -4,23 +4,13 @@ set -euo pipefail
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ALERT_TMP=$(fm_test_tmproot fm-captain-alert)
-mkdir -p "$ALERT_TMP/fakebin" "$ALERT_TMP/py" "$ALERT_TMP/critic" "$ALERT_TMP/loose" \
-  "$ALERT_TMP/home/data/demo" "$ALERT_TMP/home/state/demo.inbox/handled" "$ALERT_TMP/home/data/escape"
+mkdir -p "$ALERT_TMP/fakebin" "$ALERT_TMP/py" "$ALERT_TMP/critic" "$ALERT_TMP/home/data/demo" \
+  "$ALERT_TMP/home/state/demo.inbox/handled" "$ALERT_TMP/home/data/escape" "$ALERT_TMP/home/data/nometa"
 export FM_HOME="$ALERT_TMP/home" ALERT_TMP
-unset FM_MAIL_USER FM_MAIL_PASS FM_SMTP_HOST FM_SMTP_PORT FM_IMAP_HOST FM_CAPTAIN_ALERT_TO SUDO_UID
-# The submitting side holds only the gate location; the fake sudo stands in for
-# the separate gate account (SUDO_UID is the submitter, never the gate itself).
-# It accepts only the pinned isolated interpreter, then drops -I so the SMTP
-# fixture below stays importable.
-export FM_CAPTAIN_ALERT_GATE="$ROOT/bin/fm-captain-alert.py" FM_CAPTAIN_ALERT_GATE_USER=fm-gate
+unset FM_SMTP_PORT FM_IMAP_HOST
+export FM_MAIL_USER=sender@example.invalid FM_MAIL_PASS=fixture-password FM_SMTP_HOST=smtp.invalid \
+  FM_CAPTAIN_ALERT_TO=owner@example.invalid FM_CAPTAIN_ALERT_CLAUDE="$ALERT_TMP/critic/claude"
 export PYTHONPATH="$ALERT_TMP/py" PATH="$ALERT_TMP/fakebin:$PATH"
-cat > "$ALERT_TMP/fakebin/sudo" <<'SH'
-#!/usr/bin/env bash
-[ "$1 $2 $4 $5" = "-n -u /usr/bin/python3 -I" ] || exit 1
-shift 5
-export SUDO_UID=${FAKE_SUDO_UID:-4242}
-exec python3 "$@"
-SH
 # A forged critic on PATH must never be reached: the gate pins an absolute path.
 cat > "$ALERT_TMP/fakebin/claude" <<'SH'
 #!/usr/bin/env bash
@@ -34,7 +24,8 @@ class SMTP_SSL:
     def __init__(self, *a, **kw): pass
     def __enter__(self): return self
     def __exit__(self, *a): pass
-    def login(self, *a): pass
+    def login(self, *a):
+        if os.environ.get('SMTP_LOGIN_FAIL'): raise RuntimeError('fixture-password')
     def send_message(self, message):
         if os.environ.get('SMTP_FAIL'): raise RuntimeError('fixture-password')
         with open(os.environ['ALERT_TMP'] + '/smtp', 'a') as f:
@@ -69,9 +60,7 @@ print(json.dumps({'type':'result', 'subtype':'success', 'is_error':False,
                   'session_id':'fixture-session', 'modelUsage':{'fixture-model':{}},
                   'result':json.dumps(review)}))
 PY
-chmod +x "$ALERT_TMP/fakebin/sudo" "$ALERT_TMP/fakebin/claude" "$ALERT_TMP/critic/claude"
-cp "$ALERT_TMP/critic/claude" "$ALERT_TMP/loose/claude"
-chmod 775 "$ALERT_TMP/loose/claude"
+chmod +x "$ALERT_TMP/fakebin/claude" "$ALERT_TMP/critic/claude"
 # Canonical records the gate reads itself; the request names only the task.
 BRIEF='Correct Q23 authority wording; proceed with ordinary in-scope fixes.'
 printf '%s' "$BRIEF" > "$FM_HOME/data/demo/brief.md"
@@ -82,14 +71,16 @@ printf '%s\n' kind=ship spawn_gen=s1.1.1 > "$FM_HOME/state/demo.meta"
 printf '%s' 'Only the human owner may authorize public publication.' > "$FM_HOME/AGENTS.md"
 printf '%s' 'Outside the home.' > "$ALERT_TMP/outside.md"
 ln -s "$ALERT_TMP/outside.md" "$FM_HOME/data/escape/brief.md"
+printf '%s' "$BRIEF" > "$FM_HOME/data/nometa/brief.md"
+printf '%s\n' 'blocked: publication permission is absent' > "$FM_HOME/state/nometa.status"
 python3 - <<'PY'
 import json, os
 from pathlib import Path
 r = Path(os.environ['ALERT_TMP'])
 for key in ['Q23','next-step','permission','failed','invalid','changed','bad-hash','smtp-fail','insufficient',
-            'recipient-change','ghost','escape','with-sources','self-gate','loose','undeployed',
-            'reworked-a','reworked-b','respawn','unreadable']:
-    task = {'ghost':'ghost', 'escape':'escape', 'reworked-a':'reworked'}.get(key, 'demo')
+            'recipient-change','ghost','escape','with-sources','nopass','relative','shared-env',
+            'reworked-a','reworked-b','respawn','unreadable','nometa','login-fail']:
+    task = {'ghost':'ghost', 'escape':'escape', 'reworked-a':'reworked', 'nometa':'nometa'}.get(key, 'demo')
     request = {'id':key, 'task':task, 'decision':'stale' if key == 'reworked-b' else 'default',
         'subject':'Permission needed: ' + key,
         'body':'-' if key == 'permission' else 'Please grant publication permission.', 'analysis':{
@@ -100,17 +91,6 @@ for key in ['Q23','next-step','permission','failed','invalid','changed','bad-has
         request['sources'] = [{'role':'authority', 'path':str(r / 'outside.md')}]
     (r / (key + '.json')).write_text(json.dumps(request))
 PY
-gate_env() { # <name> [KEY=VALUE...]: a 0600 gate configuration; later keys win
-  local file="$ALERT_TMP/$1.env"
-  shift
-  printf '%s\n' FM_MAIL_USER=sender@example.invalid FM_MAIL_PASS=fixture-password FM_SMTP_HOST=smtp.invalid \
-    FM_CAPTAIN_ALERT_TO=owner@example.invalid "FM_CAPTAIN_ALERT_HOME=$ALERT_TMP/home" \
-    "FM_CAPTAIN_ALERT_STATE=$ALERT_TMP/gate-state" "FM_CAPTAIN_ALERT_CLAUDE=$ALERT_TMP/critic/claude" "$@" > "$file"
-  chmod 600 "$file"
-  printf '%s' "$file"
-}
-FM_CAPTAIN_ALERT_GATE_ENV=$(gate_env gate)
-export FM_CAPTAIN_ALERT_GATE_ENV
 : > "$ALERT_TMP/reviews"
 mail_cli() { bash "$ROOT/bin/fm-mail.sh" "$@"; }
 reviews() { wc -l < "$ALERT_TMP/reviews" | tr -d ' '; }
@@ -141,49 +121,34 @@ grep -rqF 'Blocker email next-step: NO_MAIL' "$FM_HOME/state/inbox" || fail 'a f
 grep -rqF 'Blocker email next-step: SELF_RESOLVE' "$FM_HOME/state/inbox" || fail 'the retried outcome must reach the inbox too'
 pass 'authorized corrections return to Firstmate without mail; each new outcome is a new note'
 
-rc=0
-mail_cli alert-preflight > "$ALERT_TMP/out" 2>&1 || rc=$?
-[ "$rc" -eq 0 ] || fail "complete gate preflight failed: $(cat "$ALERT_TMP/out")"
-assert_contains "$(cat "$ALERT_TMP/out")" 'ready:' 'complete gate reports ready'
+FM_MAIL_PASS= reject_unreviewed nopass 'configure FM_MAIL_PASS'
 before=$(reviews)
-rc=0
-FM_CAPTAIN_ALERT_GATE_ENV=$(gate_env nopass FM_MAIL_PASS=) mail_cli alert-preflight > "$ALERT_TMP/out" 2>&1 || rc=$?
-[ "$rc" -ne 0 ] || fail 'preflight must report missing secret'
-assert_contains "$(cat "$ALERT_TMP/out")" FM_MAIL_PASS 'preflight names the missing parameter'
-rc=0
-FM_CAPTAIN_ALERT_GATE_ENV=$(gate_env relative FM_CAPTAIN_ALERT_CLAUDE=claude) mail_cli alert-preflight > "$ALERT_TMP/out" 2>&1 || rc=$?
-[ "$rc" -ne 0 ] || fail 'a PATH-resolved critic must not be ready'
-assert_contains "$(cat "$ALERT_TMP/out")" 'PATH is never searched' 'preflight refuses a PATH critic'
-[ "$(reviews)" = "$before" ] || fail 'preflight invoked native critic'
-pass 'non-sending preflight names gaps without contacting critic or SMTP'
-
-chmod 640 "$(gate_env shared)"
-FM_CAPTAIN_ALERT_GATE_ENV="$ALERT_TMP/shared.env" reject_unreviewed permission 'mode 0600'
-FAKE_SUDO_UID=$(id -u) reject_unreviewed self-gate 'only through sudo as its own account'
-FM_CAPTAIN_ALERT_GATE_ENV=$(gate_env loose "FM_CAPTAIN_ALERT_CLAUDE=$ALERT_TMP/loose/claude") \
-  reject_unreviewed loose 'group/world-writable'
-env -u FM_CAPTAIN_ALERT_GATE bash "$ROOT/bin/fm-mail.sh" alert "$ALERT_TMP/undeployed.json" > "$ALERT_TMP/out" 2>&1 \
-  && fail 'an undeployed gate must not report delivery'
-assert_contains "$(cat "$ALERT_TMP/out")" 'the gate is not deployed' 'an undeployed gate is named'
-pass 'the gate refuses a shared secret file, the submitting account itself and a writable critic'
+CRITIC_INSUFFICIENT=1 reject nopass
+[ "$(reviews)" -gt "$before" ] || fail 'a repaired configuration gap was not reviewed fresh'
+FM_CAPTAIN_ALERT_CLAUDE=claude reject_unreviewed relative 'PATH is never searched'
+printf '# unrelated\n' > "$FM_HOME/.env"
+chmod 640 "$FM_HOME/.env"
+reject_unreviewed shared-env 'chmod 600'
+rm "$FM_HOME/.env"
+pass 'configuration gaps are named before any critic call and retry fresh once repaired'
 
 reject_unreviewed ghost 'lacks its canonical brief record'
 reject_unreviewed escape 'inside the Firstmate home'
 reject_unreviewed with-sources 'the gate reads the evidence'
 pass 'evidence comes only from canonical task records inside the home'
 
-printf '%s' 'Later steering the gate account cannot read.' > "$FM_HOME/state/demo.inbox/002.msg"
+printf '%s' 'Later steering the gate cannot read.' > "$FM_HOME/state/demo.inbox/002.msg"
 chmod 000 "$FM_HOME/state/demo.inbox/002.msg"
-rc=0
-mail_cli alert-preflight > "$ALERT_TMP/out" 2>&1 || rc=$?
-[ "$rc" -ne 0 ] || fail 'preflight must report an unreadable steering record'
-assert_contains "$(cat "$ALERT_TMP/out")" 'cannot read state/demo.inbox/002.msg' 'preflight names the unreadable record'
 reject_unreviewed unreadable 'cannot read state/demo.inbox/002.msg'
 rm -f "$FM_HOME/state/demo.inbox/002.msg"
 chmod 000 "$FM_HOME/state/demo.inbox/handled"
 reject_unreviewed unreadable 'cannot list state/demo.inbox/handled'
 chmod 755 "$FM_HOME/state/demo.inbox/handled"
-pass 'unreadable steering is named by preflight and refusal, never skipped'
+chmod 000 "$FM_HOME/state/demo.meta"
+reject_unreviewed unreadable 'cannot read state/demo.meta'
+chmod 644 "$FM_HOME/state/demo.meta"
+reject_unreviewed nometa 'lacks its task record state/nometa.meta'
+pass 'a missing or unreadable record is named with its path, never skipped'
 
 cp "$ALERT_TMP/reworked-a.json" "$ALERT_TMP/reworked.json"
 reject_unreviewed reworked 'task reworked lacks its canonical brief record'
@@ -213,8 +178,7 @@ pass 'changed task records or generation cannot consume an earlier approval'
 
 CRITIC_INSUFFICIENT=1 reject recipient-change
 before=$(reviews)
-FM_CAPTAIN_ALERT_GATE_ENV=$(gate_env recipient FM_CAPTAIN_ALERT_TO=changed@example.invalid) \
-  mail_cli alert "$ALERT_TMP/recipient-change.json" > "$ALERT_TMP/out" || fail "changed recipient was not sent: $(cat "$ALERT_TMP/out")"
+FM_CAPTAIN_ALERT_TO=changed@example.invalid mail_cli alert "$ALERT_TMP/recipient-change.json" > "$ALERT_TMP/out" || fail "changed recipient was not sent: $(cat "$ALERT_TMP/out")"
 [ "$(reviews)" -gt "$before" ] || fail 'recipient change needs fresh independent review'
 python3 - <<'PY'
 import json, os
@@ -242,7 +206,15 @@ before=$(reviews)
 mail_cli alert "$ALERT_TMP/permission.json" > "$ALERT_TMP/out"
 [ "$(reviews)" = "$before" ] || fail 'replay invokes no critic'
 [ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 1 ] || fail 'replay sent again'
-pass 'genuine human permission passes; repeat does not spam'
+python3 - "$FM_HOME"/state/captain-alerts/permission/*/transport.json <<'PY'
+import hashlib, json, os, sys
+from pathlib import Path
+transport = json.loads(Path(sys.argv[1]).read_text())
+critic = Path(os.environ['ALERT_TMP']) / 'critic' / 'claude'
+assert transport['executable_sha256'] == hashlib.sha256(critic.read_bytes()).hexdigest(), transport
+assert transport['session_id'] == 'fixture-session' and transport['modelUsage'], transport
+PY
+pass 'genuine human permission passes once, with the exact critic and session recorded; repeat does not spam'
 
 rm "$ALERT_TMP/smtp"
 rc=0
@@ -255,6 +227,16 @@ reject smtp-fail
 assert_contains "$(cat "$ALERT_TMP/out")" 'already attempted' 'an attempted event is never sent twice'
 [ "$(reviews)" = "$before" ] || fail 'an attempted event was reviewed again'
 pass 'SMTP failure is durable, never retried and never claims delivery'
+
+rm -f "$ALERT_TMP/smtp"
+before=$(reviews)
+SMTP_LOGIN_FAIL=1 reject login-fail
+assert_contains "$(cat "$ALERT_TMP/out")" 'before sending' 'a login failure is named as pre-send'
+assert_not_contains "$(cat "$ALERT_TMP/out")" fixture-password 'a login error cannot leak credentials'
+mail_cli alert "$ALERT_TMP/login-fail.json" > "$ALERT_TMP/out" || fail "a repaired login blocks a fresh review: $(cat "$ALERT_TMP/out")"
+[ "$(reviews)" -eq $((before + 2)) ] || fail 'a repaired login reused the earlier review'
+[ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 1 ] || fail 'a repaired login must send exactly once'
+pass 'a connection or login failure before sending permits a fresh review once repaired'
 
 [ ! -e "$ALERT_TMP/forged-critic" ] || fail 'a critic found through PATH was executed'
 pass 'a critic placed on PATH is never executed'

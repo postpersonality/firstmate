@@ -4,10 +4,9 @@
 #
 # This file is the single owner of the one-key .env read: the Relay pairing
 # token (bin/fm-x-lib.sh and its callers), the optional typesafe.ai dispatch
-# key (bin/fm-dispatch-resolve.sh), the drain's mail-gate presence check
-# (bin/fm-wake-drain.sh) and the steering inbox's blocker-email gate account
-# (bin/fm-task-inbox-lib.sh) resolve their value through fmx_env_get, so those
-# opt-in settings in $FM_HOME/.env are parsed by one rule.
+# key (bin/fm-dispatch-resolve.sh) and the drain's blocker-email recipient
+# presence check (bin/fm-wake-drain.sh) resolve their value through
+# fmx_env_get, so those opt-in settings in $FM_HOME/.env are parsed by one rule.
 # (bin/fm-mail.sh loads its whole .env block itself under the same env-wins
 # contract.) The value is printed to the caller's command substitution only;
 # nothing is logged.

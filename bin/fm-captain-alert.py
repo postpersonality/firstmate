@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 """Outgoing blocker gate behind fm-mail.sh; no ungated send CLI.
 
-Two sides, two OS accounts. The submitting Firstmate account runs
-`fm-mail.sh alert <request.json>`: it only passes the request bytes on stdin to
-`sudo -n -u $FM_CAPTAIN_ALERT_GATE_USER /usr/bin/python3 -I $FM_CAPTAIN_ALERT_GATE gate`
-and turns every distinct non-SENT outcome into an idempotent fm-inbox note.
-The gate account alone holds the SMTP secret, the critic and the receipts. It
-reads only its own 0600 file /etc/firstmate/captain-alert.env, never the caller
-environment: FM_MAIL_USER, FM_MAIL_PASS, FM_SMTP_HOST, FM_SMTP_PORT (465),
-FM_CAPTAIN_ALERT_TO, FM_CAPTAIN_ALERT_HOME (Firstmate home, read-only),
-FM_CAPTAIN_ALERT_STATE (gate-owned receipts), FM_CAPTAIN_ALERT_CLAUDE (absolute
-critic path, never PATH). The critic, the gate program, the fm-classify-lib.sh
-and fm-timeout-lib.sh installed beside it, and their ancestors must not be owned
-by the caller or group/world-writable; everything the gate starts gets SAFE_PATH.
+`fm-mail.sh alert <request.json>` runs it as the Firstmate account and turns
+every distinct non-SENT outcome into an idempotent fm-inbox note.
+Configuration is the mail plane's environment, filled from the 0600
+$FM_HOME/.env (env wins): FM_MAIL_USER, FM_MAIL_PASS, FM_SMTP_HOST,
+FM_SMTP_PORT (465), FM_CAPTAIN_ALERT_TO (the recipient) and
+FM_CAPTAIN_ALERT_CLAUDE (absolute critic path, never PATH). Everything the gate
+starts gets SAFE_PATH; the critic gets no FM_* variable.
 Request keys, exactly: id (stable event slug), task (task id), decision (key of
 the task's open blocked/needs-decision record, "default" when keyless), subject,
 body, analysis {why_blocked, attempts[], alternatives[], human_only}.
@@ -22,14 +17,15 @@ steering (state/<task>.inbox/*.msg and handled/*.msg, by name), status
 It binds the task generation (the one spawn_gen of state/<task>.meta) and the
 named decision while the shared fold, status_open_decisions, holds it open.
 A fresh print-mode critic (180s, no tools) must return NEEDS_CAPTAIN bound to
-request_sha256, quoting every present role. Before SMTP the gate rereads its
-configuration and the records and refuses any change.
-Receipts: $FM_CAPTAIN_ALERT_STATE/<id>/<binding>/, mode 0700/0600. SMTP is tried
-at most once per event: a sent or attempted event never sends again. A critic
-verdict is replayed for unchanged evidence; a failure before SMTP retries fresh.
-alert-preflight names gaps on both sides, including every canonical record the
-gate account cannot read, without critic, authentication or SMTP. A refusal
-names the unreadable record; none is skipped.
+request_sha256, quoting every present role. Before SMTP the gate rereads the
+records and refuses any change.
+Receipts: $FM_HOME/state/captain-alerts/<id>/<binding>/, mode 0700/0600, with the
+frozen context and the critic's path, executable and output sha256, session and
+models. A message handed to the authenticated SMTP server is never sent again,
+whatever the outcome. A SELF_RESOLVE or INSUFFICIENT_EVIDENCE verdict is replayed
+for unchanged evidence; every failure before that handoff, including
+configuration gaps, critic failure and SMTP connection or login, retries fresh.
+A missing or unreadable record is named, never skipped.
 No skip/configurable-off path exists.
 """
 import fcntl
@@ -49,9 +45,8 @@ from email.message import EmailMessage
 from email.utils import formatdate
 
 BIN = Path(__file__).resolve().parent
-GATE_ENV = '/etc/firstmate/captain-alert.env'
 CONFIG = ('FM_MAIL_USER', 'FM_MAIL_PASS', 'FM_SMTP_HOST', 'FM_SMTP_PORT', 'FM_CAPTAIN_ALERT_TO',
-          'FM_CAPTAIN_ALERT_HOME', 'FM_CAPTAIN_ALERT_STATE', 'FM_CAPTAIN_ALERT_CLAUDE')
+          'FM_CAPTAIN_ALERT_CLAUDE')
 REQUEST = {'id', 'task', 'decision', 'subject', 'body', 'analysis'}
 SAFE_PATH = '/usr/local/bin:/usr/bin:/bin'
 SLUG = r'[A-Za-z0-9][A-Za-z0-9._-]{0,99}'
@@ -99,68 +94,32 @@ def save(path, obj):
     tmp.replace(path)
 
 
-def caller():
-    return int(os.environ.get('SUDO_UID', os.getuid()))
-
-
-def trusted(value, what, run=True):
+def executable(value):
     path = Path(value)
     if not path.is_absolute():
-        raise ValueError(what + ' must be an absolute path; PATH is never searched')
+        raise ValueError('critic must be an absolute path; PATH is never searched')
     path = path.resolve(strict=True)
-    if not path.is_file() or run and not os.access(path, os.X_OK):
-        raise ValueError(what + ' must be an executable file')
-    for item in (path, *path.parents):
-        st = item.stat()
-        if st.st_uid == caller() or (st.st_mode & 0o022 and not (item.is_dir() and st.st_mode & stat.S_ISVTX)):
-            raise ValueError(what + ' or a parent is caller-owned or group/world-writable; install it under root or the gate account')
+    if not path.is_file() or not os.access(path, os.X_OK):
+        raise ValueError('critic must be an executable file')
     return path
 
 
-def load():
-    path = os.environ.get('FM_CAPTAIN_ALERT_GATE_ENV', GATE_ENV)
-    try:
-        f = os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), encoding='utf-8')
-    except OSError:
-        raise ValueError('gate configuration ' + path + ' is missing or unreadable by the gate account') from None
-    with f:
-        st = os.fstat(f.fileno())
-        if st.st_uid != os.geteuid() or stat.S_IMODE(st.st_mode) & 0o077:
-            raise ValueError('gate configuration must be owned by the gate account with mode 0600')
-        cfg = {}
-        for line in f:
-            key, sep, value = line.strip().removeprefix('export ').partition('=')
-            value = value.strip()
-            if len(value) > 1 and value[0] in '"\'' and value[-1] == value[0]:
-                value = value[1:-1]
-            if sep and key.strip() in CONFIG:
-                cfg[key.strip()] = value
-    return cfg
-
-
-def gaps(cfg):
-    found = ['configure ' + key + ' in the gate configuration' for key in CONFIG
-             if key != 'FM_SMTP_PORT' and not cfg.get(key)]
+def gaps(home, cfg):
+    found = ['configure ' + key + ' in $FM_HOME/.env' for key in CONFIG if key != 'FM_SMTP_PORT' and not cfg[key]]
     for key in ('FM_MAIL_USER', 'FM_CAPTAIN_ALERT_TO'):
-        if cfg.get(key) and not re.fullmatch(r'[^\s<>@,;]+@[^\s<>@,;]+', cfg[key]):
+        if cfg[key] and not re.fullmatch(r'[^\s<>@,;]+@[^\s<>@,;]+', cfg[key]):
             found.append(key + ' must be one plain email address')
-    port = cfg.get('FM_SMTP_PORT') or '465'
+    port = cfg['FM_SMTP_PORT'] or '465'
     if not port.isdecimal() or not 1 <= int(port) <= 65535 or port == '587':
         found.append('configure an implicit-TLS FM_SMTP_PORT (default 465; no STARTTLS)')
-    for key in ('FM_CAPTAIN_ALERT_HOME', 'FM_CAPTAIN_ALERT_STATE'):
-        if cfg.get(key) and not os.path.isabs(cfg[key]):
-            found.append(key + ' must be an absolute path')
-    if caller() == os.geteuid():
-        found.append('run the gate only through sudo as its own account; the submitting account must not hold its secret')
-    for value, what, run in ((cfg.get('FM_CAPTAIN_ALERT_CLAUDE'), 'critic', True),
-                             (os.path.abspath(__file__), 'gate program', True),
-                             (str(BIN / 'fm-classify-lib.sh'), 'gate fm-classify-lib.sh', False),
-                             (str(BIN / 'fm-timeout-lib.sh'), 'gate fm-timeout-lib.sh', False)):
-        try:
-            if value:
-                trusted(value, what, run)
-        except (ValueError, OSError) as error:
-            found.append(str(error) if type(error) is ValueError else what + ' is missing')
+    env_file = home / '.env'
+    if env_file.exists() and stat.S_IMODE(env_file.stat().st_mode) & 0o077:
+        found.append('chmod 600 $FM_HOME/.env; it holds the sending credential')
+    try:
+        if cfg['FM_CAPTAIN_ALERT_CLAUDE']:
+            executable(cfg['FM_CAPTAIN_ALERT_CLAUDE'])
+    except (ValueError, OSError) as error:
+        found.append(str(error) if type(error) is ValueError else 'critic FM_CAPTAIN_ALERT_CLAUDE is missing')
     return found
 
 
@@ -173,8 +132,7 @@ def canonical(home, task):
         except FileNotFoundError:
             pass
         except OSError:
-            raise ValueError('the gate account cannot list ' + str(directory.relative_to(home))
-                             + '; grant it read access as the deployment describes') from None
+            raise ValueError('cannot list ' + str(directory.relative_to(home))) from None
     return [('brief', home / 'data' / task / 'brief.md'), *(('steering', p) for p in sorted(steering, key=lambda p: p.name)),
             ('status', home / 'state' / (task + '.status')), ('authority', home / 'AGENTS.md')]
 
@@ -193,7 +151,7 @@ def evidence(home, task):
         except FileNotFoundError:
             raise ValueError('task ' + task + ' lacks its canonical ' + role + ' record') from None
         except OSError:
-            raise ValueError('the gate account cannot read ' + name + '; grant it read access as the deployment describes') from None
+            raise ValueError('cannot read ' + name) from None
         total += len(raw)
         if total > MAX_EVIDENCE:
             raise ValueError('canonical task records exceed 512 KiB')
@@ -201,33 +159,17 @@ def evidence(home, task):
     return sources
 
 
-def unreadable(home):
-    home = Path(home).resolve(strict=True)
-    paths, found = {home / 'state', home / 'AGENTS.md'}, []
-    for meta in home.glob('state/*.meta'):
-        try:
-            paths.update([meta, *(path for _, path in canonical(home, meta.name[:-len('.meta')]))])
-        except ValueError as error:
-            found.append(str(error))
-    for path in sorted(paths):
-        try:
-            os.close(os.open(path, os.O_RDONLY | os.O_NONBLOCK))
-        except FileNotFoundError:
-            pass
-        except OSError:
-            found.append('the gate account cannot read ' + str(path.relative_to(home)))
-    return found
-
-
 def bind_task(home, task, key):
     # Generation and open/closed rules stay with their owners: the task record
-    # and the shared decision fold installed beside the gate.
+    # and the shared decision fold.
     state = Path(home).resolve(strict=True) / 'state'
     try:
         with os.fdopen(os.open(state / (task + '.meta'), os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
-            meta = stream.read(65536).decode('utf-8')
-    except (OSError, UnicodeDecodeError):
+            meta = stream.read(65536).decode('utf-8', 'replace')
+    except FileNotFoundError:
         raise ValueError('task ' + task + ' lacks its task record state/' + task + '.meta') from None
+    except OSError:
+        raise ValueError('cannot read state/' + task + '.meta') from None
     generations = [line[len('spawn_gen='):] for line in meta.splitlines() if line.startswith('spawn_gen=')]
     if len(generations) != 1 or not re.fullmatch(SLUG, generations[0]):
         raise ValueError('task record of ' + task + ' must name exactly one spawn_gen generation')
@@ -235,7 +177,7 @@ def bind_task(home, task, key):
                            str(BIN / 'fm-classify-lib.sh'), str(state / (task + '.status'))],
                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env={'PATH': SAFE_PATH}, timeout=60)
     if fold.returncode:
-        raise ValueError('the shared decision fold failed; repair the gate installation')
+        raise ValueError('the shared decision fold failed; repair bin/fm-classify-lib.sh')
     for line in fold.stdout.decode('utf-8').splitlines():
         open_key, verb, summary = line.split('\t', 2)
         if open_key == key:
@@ -244,7 +186,7 @@ def bind_task(home, task, key):
                      + '; email only a currently open blocker')
 
 
-def freeze(raw, cfg):
+def freeze(raw, cfg, home):
     if len(raw) > MAX_BYTES:
         raise ValueError('request exceeds 48 KiB')
     req = json.loads(raw)
@@ -266,13 +208,12 @@ def freeze(raw, cfg):
         values = analysis.get(key)
         if not isinstance(values, list) or not values or not all(isinstance(v, str) and v.strip() for v in values):
             raise ValueError('supply concrete analysis.' + key)
-    readiness = {k: cfg.get(k, '') for k in ('FM_MAIL_USER', 'FM_SMTP_HOST', 'FM_SMTP_PORT')}
-    readiness['credential_present'] = bool(cfg.get('FM_MAIL_PASS'))
-    home = cfg['FM_CAPTAIN_ALERT_HOME']
-    payload = dict(request=req, recipient=cfg.get('FM_CAPTAIN_ALERT_TO', ''), sender=cfg.get('FM_MAIL_USER', ''),
+    readiness = {k: cfg[k] for k in ('FM_MAIL_USER', 'FM_SMTP_HOST', 'FM_SMTP_PORT')}
+    readiness['credential_present'] = bool(cfg['FM_MAIL_PASS'])
+    payload = dict(request=req, recipient=cfg['FM_CAPTAIN_ALERT_TO'], sender=cfg['FM_MAIL_USER'],
                    delivery_configuration_sha256=digest(encoded(readiness)),
                    sources=evidence(home, req['task']), task=bind_task(home, req['task'], req['decision']))
-    secret = cfg.get('FM_MAIL_PASS', '')
+    secret = cfg['FM_MAIL_PASS']
     if secret and secret in encoded(payload).decode():
         raise ValueError('request or task records contain the SMTP secret; remove it before review')
     if re.search(SECRETISH, encoded(req).decode()):
@@ -282,16 +223,16 @@ def freeze(raw, cfg):
 
 
 def critique(cfg, payload, directory):
-    # Safe mode keeps the gate account's model while excluding custom prompts,
+    # Safe mode keeps the configured model while excluding custom prompts,
     # hooks and tools; a separate cwd prevents project role contamination too.
-    claude = trusted(cfg['FM_CAPTAIN_ALERT_CLAUDE'], 'critic')
+    claude = executable(cfg['FM_CAPTAIN_ALERT_CLAUDE'])
     env = {k: v for k, v in os.environ.items()
            if not k.startswith('FM_') and k not in ('CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT')}
     env.update(PATH=SAFE_PATH, DISABLE_AUTOUPDATER='1')
     with tempfile.TemporaryDirectory(prefix='critic-', dir=directory) as cwd:
         proc = subprocess.run([str(claude), *CRITIC], input=encoded(payload), stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, cwd=cwd, env=env, timeout=180)
-    transport = dict(command=str(claude), exit_code=proc.returncode,
+    transport = dict(command=str(claude), executable_sha256=digest(claude.read_bytes()), exit_code=proc.returncode,
                      stdout_sha256=digest(proc.stdout), request_sha256=payload['request_sha256'])
     save(directory / 'transport.json', transport)
     if proc.returncode or len(proc.stdout) > 131072:
@@ -327,29 +268,29 @@ def critique(cfg, payload, directory):
     return review
 
 
-def send(cfg, req):
+def send(cfg, req, attempting):
     message = EmailMessage()
     message['From'] = cfg['FM_MAIL_USER']
     message['To'] = cfg['FM_CAPTAIN_ALERT_TO']
     message['Subject'] = req['subject']
     message['Date'] = formatdate(localtime=True)
     message.set_content(req['body'])
-    with smtplib.SMTP_SSL(cfg['FM_SMTP_HOST'], int(cfg.get('FM_SMTP_PORT') or 465),
+    with smtplib.SMTP_SSL(cfg['FM_SMTP_HOST'], int(cfg['FM_SMTP_PORT'] or 465),
                           context=ssl.create_default_context(), timeout=20) as smtp:
         smtp.login(cfg['FM_MAIL_USER'], cfg['FM_MAIL_PASS'])
+        attempting()
         smtp.send_message(message)
 
 
-def gate():
-    raw = sys.stdin.buffer.read(MAX_BYTES + 1)
-    cfg = load()
-    missing = gaps(cfg)
+def gate(home, raw):
+    cfg = {key: os.environ.get(key, '') for key in CONFIG}
+    missing = gaps(home, cfg)
     if missing:
         raise ValueError('; '.join(missing))
-    payload = freeze(raw, cfg)
+    payload = freeze(raw, cfg, home)
     binding = payload['request_sha256']
     req = payload['request']
-    root = Path(cfg['FM_CAPTAIN_ALERT_STATE']) / req['id']
+    root = home / 'state' / 'captain-alerts' / req['id']
     root.mkdir(parents=True, exist_ok=True)
     with (root / 'lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -373,17 +314,17 @@ def gate():
             if review['verdict'] != 'NEEDS_CAPTAIN':
                 outcome.update(status=review['verdict'], action=review['action'])
             else:
-                current = load()
-                if gaps(current) or freeze(raw, current) != payload:
-                    raise ValueError('gate configuration, recipient or task records changed during review; resubmit for a fresh review')
+                if freeze(raw, cfg, home) != payload:
+                    raise ValueError('task records changed during review; resubmit for a fresh review')
                 outcome.update(status='SENDING', action='SMTP outcome uncertain; inspect before any new notification')
                 save(receipt, outcome)
-                save(root / 'attempted.json', dict(binding=binding, at=int(time.time())))
                 try:
-                    send(current, req)
+                    send(cfg, req, lambda: save(root / 'attempted.json', dict(binding=binding, at=int(time.time()))))
                 except Exception:
-                    # Provider errors may echo credentials; only this fixed text leaves the gate.
-                    raise ValueError('SMTP failed; delivery unconfirmed, no automatic retry; verify the service before a new event') from None
+                    # Provider errors may echo credentials; only these fixed texts leave the gate.
+                    if (root / 'attempted.json').exists():
+                        raise ValueError('SMTP failed; delivery unconfirmed, no automatic retry; verify the service before a new event') from None
+                    raise ValueError('SMTP connection or login failed before sending; repair the service or credentials and resubmit for a fresh review') from None
                 outcome.update(status='SENT', action='SMTP accepted the notification (inbox arrival unverified)')
                 save(root / 'sent.json', dict(binding=binding, at=int(time.time())))
         except (ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.TimeoutExpired):
@@ -408,69 +349,30 @@ def note(home, request, message):
         print('fm-mail: inbox publication failed; replay this exact request to repair', file=sys.stderr)
 
 
-def to_gate(command, data=b'', timeout=300):
-    user = os.environ.get('FM_CAPTAIN_ALERT_GATE_USER', '')
-    program = os.environ.get('FM_CAPTAIN_ALERT_GATE', '')
-    if not user or not program:
-        raise ValueError('configure FM_CAPTAIN_ALERT_GATE and FM_CAPTAIN_ALERT_GATE_USER in $FM_HOME/.env; the gate is not deployed')
-    # A fixed root-owned interpreter in isolated mode: the caller's PATH and PYTHON* never pick gate code.
-    return subprocess.run(['sudo', '-n', '-u', user, '/usr/bin/python3', '-I', program, command], input=data,
-                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=timeout)
-
-
 def alert(home, request_path):
     result = {}
     try:
         with request_path.open('rb') as stream:
             raw = stream.read(MAX_BYTES + 1)
-        result = json.loads(to_gate('gate', raw).stdout.decode().splitlines()[-1])
+        result = gate(home, raw)
         status, action = result['status'], result['action']
-    except (ValueError, OSError, KeyError, TypeError, IndexError, subprocess.TimeoutExpired) as error:
+    except (ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.TimeoutExpired) as error:
         status = 'NO_MAIL'
-        action = str(error) if type(error) is ValueError else 'unreadable request or unavailable gate; check the path and run fm-mail.sh alert-preflight'
+        action = str(error) if type(error) is ValueError else 'invalid or unreadable request or task records'
     print(status + ': ' + action)
     if status != 'SENT':
         message = 'Blocker email ' + result.get('id', request_path.name) + ': ' + status + '\n' + action
         if result.get('receipt'):
-            message += '\nGate receipt: ' + result['receipt']
+            message += '\nReceipt: ' + result['receipt']
         note(home, result.get('binding') or digest(os.fsencode(str(request_path))), message)
     return 0 if status == 'SENT' else 1
 
 
 def main():
     os.umask(0o077)
-    if sys.argv[1:] == ['gate']:
-        try:
-            result = gate()
-        except (ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.TimeoutExpired) as error:
-            action = str(error) if type(error) is ValueError else 'invalid request or unreadable task records'
-            result = dict(status='NO_MAIL', action=action)
-        print(json.dumps(result))
-        return 0
-    if sys.argv[1:] == ['preflight']:
-        try:
-            cfg = load()
-            found = gaps(cfg) or unreadable(cfg['FM_CAPTAIN_ALERT_HOME'])
-        except ValueError as error:
-            found = [str(error)]
-        except OSError:
-            found = ['FM_CAPTAIN_ALERT_HOME must be an existing Firstmate home the gate account can read']
-        print('\n'.join(found) if found else 'ready: gate configuration complete and canonical task records readable; '
-              'critic, authentication and SMTP not contacted')
-        return int(bool(found))
-    if sys.argv[1:] == ['alert-preflight']:
-        try:
-            proc = to_gate('preflight', timeout=60)
-            output = proc.stdout.decode().strip()
-        except ValueError as error:
-            proc, output = None, str(error)
-        except (OSError, subprocess.TimeoutExpired):
-            proc, output = None, ''
-        print(output or 'gate unreachable through sudo -n; deploy the gate account, program and sudoers rule')
-        return 0 if proc and proc.returncode == 0 else 1
     if len(sys.argv) == 3 and sys.argv[1] == 'alert':
         return alert(Path(os.environ['FM_HOME']).resolve(), Path(sys.argv[2]))
-    print('usage: fm-mail.sh alert <request.json> | alert-preflight', file=sys.stderr)
+    print('usage: fm-mail.sh alert <request.json>', file=sys.stderr)
     return 2
 
 

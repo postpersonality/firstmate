@@ -484,26 +484,6 @@ test_handled_mv_dedups_by_sequence() {
   pass "inbox: the handled mv is the idempotent ack and sequences are never reissued"
 }
 
-# Only a deployed blocker-email gate account gets a named read entry on a new
-# 0600 record, and the entry follows the record into handled/.
-test_gate_read_grant_only_when_deployed() {
-  local home rec acl
-  home="$TMP_ROOT/gate-grant"; mkdir -p "$home/state"
-  rec=$(FM_HOME="$home" FM_CAPTAIN_ALERT_GATE_USER='' inbox_lib "$home/state" fm_task_inbox_write "$home/state" t1 "plain") \
-    || fail "undeployed inbox write failed"
-  [ "$(stat -c %a "$rec")" = 600 ] || fail "an undeployed record must stay 0600"
-  getfacl -cpn "$rec" | grep -q '^user:[0-9]' && fail "an undeployed record must carry no named entry"
-  printf 'FM_CAPTAIN_ALERT_GATE_USER=%s\n' "$(id -un)" > "$home/.env"
-  rec=$(FM_HOME="$home" FM_CAPTAIN_ALERT_GATE_USER='' inbox_lib "$home/state" fm_task_inbox_write "$home/state" t1 "granted") \
-    || fail "deployed inbox write failed"
-  mv "$rec" "$home/state/t1.inbox/handled/"
-  acl=$(getfacl -cpn "$home/state/t1.inbox/handled/${rec##*/}")
-  assert_contains "$acl" "user:$(id -u):r--" "the gate account named in .env reads the handled record"
-  assert_contains "$acl" "group::---" "the owning group gains no access"
-  assert_contains "$acl" "other::---" "others gain no access"
-  pass "inbox: only a deployed gate account gets read access to new records, kept in handled/"
-}
-
 test_concurrent_writers_never_clobber() {
   local state i pids=() count
   state="$TMP_ROOT/race/state"; mkdir -p "$state"
@@ -1209,7 +1189,6 @@ test_ring_submits_its_own_stuck_doorbell
 test_idempotent_write_dedups_exact_body
 test_idempotent_write_follows_concurrent_ack
 test_handled_mv_dedups_by_sequence
-test_gate_read_grant_only_when_deployed
 test_concurrent_writers_never_clobber
 test_writer_retries_after_a_vanished_lock_collision
 test_ladder_writes_ignore_vanished_inbox

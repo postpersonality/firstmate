@@ -18,25 +18,13 @@ root = Path(os.environ['LIVE_ALERT_TMP'])
 # The native CLI is real. Only SMTP is forbidden, even if a regression attempts it.
 stub = root / 'py'; stub.mkdir()
 (stub / 'smtplib.py').write_text('class SMTP_SSL:\n def __init__(self,*a,**kw): raise AssertionError("synthetic case cannot send SMTP")\n')
-# The fake sudo stands in for the separate gate account; it accepts only the
-# pinned isolated interpreter and drops -I so the SMTP guard stays importable.
-fakebin = root / 'fakebin'; fakebin.mkdir()
-(fakebin / 'sudo').write_text('#!/usr/bin/env bash\n[ "$1 $2 $4 $5" = "-n -u /usr/bin/python3 -I" ] || exit 1\n'
-                             'shift 5\nexport SUDO_UID=4242\nexec python3 "$@"\n')
-(fakebin / 'sudo').chmod(0o755)
-home, state = root / 'home', root / 'gate-state'
+home = root / 'home'
 home.mkdir()
 (home / 'AGENTS.md').write_text('Firstmate decides straight in-scope corrections. Only the human owner may grant public publication permission.')
-config = root / 'gate.env'
-config.write_text('\n'.join(['FM_MAIL_USER=sender@example.invalid', 'FM_MAIL_PASS=synthetic-unused',
-                             'FM_SMTP_HOST=smtp.invalid', 'FM_CAPTAIN_ALERT_TO=owner@example.invalid',
-                             'FM_CAPTAIN_ALERT_HOME=' + str(home), 'FM_CAPTAIN_ALERT_STATE=' + str(state),
-                             'FM_CAPTAIN_ALERT_CLAUDE=' + str(Path(os.environ['LIVE_CLAUDE']).resolve())]) + '\n')
-config.chmod(0o600)
 env = {k:v for k,v in os.environ.items() if not k.startswith(('FM_MAIL_', 'FM_IMAP_', 'FM_SMTP_', 'FM_CAPTAIN_ALERT_'))}
-env.update(FM_HOME=str(home), FM_CAPTAIN_ALERT_GATE=os.environ['ROOT'] + '/bin/fm-captain-alert.py',
-           FM_CAPTAIN_ALERT_GATE_USER='fm-gate', FM_CAPTAIN_ALERT_GATE_ENV=str(config),
-           PYTHONPATH=str(stub), PATH=str(fakebin) + ':' + os.environ['PATH'])
+env.update(FM_HOME=str(home), FM_MAIL_USER='sender@example.invalid', FM_MAIL_PASS='synthetic-unused',
+           FM_SMTP_HOST='smtp.invalid', FM_CAPTAIN_ALERT_TO='owner@example.invalid',
+           FM_CAPTAIN_ALERT_CLAUDE=str(Path(os.environ['LIVE_CLAUDE']).resolve()), PYTHONPATH=str(stub))
 for key in ('Q23', 'next-step', 'human-permission'):
     permission = key == 'human-permission'
     (home / 'data' / key).mkdir(parents=True)
@@ -55,7 +43,7 @@ for key in ('Q23', 'next-step', 'human-permission'):
     proc = subprocess.run(['bash', os.environ['ROOT'] + '/bin/fm-mail.sh', 'alert', str(request)],
                           env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=240)
     assert proc.returncode == 1, 'synthetic native proof must not send SMTP'
-    receipts = state / key
+    receipts = home / 'state' / 'captain-alerts' / key
     review_path, = receipts.glob('*/review.json')
     review = json.loads(review_path.read_text())
     transport = json.loads((review_path.parent / 'transport.json').read_text())

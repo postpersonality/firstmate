@@ -3,7 +3,7 @@
 #
 # A small mail client used by fm-mail.sh:
 #   read                   List unseen INBOX mail as a compact digest.
-#   send                   Closed; only the separate gate in fm-captain-alert.py sends.
+#   send                   Closed; only fm-mail.sh alert (bin/fm-captain-alert.py) sends.
 #   poll_list              Emit unseen mail as tab-separated rows for the bash
 #                          poll, bounded to uids this home has not surfaced,
 #                          plus a retry-set of previously unfetchable uids;
