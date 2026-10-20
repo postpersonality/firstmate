@@ -47,7 +47,9 @@
 # are unchanged everywhere else, including for a dead daemon pid or a beacon
 # older than AFK_GRACE, which still block.
 #
-# Loop-guard, codex/Grok (default) mode: never block twice in the same turn.
+# Native Codex app-server Stops delegate to bin/fm-codex-stop-watch.sh before
+# the legacy loop flag: that synchronous caller owns the checkpoint return.
+# Loop-guard, legacy codex/Grok (default) mode: never block twice in the same turn.
 # Codex uses stop_hook_active and Grok uses stopHookActive; typed camel-case
 # takes precedence when both spellings are present. A true value means the
 # current stop attempt already follows a block, so this guard always allows it.
@@ -150,6 +152,17 @@ STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '
   else false
   end
 ' 2>/dev/null) || exit 0
+# On the native API path a live watcher is not a delivery owner. The synchronous
+# Stop caller retains the checkpoint return, including after another hook blocked.
+if [ "$CLAUDE_MODE" -eq 0 ] && [ "$CURSOR_MODE" -eq 0 ] \
+  && printf '%s' "$PAYLOAD" | jq -e '.hook_event_name == "Stop" and (.turn_id | type == "string")' >/dev/null 2>&1; then
+  # shellcheck source=bin/fm-session-lock-lib.sh
+  . "$SCRIPT_DIR/fm-session-lock-lib.sh"
+  if fm_session_lock_codex_api_pid >/dev/null; then
+    printf '%s' "$PAYLOAD" | "$SCRIPT_DIR/fm-codex-stop-watch.sh"
+    exit $?
+  fi
+fi
 if [ "$CLAUDE_MODE" -eq 0 ] && [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   exit 0
 fi

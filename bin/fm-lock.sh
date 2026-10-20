@@ -11,6 +11,8 @@
 # a dead session's lock alive. Line 1 keeps its whole-line pid format because
 # every other reader takes the first line as the pid.
 #
+# Native Codex app-server threads share a daemon PID; their matching native
+# thread ids partition that PID through the same library and sidecar.
 # The trusted id itself is recorded beside the lock in state/.lock-session, a
 # sidecar written only here and only under the claim lock: refreshed on every
 # confirmed-own acquisition, including the early already-mine exit that waits
@@ -166,7 +168,7 @@ confirm_own_lock() {  # <recorded-pid>
     waited=1
   fi
   recorded=$(cat "$LOCK" 2>/dev/null || true)
-  if [ "$recorded" = "$me" ] || fm_session_lock_owned_by_self "$STATE"; then
+  if fm_session_lock_owned_by_self "$STATE"; then
     publish_lock_session_or_die
     commit_lock_session
     release_claim_lock
@@ -189,12 +191,24 @@ refuse_live_owner() {  # <recorded-pid>
   exit 1
 }
 
+refuse_unverified_sandbox_owner() {
+  if fm_session_lock_codex_sandbox_pid >/dev/null \
+    && fm_session_lock_recorded_session_id "$STATE" >/dev/null \
+    && ! fm_session_lock_owned_by_self "$STATE"; then
+    # A host PID is not observable from this tool namespace. Only a native
+    # hook outside it may reclaim a different or unidentified recorded owner.
+    echo 'error: the recorded primary thread is not this sandboxed session; operate read-only until its native hook verifies ownership' >&2
+    exit 1
+  fi
+}
+
 if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
   old=$(cat "$LOCK" 2>/dev/null || true)
-  if [ "$old" = "$me" ] || fm_session_lock_owned_by_self "$STATE"; then
+  if fm_session_lock_owned_by_self "$STATE"; then
     confirm_own_lock "$old"
     old=$(cat "$LOCK" 2>/dev/null || true)
   fi
+  refuse_unverified_sandbox_owner
   if fm_harness_pid_alive "$old"; then
     refuse_live_owner "$old"
   fi
@@ -219,10 +233,11 @@ if [ -e "$LOCK" ] || [ -L "$LOCK" ]; then
     echo "error: session lock is unreadable; operate read-only until resolved" >&2
     exit 1
   }
-  if [ "$old" != "$me" ] && fm_harness_pid_alive "$old"; then
+  refuse_unverified_sandbox_owner
+  if fm_harness_pid_alive "$old"; then
     fm_session_lock_owned_by_self "$STATE" && confirm_own_lock "$old"
     old=$(cat "$LOCK" 2>/dev/null || true)
-    if [ "$old" != "$me" ] && fm_harness_pid_alive "$old"; then
+    if fm_harness_pid_alive "$old"; then
       refuse_live_owner "$old"
     fi
   fi

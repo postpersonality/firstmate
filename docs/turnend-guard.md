@@ -32,7 +32,8 @@ Do not infer this guard's scope, loop safety, or compatibility tradeoffs for tho
 `bin/fm-guard.sh` is a pull-based warning that runs only when another supervision command invokes it.
 The turn-end guard closes the remaining gap at the primary's own turn boundary.
 
-The guard acts at that boundary when both of these hold:
+On native Codex app-server sessions, `bin/fm-codex-stop-watch.sh` retains the checkpoint return at that boundary instead of treating watcher liveness as delivery proof; see [Codex API Stop ownership](#codex-api-stop-ownership).
+The legacy guard acts at that boundary when both of these hold:
 
 - Work, a process-event source, a registered custom check, or Relay polling needs supervision.
 - No identity-matched watcher has a fresh beacon.
@@ -298,11 +299,37 @@ The registrations in detail:
   pi-code stamps it with Pi's session file under `/.pi/`, a path component a Claude transcript never carries.
   The stand-down fails toward running, matching the guards above, so no payload, no `jq`, or no `transcript_path` still arms, and every other Claude-shaped hook pi-code delivers keeps running.
 
+### Codex API Stop ownership
+
+The existing synchronous project Stop registration delegates to `bin/fm-codex-stop-watch.sh` when the nearest harness is a Codex app-server.
+The hook payload supplies its native thread id; environment variables alone are not assumed to exist.
+The checkpoint fits beneath its existing 30-second registration; the script header owns the checkpoint cap, failure budget, state files and exact mechanics.
+It retains the existing foreground checkpoint's result and returns it through exit-2 Stop feedback, so a short assistant reply cannot discard that return.
+An existing healthy watcher is followed through the durable wake queue, without starting another watcher.
+A pending wake is delivered before another wait, and a quiet checkpoint also compels a primary continuation.
+The script never decides fleet actions or acknowledges wakes; the resumed primary uses the ordinary drain, handler and generation-bound acknowledgement.
+
+Successful bounded parks may continue even when another Stop hook set `stop_hook_active`.
+That flag describes a previous hook continuation, not a delivered fleet wake or an explicit captain stop.
+Repeated checkpoint failure or an identical wake left unhandled gets bounded repair and then an explicit failure message; it never becomes an unlimited immediate Stop loop, and unhandled rows remain durable.
+Native interruption cancels the synchronous return owner; an empty fleet or held/parked backlog alone starts no supervision work.
+The existing away daemon remains a legitimate alternate owner.
+
+`bin/fm-session-lock-lib.sh` partitions a shared app-server PID by its native thread id in the existing `state/.lock-session` sidecar.
+`bin/fm-lock.sh` remains its sole writer, including the first binding of a legacy PID-only lock.
+A different recorded thread cannot acquire or park that home merely because it shares the daemon PID.
+The native Linux tool sandbox confirms that same sidecar through its runtime-supplied agreeing vendor ids; it preserves the host PID and cannot reclaim another recorded thread from inside its PID namespace.
+
+The guarantee requires the enabled, trusted project Stop hook to execute in a live native runtime with that event identity and verifiable app-server ancestry.
+It does not cover a disabled/untrusted or timed-out hook, runtime termination, repeated watcher/handler failure, or a client whose native event and ancestry cannot establish that identity.
+The global semantic Stop checker, native goals and domain completion/decision authority remain separate owners.
+[`verification/supervision.md`](verification/supervision.md) owns native evidence; `tests/fm-codex-stop-watch.test.sh` covers portable behavior and the opt-in native API guard exercises actual continuations and worker steering.
+
 ### Claude and Codex blocking
 
 Claude and Codex can block a Stop directly with exit status 2 and stderr.
 Both payloads carry `stop_hook_active`.
-In the default Codex mode, a true value lets the second stop finish after one forced continuation.
+Outside the native API owner described above, Codex's one-shot mode lets a true value finish the second stop after one forced continuation.
 
 ### Claude cooperative mode
 

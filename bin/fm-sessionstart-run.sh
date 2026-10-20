@@ -128,6 +128,14 @@ if [ -z "$SOURCE" ] && [ ! -t 0 ]; then
   if fm_hook_payload_is_foreign_host "$PAYLOAD"; then
     exit 0
   fi
+  # Native API hooks carry their thread identity in the event, not the shell
+  # environment. Keep the shared daemon's lock partitioned before startup.
+  if fm_session_lock_codex_api_pid >/dev/null \
+    && command -v jq >/dev/null 2>&1 \
+    && printf '%s' "$PAYLOAD" | jq -e '.hook_event_name == "SessionStart" and (.session_id | type == "string" and length > 0)' >/dev/null 2>&1; then
+    FM_CODEX_HOOK_SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id')
+    export FM_CODEX_HOOK_SESSION_ID
+  fi
   SOURCE=$(printf '%s' "$PAYLOAD" | awk '
     BEGIN { RS = "\"" }
     seen == 2 { print; exit }
