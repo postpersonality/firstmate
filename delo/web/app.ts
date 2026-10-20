@@ -108,22 +108,23 @@ const requestLabel = (r: TaskRequest) => r.action === 'start'
   : r.action === 'stop'
     ? r.state === 'pending' ? 'Остановка запрошена. Работа ещё не остановлена.' : 'Просьба об остановке принята. Остановка ещё не подтверждена.'
     : r.state === 'pending' ? 'Закрытие запрошено. Задача ещё не закрыта.' : 'Просьба о закрытии принята. Закрытие ещё не подтверждено.';
+const retryLabel = (action: string) => ({ start: 'Повторить просьбу о запуске', stop: 'Повторить просьбу об остановке', close: 'Повторить просьбу о закрытии' } as Record<string, string>)[action];
 function taskControls(g: Pick<Goal, 'id' | 'title' | 'actions' | 'holdKind' | 'reason' | 'inFlight' | 'requests'>) {
   const pending = pendingTasks.has(g.id);
-  return `<div class="actions task-actions">${g.actions.filter(a => !g.requests?.some(r => r.action === a)).map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}"${a === 'answer' ? ` data-question="${esc(g.reason)}"` : ''} ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}${(g.requests ?? []).filter(r => g.actions.includes(r.action)).map(r => `<small role="status">${requestLabel(r)}</small>`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
+  return `<div class="actions task-actions">${g.actions.filter(a => !g.requests?.some(r => r.action === a)).map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}"${a === 'answer' ? ` data-question="${esc(g.reason)}"` : ''} ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}${(g.requests ?? []).filter(r => g.actions.includes(r.action)).map(r => `<small role="status">${requestLabel(r)}</small>${r.state === 'handled' ? `<button data-task-action="${r.action}" data-task-attempt="${Number(r.requestId.split('-').at(-1)) + 1}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-in-flight="${g.inFlight ? '1' : ''}" ${pending ? 'disabled' : ''}>${retryLabel(r.action)}</button>` : ''}`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
 }
 function taskPending(id: string, on: boolean) {
   if (on) pendingTasks.add(id); else pendingTasks.delete(id);
   document.querySelectorAll<HTMLButtonElement>('[data-task-action], [data-action="pin"]').forEach(b => { if (b.dataset.id === id) b.disabled = on; });
   document.querySelectorAll<HTMLElement>('[data-task-pending]').forEach(e => { if (e.dataset.id === id) e.hidden = !on; });
 }
-async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'> & { question?: string }, action: string) {
+async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'> & { question?: string }, action: string, attempt?: number) {
   const path = `/api/tasks/${encodeURIComponent(g.id)}/${action}`;
   const run = async (body: Record<string, unknown> = {}) => {
     if (pendingTasks.has(g.id)) return;
     taskPending(g.id, true);
     try {
-      const result = await api(path, body);
+      const result = await api(path, { ...body, ...(attempt === undefined ? {} : { attempt }) });
       if (action === 'stop' || action === 'close' && g.inFlight) {
         message(`${receipt(result)} ${action === 'stop' ? 'Остановка ещё не подтверждена. Просьба: сохранить сделанное и оставить задачу открытой.' : 'Закрытие ещё не подтверждено; задача пока остаётся в работе.'}`);
       } else if (action === 'close' && result.task) {
@@ -132,7 +133,11 @@ async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'
       await reload();
     } finally { taskPending(g.id, false); }
   };
-  if (action === 'close' || action === 'stop') {
+  if (attempt !== undefined) {
+    modal(retryLabel(action), `<p>Задача «${esc(g.title)}»</p><p>Предыдущая просьба принята, но это не подтверждает выполнение. Отправить новую просьбу? Повторное подтверждение отправит её только один раз.</p>`, () => run(), 'Отправить ещё раз');
+    $('dialog-cancel').hidden = false;
+  }
+  else if (action === 'close' || action === 'stop') {
     const consequence = action === 'stop' ? 'Firstmate получит просьбу остановить работу, сохранить сделанное и оставить задачу открытой. Это не немедленная остановка; ждём обработки просьбы.'
       : g.inFlight ? 'Firstmate получит просьбу закрыть задачу. Исполнитель не будет остановлен этим нажатием; ждём обработки просьбы.'
       : g.holdKind === 'captain' ? 'Задача будет закрыта как неактуальная, а ваш выбор сохранится в её истории.'
@@ -292,7 +297,7 @@ $('dialog-close').onclick = $('dialog-cancel').onclick = () => ($('dialog') as H
 $('dialog-form').onsubmit = async event => { event.preventDefault(); if (($('dialog-submit') as HTMLButtonElement).disabled) return; $('dialog-submit').setAttribute('disabled', ''); try { await submitDialog(new FormData($('dialog-form') as HTMLFormElement)); ($('dialog') as HTMLDialogElement).close(); } catch (e: any) { $('dialog-error').textContent = e.message; } finally { $('dialog-submit').removeAttribute('disabled'); } };
 $('main').onclick = async event => {
   const taskButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-task-action]');
-  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, title: taskButton.dataset.title!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight, question: taskButton.dataset.question }, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } return; }
+  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, title: taskButton.dataset.title!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight, question: taskButton.dataset.question }, taskButton.dataset.taskAction!, taskButton.dataset.taskAttempt ? Number(taskButton.dataset.taskAttempt) : undefined); } catch (e: any) { message(e.message, true); } return; }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
   if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, button, input, select, textarea, label, .task-actions, .row-actions')) go.querySelector('a')?.click(); return; }
   try { if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'open-report') { button.disabled = true; await api(`/api/reports/${encodeURIComponent(button.dataset.id!)}/open`, {}); return; } if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }

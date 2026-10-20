@@ -189,3 +189,39 @@ test('«Взять в работу» reaches firstmate as a structured start req
     assert.deepEqual([close.kind, close.task], [null, null], 'the close request stays a free-text note');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test('explicit retries use stable attempts across reopen and restarts, while native actions remain authoritative', () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-request-retry-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  const fm = store.firstmate.home;
+  const acknowledge = (note: any) => run(join(fm, 'bin', 'fm-inbox.sh'), ['drain', '--ack', note.id], fm, 45000, { ...process.env, FM_HOME: fm });
+  try {
+    const row = store.create({ title: 'Повтор после возвращения' }).id;
+    assert.throws(() => store.act(row, 'start', { attempt: 2 }), /повтор доступен/);
+    const initial = store.act(row, 'start', {}).note;
+    assert.throws(() => store.act(row, 'start', { attempt: 2 }), /после принятия/);
+    acknowledge(initial);
+    store.firstmate.start(row); store.firstmate.done(row); store.firstmate.reopen(row);
+    const second = store.act(row, 'start', { attempt: 2 }).note;
+    assert.equal(second.outcome, 'created'); assert.notEqual(second.id, initial.id);
+    const restart = new Store({ firstmateHome: fm });
+    assert.equal(restart.act(row, 'start', { attempt: 2 }).note.id, second.id, 'stale tabs and retries share the exact attempt');
+    assert.equal(restart.act(row, 'start', {}).note.id, second.id, 'ordinary clicks reuse the latest request');
+    assert.throws(() => restart.act(row, 'start', { attempt: 3 }), /после принятия/);
+    assert.throws(() => restart.act(row, 'start', { attempt: 99 }), /Обновите/);
+    assert.throws(() => restart.act(row, 'start', { attempt: 2.5 }));
+    assert.equal(restart.firstmate.receipts().pending.length, 1);
+    store.firstmate.start(row);
+    assert.throws(() => restart.act(row, 'start', { attempt: 2 }), /недоступно/);
+    for (const action of ['stop', 'close'] as const) {
+      const first = store.act(row, action, {}).note; acknowledge(first);
+      const next = store.act(row, action, { attempt: 2 }).note;
+      assert.equal(next.outcome, 'created');
+      assert.equal(restart.act(row, action, { attempt: 2 }).note.id, next.id);
+    }
+    store.firstmate.done(row); store.firstmate.reopen(row);
+    assert.throws(() => restart.act(row, 'close', { attempt: 3 }), /Повторная просьба недоступна/);
+    assert.equal(store.firstmate.show(row).state, 'queued', 'stale close retry cannot close reopened work directly');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

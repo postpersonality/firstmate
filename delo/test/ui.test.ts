@@ -218,8 +218,9 @@ test('browser app uses the real router for goal forms, the card and task actions
     const asking = () => /В работе · ждёт ответа/.test(window.document.querySelector('.page-heading .eyebrow')?.textContent ?? '');
     const shown = () => [...window.document.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action'));
     await buttons(goal.id); await until(asking);
-    assert.deepEqual(shown(), ['answer', 'stop', 'close'], 'a question asked during work is answered from the card');
-    assert.equal(window.document.querySelector('[data-task-action="close"]')?.textContent, 'Запросить закрытие');
+    assert.deepEqual(shown(), ['answer'], 'the answer remains available while existing stop/close requests stay pending');
+    assert.match(window.document.querySelector('main')!.textContent!, /Остановка запрошена/);
+    assert.match(window.document.querySelector('main')!.textContent!, /Закрытие запрошено/);
     (window.document.querySelector('[data-task-action="answer"]') as HTMLButtonElement).click();
     assert.equal(window.document.getElementById('answer-question')?.textContent, 'Какой вариант брать?\nA или B', 'the dialog shows the whole question');
     const reply = window.document.querySelector('[name=answer]') as HTMLTextAreaElement;
@@ -229,8 +230,9 @@ test('browser app uses the real router for goal forms, the card and task actions
     await until(() => store.firstmate.show(nativeId).held === 'no');
     assert.equal(store.firstmate.show(nativeId).state, 'in_flight');
     assert.match(store.firstmate.show(nativeId).body ?? '', /Answer: Выбираю A \/ потому что быстрее/);
+    await until(() => !dialogOpen());
     await buttons(goal.id); await until(() => !asking());
-    assert.deepEqual(shown(), ['stop', 'close']);
+    assert.deepEqual(shown(), [], 'answering leaves pending stop/close receipts intact');
     window.document.getElementById('new-case')?.click();
     assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'reviewKind', 'sources', 'why', 'doneWhen', 'context', 'constraints']);
     (window.document.querySelector('[name=title]') as HTMLInputElement).value = 'UI дело';
@@ -492,10 +494,12 @@ test('request feedback shows pending and accepted without claiming execution or 
   const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: 'http://localhost:4317/', runScripts: 'outside-only' });
   const { window } = dom; const document = window.document;
   window.setInterval = (() => 0) as typeof window.setInterval;
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   (window as any).fetch = async (input: string, init: RequestInit = {}) => handle(new Request(new URL(input, window.location.href), init));
   const until = async (check: () => unknown) => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 25)); assert.ok(check()); };
   const text = () => document.querySelector('main')?.textContent ?? '';
-  const control = () => document.querySelector(`[data-task-action="start"][data-id="${task.id}"]`) as HTMLButtonElement | null;
+  const control = () => document.querySelector(`[data-task-action="start"][data-id="${task.id}"]:not([data-task-attempt])`) as HTMLButtonElement | null;
   try {
     window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
     await until(control); control()!.click();
@@ -516,5 +520,18 @@ test('request feedback shows pending and accepted without claiming execution or 
     assert.ok(technical); assert.equal(technical.open, false);
     assert.match(technical.textContent!, /delo-start-/);
     assert.doesNotMatch(text().replace(technical.textContent!, ''), /delo-start-|can_receive|posture/);
+    const retry = () => document.querySelector('[data-task-attempt="2"]') as HTMLButtonElement | null;
+    await until(() => retry() && !retry()!.disabled);
+    assert.match(retry()!.textContent!, /Повторить просьбу о запуске/);
+    retry()!.click(); document.getElementById('dialog-cancel')!.click();
+    assert.equal(store.firstmate.receipts().pending.length, 0, 'cancel sends no new request');
+    retry()!.click();
+    const submit = () => document.getElementById('dialog-form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    submit(); submit();
+    await until(() => text().includes('Запуск запрошен') && !(document.getElementById('dialog') as HTMLDialogElement).open);
+    assert.equal(retry(), null, 'a pending retry cannot itself be retried');
+    assert.equal(store.firstmate.receipts().pending.length, 1, 'double confirmation produces one new note');
+    assert.equal(store.firstmate.receipts().pending[0].request_id, `delo-start-${task.id}-2`);
+
   } finally { dom.window.close(); rmSync(root, { recursive: true, force: true }); }
 });

@@ -159,7 +159,7 @@ export class Store {
     const requests = requestsByTask(this.firstmate.receipts());
     const entry = (t: FirstmateTask) => {
       const { id, title, state, actions, holdKind, reason, inFlight, links, report, review, reviewProgress } = this.get(t.id, t);
-      return { id, title, state, actions, requests: (requests.get(t.id) ?? []).filter(r => actions.includes(r.action)), holdKind, reason, inFlight, phase: phase(t), links, report, review, reviewProgress };
+      return { id, title, state, actions, requests: (requests.get(t.id) ?? []).filter(r => actions.includes(r.action) && (r.action !== 'close' || inFlight)), holdKind, reason, inFlight, phase: phase(t), links, report, review, reviewProgress };
     };
     const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
     const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t, true)));
@@ -268,9 +268,10 @@ export class Store {
     if (action === 'start' || action === 'stop' || action === 'close' && task.state === 'in_flight') {
       const kind = action === 'start' ? 'start' : action === 'stop' ? 'stop' : 'close';
       const text = kind === 'start' ? `Дело: возьми в работу задачу ${task.id}` : kind === 'stop' ? `Дело: останови работу по задаче ${task.id}, сохрани сделанное, задачу не закрывай` : `Дело: закрой задачу ${task.id}`;
-      const note = this.firstmate.note(text, this.requestId(kind, task.id), kind === 'start' ? task.id : undefined);
+      const note = this.firstmate.note(text, this.requestId(kind, task.id, data.attempt), kind === 'start' ? task.id : undefined);
       return { note, ready: this.firstmate.ready() };
     }
+    if (data.attempt !== undefined) throw new Error('Повторная просьба недоступна для этого действия в текущем состоянии задачи');
     if (action === 'close' && task.hold_kind === 'captain') {
       const output = this.firstmate.answer(task.id, 'Закрыть как неактуальную', 'Закрыть как неактуальную', 'done');
       if (/^skipped:/m.test(output)) throw new Error(output);
@@ -293,13 +294,19 @@ export class Store {
   }
 
   // Acknowledgement is not execution: reuse even a handled request while the same action remains available.
-  // shortcut: receipts have no lifecycle generation; keep old requests after reopening until explicit retry semantics exist.
-  private requestId(kind: 'start' | 'close' | 'stop', taskId: string) {
+  private requestId(kind: 'start' | 'close' | 'stop', taskId: string, attempt?: number) {
     const prefix = `delo-${kind}-${taskId}-`;
     const { pending = [], handled = [] } = this.firstmate.receipts();
     const ours = [...pending, ...handled].filter((r: any) => typeof r.request_id === 'string' && r.request_id.startsWith(prefix) && /^\d+$/.test(r.request_id.slice(prefix.length)));
     const waiting = ours.sort((a: any, b: any) => Number(b.request_id.slice(prefix.length)) - Number(a.request_id.slice(prefix.length)))[0];
-    return waiting?.request_id ?? `${prefix}1`;
+    if (attempt === undefined) return waiting?.request_id ?? `${prefix}1`;
+    const requested = `${prefix}${attempt}`;
+    if (ours.some((r: any) => r.request_id === requested)) return requested;
+    // The next attempt is chosen before submission, so duplicate/stale tabs reuse the same reservation.
+    if (!waiting || attempt !== Number(waiting.request_id.slice(prefix.length)) + 1 || pending.some((r: any) => ours.includes(r) && !r.acknowledged)) {
+      throw new Error('Обновите задачу: повтор доступен после принятия предыдущей просьбы');
+    }
+    return requested;
   }
 
   // Delo's own notes about this row with their receipt state, and whether firstmate can take a note now.

@@ -68,7 +68,7 @@ export function router(store: Store, opener = 'xdg-open') {
       const goalId = decodeURIComponent(route[1]); id.parse(goalId);
       if (req.method === 'GET') {
         const goal = store.get(goalId); const inbox = store.inbox(goalId);
-        return send({ ...goal, requests: inbox.requests.filter(r => r.action && goal.actions.includes(r.action)), inbox, worker: await store.worker(goalId) });
+        return send({ ...goal, requests: inbox.requests.filter(r => r.action && goal.actions.includes(r.action) && (r.action !== 'close' || goal.inFlight)), inbox, worker: await store.worker(goalId) });
       }
       if (req.method === 'PATCH') return send(store.update(goalId, await req.json()));
       return send({ error: 'Метод не поддерживается' }, 405);

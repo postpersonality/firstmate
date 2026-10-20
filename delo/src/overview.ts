@@ -75,7 +75,7 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
     return {
       ...extra, id, title: value(r?.title) ?? value(title) ?? id, kind: value(r?.kind) ?? extra.kind, repo: value(r?.repo) ?? extra.repo,
       pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(worker?.pr?.url) ?? value(r?.pr_url), reportPath: value(r?.report_path),
-      requests: (requests.get(id) ?? []).filter(request => task && actions(task).includes(request.action)),
+      requests: (requests.get(id) ?? []).filter(request => task && actions(task).includes(request.action) && (request.action !== 'close' || task.state === 'in_flight')),
       actions: r ? actions(task) : [], state: !r ? undefined : task.state === 'done' ? 'done' : task.held === true || task.held === 'yes' ? 'paused' : 'active',
       reason: value(r?.hold_reason) ?? extra.reason,
       blockers: taskBlockers({ ...r, blocked_by: extra.blockedBy ?? r?.blocked_by }, records),

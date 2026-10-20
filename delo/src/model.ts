@@ -25,7 +25,7 @@ export const agentInput = z.object({
 });
 export const closeCaseInput = z.object({ confirmed: z.array(id).default([]) });
 export const goalPatch = z.object({ title: line.min(1).optional(), body: text.optional(), personal: z.boolean().optional(), folder: line.optional(), state: state.optional() });
-export const actionInput = z.object({ reason: line.optional(), answer: z.string().max(500).refine(v => !v.includes('\t'), 'Без табуляции').optional(), until: day.optional() });
+export const actionInput = z.object({ attempt: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(), reason: line.optional(), answer: z.string().max(500).refine(v => !v.includes('\t'), 'Без табуляции').optional(), until: day.optional() });
 export const personalLine = 'Личное';
 
 // Card buttons by backlog row state (plan section 5); the server refuses any action not listed here.
