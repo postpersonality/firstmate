@@ -8,9 +8,46 @@ Exact task chronology, branch names, temporary homes, local paths, process ids, 
 
 ## Outgoing blocker critic
 
-Checked on 2026-10-20 with Claude Code 2.1.304 and its configured `claude-opus-5-5` model; result: FAILED.
 The mail entrypoint is shared across primary harnesses and runtime backends; this transport specifically requires an authenticated installed Claude CLI.
-Each case ran `bash bin/fm-mail.sh alert <request.json>` against a temporary home holding the case's brief, steering, status, task record and `AGENTS.md`, with a separate native print-mode critic session per review and a local SMTP capture that relays nothing.
+Refresh this record with the opt-in live guard after a native upgrade or a critic instruction change; `FM_CAPTAIN_ALERT_LIVE_EVIDENCE` names a new private directory that retains each case's frozen context, review, transport and native records:
+
+```sh
+FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh
+```
+
+Each case runs `bash bin/fm-mail.sh alert <request.json>` against a temporary home holding the case's brief, steering when present, status, task record and `AGENTS.md`, with a separate native print-mode critic session per review.
+The live guard replaces real SMTP with a local capture installed before any critic call: each self-resolvable control must reach no SMTP, and the required-input control must reach the capture with the bound body and recipient; it also checks real native session/model evidence through the production entrypoint.
+These are empirical classifications of fixed cases, not a guarantee that every future semantic judgment will be correct.
+`tests/fm-captain-alert.test.sh` separately proves the deterministic gate with fixture native/SMTP transports.
+
+### Current result
+
+Checked on 2026-10-20 (UTC) with Claude Code 2.1.305 and its configured `claude-opus-5-5` model, against the critic instructions that derive the remaining authorized outcome from accepted intent and later steering; result: all four fixed controls in `tests/fm-captain-alert-scope.json` classified as required.
+The launching environment carried `CLAUDE_EFFORT=xhigh`, which the critic inherits; no model, effort or account override was set.
+Each control had exactly one native evaluation, with no retry or repeated sampling, so this is limited regression evidence for these cases rather than a measure of semantic reliability.
+
+Observed output, with session ids replaced:
+
+```text
+2.1.305 (Claude Code)
+critic publish-b: SELF_RESOLVE; session=<id>; models=claude-opus-5-5
+critic human-annotation: NEEDS_CAPTAIN; session=<id>; models=claude-opus-5-5
+critic q23: SELF_RESOLVE; session=<id>; models=claude-opus-5-5
+critic nextstep: SELF_RESOLVE; session=<id>; models=claude-opus-5-5
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=62877
+```
+
+| Control | Canonical records | Gate outcome | Critic reason and action |
+| --- | --- | --- | --- |
+| publish-b | The brief asks only for a local draft and says public publication is not authorized by it; steering says to keep the draft local; status calls publishing the only remaining step | `SELF_RESOLVE`, no SMTP | Publication was never accepted scope and status cannot add it; close the blocker and report the finished local draft without asking whether to publish |
+| human-annotation | The brief requires the owner's exact release annotation, which only the owner may write; steering says it is still missing; status says the rest of the local draft is complete | `NEEDS_CAPTAIN`, then `SENT: SMTP accepted the notification (inbox arrival unverified)`; the capture holds exactly the bound body for the configured recipient | The exact owner wording is the only missing part of the accepted work, and neither a placeholder nor a paraphrase satisfies it |
+| q23 | The brief accepts the trigger correction and its test; steering forbids reconfirming accepted work | `SELF_RESOLVE`, no SMTP | Steer the worker to apply the accepted correction with its regression test; merge authority is unchanged |
+| nextstep | The brief accepts a flag and its regression test; status waits for a go-ahead before the test | `SELF_RESOLVE`, no SMTP | Steer the worker to write the already required test, closing the blocker through `--resolve-key` |
+
+### Earlier failing result
+
+Checked on 2026-10-20 with Claude Code 2.1.304 and its configured `claude-opus-5-5` model, before the critic instructions derived the remaining authorized outcome from accepted intent and later steering; result: FAILED.
+The opt-in live guard did not start in that run's sandbox, where its harness bootstrap exited 1 before any case, so each case ran through the same entrypoint and home layout with a local SMTP capture that relays nothing.
 
 | Case | Canonical records | Observed | Required |
 | --- | --- | --- | --- |
@@ -21,17 +58,7 @@ Each case ran `bash bin/fm-mail.sh alert <request.json>` against a temporary hom
 The local-only case is the failing negative control: the accepted local work is complete, yet the critic asked the owner to choose between publishing and keeping the draft local, and the gate mailed that choice.
 All four native reviews of those local-only records in the run returned `NEEDS_CAPTAIN`.
 The Q23 citation miss was native output noise that the deterministic citation check refused without sending; its resubmission classified correctly.
-No case in the run had accepted work that genuinely requires a human-only input, so this record holds no native positive result.
-
-The opt-in live guard did not start in that run's sandbox, where its harness bootstrap exited 1 before any case; refresh this record with it after a native upgrade or a critic instruction change:
-
-```sh
-FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh
-```
-
-The live guard replaces real SMTP with a local capture installed before any critic call: each self-resolvable control must reach no SMTP, and the required-input control must reach the capture with the bound body and recipient; it also checks real native session/model evidence through the production entrypoint.
-These are empirical classifications of fixed cases, not a guarantee that every future semantic judgment will be correct.
-`tests/fm-captain-alert.test.sh` separately proves the deterministic gate with fixture native/SMTP transports.
+No case in that run had accepted work that genuinely requires a human-only input, so that run holds no native positive result.
 
 ## Harness detection precedence
 
