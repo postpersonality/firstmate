@@ -315,7 +315,7 @@ holder=$(cat "$home/state/.lock")
 for attempt in 1 2; do
   status=0
   TEST_KEEP_LOCK=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
-  expect_code 0 "$status" "duplicate attachment attempt $attempt must stay read-only while the owning app-server lives"
+  expect_code 0 "$status" "duplicate attachment Stop attempt $attempt must stay read-only while the owning app-server lives"
   assert_contains "$(cat "$home/out")" "live process $holder owns the session lock" 'the duplicate attachment got no read-only notice'
   [ ! -s "$home/err" ] || fail 'the duplicate attachment received an impossible repair continuation'
 done
@@ -327,7 +327,7 @@ status=0
 TEST_KEEP_LOCK=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
 expect_code 2 "$status" 'the recorded thread must be supervised once the previous app-server is gone'
 [ "$(cat "$home/state/.lock")" != "$holder" ] || fail 'the recorded thread did not reclaim the stale app-server lock'
-pass 'Codex API Stop: the same thread in another app-server is read-only while the owner lives and reclaims after it exits'
+pass 'Codex API Stop: the Stop of the same thread in another app-server is read-only while the owner lives and reclaims after it exits'
 
 # Native Linux model tools run under codex-linux-sandbox as pid 1 of their own
 # PID namespace, where the host app-server that holds the lock is invisible.
@@ -367,7 +367,7 @@ else
   cp "$home/state/.lock" "$home/lock.before"
   status=0
   sandboxed_lock "$home" S1 || status=$?
-  expect_code 0 "$status" 'the recorded thread must confirm its host-bound lock from the sandbox'
+  expect_code 0 "$status" 'a sandboxed tool carrying the recorded thread id must confirm its host-bound lock'
   assert_contains "$(cat "$home/out")" "lock acquired: harness pid $holder" 'the sandboxed confirmation did not keep the host anchor'
   cmp -s "$home/lock.before" "$home/state/.lock" || fail 'the sandboxed confirmation rewrote the host anchor'
   [ "$(cat "$home/state/.lock-session")" = S1 ] || fail 'the sandboxed confirmation rewrote the recorded thread'
@@ -400,5 +400,5 @@ else
   expect_code 1 "$status" 'a sandboxed tool must not claim a free lock'
   assert_absent "$home/state/.lock" 'a sandboxed tool published PID 1'
   assert_absent "$home/state/.lock-session" 'a sandboxed tool recorded a thread without a host anchor'
-  pass 'Codex sandboxed lock writer: confirms only the recorded host owner and never publishes PID 1 or replaces a PID-only, stale or PID-1 lock'
+  pass 'Codex sandboxed lock writer: confirms the recorded thread by its id alone, keeps the host anchor, and never publishes PID 1 or replaces a PID-only, stale or PID-1 lock'
 fi
