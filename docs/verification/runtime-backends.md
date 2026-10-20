@@ -8,25 +8,28 @@ Exact task chronology, branch names, temporary homes, local paths, process ids, 
 
 ## Outgoing blocker critic
 
-Verified on 2026-10-20 with Claude Code 2.1.304 and its configured `claude-opus-5-5` model, using a separate native print-mode session per fixed case.
+Checked on 2026-10-20 with Claude Code 2.1.304 and its configured `claude-opus-5-5` model; result: FAILED.
 The mail entrypoint is shared across primary harnesses and runtime backends; this transport specifically requires an authenticated installed Claude CLI.
-Refresh after a native upgrade with:
+Each case ran `bash bin/fm-mail.sh alert <request.json>` against a temporary home holding the case's brief, steering, status, task record and `AGENTS.md`, with a separate native print-mode critic session per review and a local SMTP capture that relays nothing.
+
+| Case | Canonical records | Observed | Required |
+| --- | --- | --- | --- |
+| Q23 | The brief accepts the trigger correction and its test; steering forbids reconfirming accepted work | First review `NO_MAIL: critic citation is absent from the task records; resubmit for review`, resubmission `SELF_RESOLVE` | `SELF_RESOLVE` |
+| next-step | The brief accepts a flag and its regression test; status waits for a go-ahead before the test | `SELF_RESOLVE` | `SELF_RESOLVE` |
+| local-only release notes | The brief asks only for a local draft and says public publication is not authorized by it; steering says to keep the draft local; status calls publishing the only remaining step | `NEEDS_CAPTAIN`, then `SENT: SMTP accepted the notification (inbox arrival unverified)` | `SELF_RESOLVE` |
+
+The local-only case is the failing negative control: the accepted local work is complete, yet the critic asked the owner to choose between publishing and keeping the draft local, and the gate mailed that choice.
+All four native reviews of those local-only records in the run returned `NEEDS_CAPTAIN`.
+The Q23 citation miss was native output noise that the deterministic citation check refused without sending; its resubmission classified correctly.
+No case in the run had accepted work that genuinely requires a human-only input, so this record holds no native positive result.
+
+The opt-in live guard did not start in that run's sandbox, where its harness bootstrap exited 1 before any case; refresh this record with it after a native upgrade or a critic instruction change:
 
 ```sh
 FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh
 ```
 
-Observed classification output:
-
-```text
-2.1.304 (Claude Code)
-ok - native Q23: SELF_RESOLVE; models=claude-opus-5-5
-ok - native next-step: SELF_RESOLVE; models=claude-opus-5-5
-ok - native human-permission: NEEDS_CAPTAIN; models=claude-opus-5-5
-```
-
 The live guard forbids SMTP and checks real native session/model evidence through the production entrypoint.
-This output predates the gate's own reading of canonical task records; refresh it with the command above before it counts as evidence for the current gate.
 These are empirical classifications of fixed cases, not a guarantee that every future semantic judgment will be correct.
 `tests/fm-captain-alert.test.sh` separately proves the deterministic gate with fixture native/SMTP transports.
 
