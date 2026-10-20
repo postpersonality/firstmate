@@ -6,6 +6,29 @@ This record contains reusable version-scoped evidence for active runtime guarant
 The backend guides own current setup, safety boundaries, and limitations.
 Exact task chronology, branch names, temporary homes, local paths, process ids, thread ids, and delivery transcripts remain in private reports or PR evidence.
 
+## Outgoing blocker critic
+
+Verified on 2026-10-20 with Claude Code 2.1.304 and its configured `claude-opus-5-5` model, using a separate native print-mode session per fixed case.
+The mail entrypoint is shared across primary harnesses and runtime backends; this transport specifically requires an authenticated installed Claude CLI.
+Refresh after a native upgrade with:
+
+```sh
+FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh
+```
+
+Observed classification output:
+
+```text
+2.1.304 (Claude Code)
+ok - native Q23: SELF_RESOLVE; models=claude-opus-5-5
+ok - native next-step: SELF_RESOLVE; models=claude-opus-5-5
+ok - native human-permission: NEEDS_CAPTAIN; models=claude-opus-5-5
+```
+
+The live guard forbids SMTP and checks real native session/model evidence through the production entrypoint.
+These are empirical classifications of fixed cases, not a guarantee that every future semantic judgment will be correct.
+`tests/fm-captain-alert.test.sh` separately proves the deterministic gate with fixture native/SMTP transports.
+
 ## Harness detection precedence
 
 Firstmate's own harness comes from two kinds of evidence, and `bin/fm-harness.sh` owns how they combine: an environment marker names its harness, and the nearest harness process in the parent chain proves who owns the process tree.

@@ -3,7 +3,7 @@
 #
 # A small mail client used by fm-mail.sh:
 #   read                   List unseen INBOX mail as a compact digest.
-#   send <to> <subj> <body | ->   Send one SMTP message; "-" reads stdin.
+#   Outgoing SMTP is called only by fm-captain-alert.py after native review.
 #   poll_list              Emit unseen mail as tab-separated rows for the bash
 #                          poll, bounded to uids this home has not surfaced,
 #                          plus a retry-set of previously unfetchable uids;
@@ -14,6 +14,7 @@
 # so credentials never appear in argv or logs. read/poll use BODY.PEEK so mail
 # is never marked seen before firstmate answers it.
 import imaplib
+import math
 import os
 import re
 import socket
@@ -25,12 +26,12 @@ from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.utils import formatdate
 
-USER = os.environ['FM_MAIL_USER']
-PW = os.environ['FM_MAIL_PASS']
-IMH = os.environ['FM_IMAP_HOST']
-IMP = int(os.environ['FM_IMAP_PORT'])
-STH = os.environ['FM_SMTP_HOST']
-STP = int(os.environ['FM_SMTP_PORT'])
+USER = os.environ.get('FM_MAIL_USER', '')
+PW = os.environ.get('FM_MAIL_PASS', '')
+IMH = os.environ.get('FM_IMAP_HOST', '')
+IMP = os.environ.get('FM_IMAP_PORT', '993')
+STH = os.environ.get('FM_SMTP_HOST', '')
+STP = int(os.environ.get('FM_SMTP_PORT', '465'))
 CTX = ssl.create_default_context()
 
 
@@ -41,7 +42,7 @@ def mail_timeout():
         value = float(raw)
     except (TypeError, ValueError):
         value = 20.0
-    if value <= 0:
+    if not math.isfinite(value) or value <= 0:
         value = 20.0
     return value
 
@@ -71,7 +72,7 @@ def clean(s):
 
 
 def connect_mailbox():
-    m = imaplib.IMAP4_SSL(IMH, IMP, ssl_context=CTX, timeout=MAIL_TIMEOUT)
+    m = imaplib.IMAP4_SSL(IMH, int(IMP), ssl_context=CTX, timeout=MAIL_TIMEOUT)
     m.login(USER, PW)
     return m
 
@@ -143,10 +144,8 @@ def cmd_read():
         return 1
 
 
-def cmd_send(to, subj, body):
+def _send_reviewed(to, subj, body):
     try:
-        if body == '-':
-            body = sys.stdin.read().rstrip('\n')
         m = EmailMessage()
         m['From'] = USER
         m['To'] = to
@@ -158,8 +157,8 @@ def cmd_send(to, subj, body):
             s.send_message(m)
         print('sent to', to)
         return 0
-    except Exception as e:
-        print('fm-mail send error:', e)
+    except Exception:
+        print('fm-mail send error: SMTP failed; delivery unconfirmed')
         return 1
 
 
@@ -477,9 +476,8 @@ def main():
     if cmd == 'read':
         return cmd_read()
     if cmd == 'send':
-        if len(sys.argv) < 5:
-            return 1
-        return cmd_send(sys.argv[2], sys.argv[3], sys.argv[4])
+        print('fm-mail: unreviewed send is closed; use fm-mail.sh alert', file=sys.stderr)
+        return 1
     if cmd == 'seen':
         return cmd_seen(sys.argv[2] if len(sys.argv) > 2 else '')
     if cmd == 'poll_list':

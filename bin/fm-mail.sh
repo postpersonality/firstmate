@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# fm-mail.sh - general-purpose mail plane for reading and sending mail.
+# fm-mail.sh - inbound mail and independently reviewed blocker notifications.
 #
-# Reads inbound mail over IMAP and sends mail over SMTP on demand. This is an
+# Reads inbound mail over IMAP and sends reviewed blockers over SMTP. This is an
 # ordinary mail client surface, not an escalation of authority: every surfaced
 # message is a notification firstmate reads before deciding, and firstmate still
 # applies its own judgment exactly as it would for a TUI message (including
@@ -10,9 +10,10 @@
 # Subcommands:
 #   read                 List unseen INBOX mail as a compact digest (From /
 #                        Date / Subject / first line).
-#   send <to> <subject> <body | ->
-#                        Send one message. A "-" body reads plain text from
-#                        stdin.
+#   alert <request.json>  Mandatory native critic followed by SMTP, or a durable
+#                        correction through fm-inbox. Request/receipt mechanics
+#                        are owned by bin/fm-captain-alert.py. No ungated send.
+#   alert-preflight       Local configuration checks; no SMTP or native call.
 #   poll                 Surface UNSEEN mail this home has not yet woken as a
 #                        `check` wake so firstmate answers it concisely. IMAP
 #                        \Seen mail never wakes a poll, no message is ever
@@ -41,8 +42,7 @@
 #
 # Deployment - credentials and endpoints are read from the environment,
 # filling missing keys from the gitignored $FM_HOME/.env (same convention
-# as the Relay/FMX token; env wins). Add these four required values, plus
-# the optional ports and timeout:
+# as the Relay/FMX token; env wins). Inbound read/poll/status use:
 #   FM_MAIL_USER=<imap/smtp account>
 #   FM_MAIL_PASS=<password>
 #   FM_IMAP_HOST=<imap host>
@@ -50,9 +50,12 @@
 #   FM_SMTP_HOST=<smtp host>
 #   FM_SMTP_PORT=<smtp port>     (default 465, implicit TLS)
 #   FM_MAIL_TIMEOUT=<seconds>    (default 20; IMAP/SMTP socket timeout)
+# Outgoing alert needs FM_MAIL_USER, FM_MAIL_PASS, FM_SMTP_HOST and
+# FM_CAPTAIN_ALERT_TO only, never IMAP. alert-preflight names gaps without
+# contacting SMTP or the critic. The .env must be mode 0600 for outgoing mail.
 # FM_HOME falls back to the repo root when unset. This script carries no secret
 # and no default endpoint that could resolve against a wrong home; FM_MAIL_USER,
-# FM_MAIL_PASS, FM_IMAP_HOST, and FM_SMTP_HOST are always required, and
+# FM_MAIL_PASS, FM_IMAP_HOST, and FM_SMTP_HOST are required for inbound commands;
 # FM_MAIL_PASS is never logged. The wake library is sourced from next to this
 # script, not from $FM_HOME/bin; cursor, journal, retry set, and queue stay
 # under $FM_HOME/state.
@@ -87,6 +90,10 @@ if [ -f "$ENV_FILE" ]; then
     esac
     key="${line%%=*}"
     key="${key#"${key%%[![:space:]]*}"}"
+    case "$key" in
+      FM_MAIL_*|FM_IMAP_*|FM_SMTP_*|FM_CAPTAIN_ALERT_TO) ;;
+      *) continue ;;
+    esac
     val="${line#*=}"
     val="${val#"${val%%[![:space:]]*}"}"
     val="${val%"${val##*[![:space:]]}"}"
@@ -99,6 +106,17 @@ if [ -f "$ENV_FILE" ]; then
     fi
   done < "$ENV_FILE"
 fi
+
+export FM_HOME
+case "${1:-}" in
+  alert|alert-preflight)
+    exec python3 "$SCRIPT_DIR/fm-captain-alert.py" "$@"
+    ;;
+  send)
+    echo 'fm-mail: unreviewed send is closed; use alert <request.json> for mandatory independent review' >&2
+    exit 1
+    ;;
+esac
 
 for r in FM_MAIL_USER FM_MAIL_PASS FM_IMAP_HOST FM_SMTP_HOST; do
   if [ -z "${!r:-}" ]; then
@@ -181,7 +199,8 @@ run_py() {
 usage() {
   cat <<'EOF'
 fm-mail.sh read
-fm-mail.sh send <to> <subject> <body | ->
+fm-mail.sh alert <request.json>
+fm-mail.sh alert-preflight
 fm-mail.sh poll
 fm-mail.sh status
 EOF
@@ -619,19 +638,6 @@ mail_poll() {
 case "${1:-}" in
   read)
     run_py read
-    ;;
-  send)
-    to="${2:-}"
-    subj="${3:-}"
-    body="${4:--}"
-    if [ -z "$to" ] || [ -z "$subj" ]; then
-      usage
-      exit 1
-    fi
-    if [ "$body" = "-" ]; then
-      body="$(cat)"
-    fi
-    printf '%s' "$body" | run_py send "$to" "$subj" "-"
     ;;
   status)
     echo "mail account: $FM_MAIL_USER"

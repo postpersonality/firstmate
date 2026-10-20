@@ -1490,7 +1490,12 @@ Arm the check once per home with `bin/fm-tool-update-check.sh arm`.
 
 ## Mail plane (.env)
 
-The mail plane (bin/fm-mail.sh) reads unseen IMAP messages and sends one SMTP message.
+The mail plane (`bin/fm-mail.sh`) reads unseen IMAP messages and sends blocker notifications through a mandatory independent native critic.
+`alert` freezes the proposed email, recipient and raw evidence, invokes a fresh installed Claude print-mode process using its configured identity/model, and permits SMTP only after a source-backed `NEEDS_CAPTAIN` outcome.
+The previous unreviewed `send` command is closed in both public mail CLIs.
+Critic denial, insufficient evidence, invalid output, failure, timeout or changed inputs send no mail and return a durable corrective action through the existing Firstmate inbox.
+The request schema, binding, deduplication and receipt mechanics have one owner: the header of `bin/fm-captain-alert.py`.
+This guarantee applies to the delivered notification path; an administrator able to rewrite programs or credentials can replace software, so it is not an administrator-proof boundary.
 
 **Polling and delivery guarantees**
 
@@ -1507,14 +1512,64 @@ STARTTLS and port 587 are not supported.
 It is off unless the home's gitignored `.env` provides the connection values.
 This section is the single owner of the mail-plane configuration schema; for direct invocations, environment values override `.env`, matching the Relay contract.
 
-Required, in the home's gitignored `.env`:
+Required for outgoing notifications, in the home's protected, gitignored `.env` (mode 0600):
 
 ```sh
-FM_MAIL_USER=   # IMAP/SMTP login
-FM_MAIL_PASS=   # IMAP/SMTP password
-FM_IMAP_HOST=   # IMAP server hostname
+FM_MAIL_USER=   # SMTP login
+FM_MAIL_PASS=   # SMTP password (for Gmail, an app password)
 FM_SMTP_HOST=   # SMTP server hostname
+FM_CAPTAIN_ALERT_TO=   # explicitly chosen recipient, one plain email address
 ```
+
+No recipient is inferred from Git identity.
+`FM_IMAP_HOST` is additionally required by inbound `read`/`poll` and the historical inbound `status`; it is not needed for outgoing alerts.
+Outgoing activation does not arm inbound polling.
+Run `FM_HOME=/path/to/home bin/fm-mail.sh alert-preflight` to list only missing parameter names and corrective actions, without printing credentials, sending mail or contacting the critic.
+Presence checks do not prove native authentication, SMTP authentication or inbox arrival.
+
+For Gmail, use `smtp.gmail.com` with implicit TLS on port 465, as documented by [Google's SMTP guide](https://developers.google.com/workspace/gmail/imap/imap-smtp).
+This password-based sender requires a Gmail app password, which requires 2-Step Verification; do not supply the main account password ([Google app-password help](https://support.google.com/mail/answer/185833)).
+OAuth is not implemented by this sender.
+If the account cannot create an app password, resolve that account constraint before activation.
+Enter the secret locally with hidden terminal input; never put it in chat, shell arguments, history or logs.
+This non-sending recipe appends only when none of the outgoing keys already exists, preserves other settings, refuses symlinks, and never prints values:
+
+```sh
+FM_HOME=/path/to/home python3 - <<'PY'
+import fcntl, getpass, os, re, warnings
+from pathlib import Path
+warnings.simplefilter('error', getpass.GetPassWarning)
+home = Path(os.environ['FM_HOME'])
+values = {
+    'FM_MAIL_USER': getpass.getpass('Gmail account email (hidden): ').strip(),
+    'FM_CAPTAIN_ALERT_TO': getpass.getpass('Notification recipient email (hidden): ').strip(),
+    'FM_SMTP_HOST': 'smtp.gmail.com',
+    'FM_SMTP_PORT': '465',
+}
+if not all(re.fullmatch(r'[^\s<>@,;]+@[^\s<>@,;]+', values[k])
+           for k in ('FM_MAIL_USER', 'FM_CAPTAIN_ALERT_TO')):
+    raise SystemExit('Use one plain email address in each field')
+values['FM_MAIL_PASS'] = getpass.getpass('Gmail app password (hidden): ').replace(' ', '')
+if not values['FM_MAIL_PASS'] or any('\n' in v or '\r' in v for v in values.values()):
+    raise SystemExit('Missing or multiline input; nothing written')
+fd = os.open(home / '.env', os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd, 'r+') as f:
+    fcntl.flock(f, fcntl.LOCK_EX)
+    names = {m.group(1) for line in f for m in
+             [re.match(r'\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=', line)] if m}
+    if names & values.keys():
+        raise SystemExit('Outgoing keys already exist; preserve them and edit locally')
+    os.fchmod(f.fileno(), 0o600)
+    f.write('\n' + ''.join(k + "='" + v + "'\n" for k, v in values.items()))
+    f.flush(); os.fsync(f.fileno())
+print('Saved parameter names: ' + ', '.join(values))
+PY
+FM_HOME=/path/to/home bin/fm-mail.sh alert-preflight
+```
+
+Run the recipe in a terminal: a missing secure terminal makes hidden input fail rather than echoing the secret.
+Never use a synthetic case to test live SMTP; the first real send must be a configured, independently approved blocker event.
+`tests/fm-captain-alert.test.sh` tests the deterministic gate with fixture transports, while `FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh` empirically tests native classification with SMTP forbidden.
 
 `FM_IMAP_PORT` (default 993), `FM_SMTP_PORT` (default 465), `FM_MAIL_TIMEOUT` (default 20 seconds), and `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200) are optional.
 The per-poll wake cap bounds the wakes of one `poll` run; header fetches scan a larger bounded window of new unseen uids plus already-surfaced retry-set uids, so a flood or large backlog still makes bounded progress every poll, keeping the durable wake queue bounded without ever dropping mail.
@@ -2414,6 +2469,7 @@ FM_IMAP_HOST=      # mail-plane IMAP server hostname
 FM_IMAP_PORT=993   # mail-plane IMAP server port
 FM_SMTP_HOST=      # mail-plane SMTP server hostname
 FM_SMTP_PORT=465   # mail-plane SMTP server port
+FM_CAPTAIN_ALERT_TO=   # explicit outgoing blocker recipient; mandatory native critic, no unreviewed send
 FMX_PAIRING_TOKEN=      # Relay pairing token; .env opt-in authorizes replies and eligible lifecycle actions
 FMX_RELAY_URL=https://myfirstmate.io   # optional Relay endpoint override, mainly for local relay development
 FMX_ENV_FILE=           # optional alternate .env file for direct Relay client invocations; bootstrap still checks $FM_HOME/.env

@@ -71,7 +71,7 @@ test_help_plumbing() {
   rc=$?
   expect_code 0 "$rc" "--help must exit 0"
   assert_contains "$out" "read" "--help lists the read subcommand"
-  assert_contains "$out" "send" "--help lists the send subcommand"
+  assert_contains "$out" "alert" "--help lists the reviewed outgoing subcommand"
   assert_contains "$out" "poll" "--help lists the poll subcommand"
   assert_contains "$out" "status" "--help lists the status subcommand"
   pass "fm-mail: --help prints usage for every subcommand"
@@ -98,8 +98,8 @@ test_no_secret_leaked_to_status() {
   pass "fm-mail: status never prints the password"
 }
 
-test_send_passes_body() {
-  local fakebin body_file stdin_file
+test_send_requires_review() {
+  local fakebin stdin_file
   fakebin=$(fm_fakebin "$TMP_ROOT")
   stdin_file="$TMP_ROOT/stdin_capture.txt"
 
@@ -111,18 +111,15 @@ exit 0
 SH
   chmod +x "$fakebin/python3"
 
-  body_file="$TMP_ROOT/body.txt"
-  printf '%s' "hello world" > "$body_file"
   export FM_MAIL_TEST_STDIN_FILE="$stdin_file"
   local out rc=0
   out=$(FM_MAIL_USER=test FM_MAIL_PASS=pass FM_IMAP_HOST=h FM_SMTP_HOST=h \
     FM_HOME="$HOME_DIR" PATH="$fakebin:$PATH" \
     "$MAIL" send to@example.com subj "hello world" 2>&1) || rc=$?
-  expect_code 0 "$rc" "send with body must succeed"
-  local captured
-  captured=$(cat "$stdin_file" 2>/dev/null || echo "")
-  assert_contains "$captured" "hello world" "send passes body through stdin to python3"
-  pass "fm-mail: send passes body not empty through stdin"
+  expect_code 1 "$rc" "unreviewed send must fail"
+  [ ! -e "$stdin_file" ] || fail 'unreviewed send invoked a transport'
+  assert_contains "$out" 'mandatory independent review' 'send names the reviewed replacement'
+  pass "fm-mail: unreviewed send cannot reach a transport"
 }
 
 test_poll_error_propagates() {
@@ -2606,7 +2603,7 @@ test_status_without_network
 test_help_plumbing
 test_unknown_subcommand_prints_usage
 test_no_secret_leaked_to_status
-test_send_passes_body
+test_send_requires_review
 test_poll_error_propagates
 test_poll_dedupes_surfaces_by_uid
 test_poll_resurfaces_uid_after_generation_change
