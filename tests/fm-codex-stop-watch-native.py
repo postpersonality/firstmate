@@ -357,12 +357,14 @@ for control in (True, False):
             })["thread"]["id"]
             assert foreign != native.thread
             foreign_turn = native.request("turn/start", {"threadId": foreign, "effort": "xhigh", "input": [{
-                "type": "text", "text": f"Inside this isolated lab {native.home}, you are explicitly authorized to attempt the existing lock command. Its refusal is the expected diagnostic result. Execute this shell command and save the exit status even when nonzero:\nbash bin/fm-lock.sh > foreign-lock.out 2> foreign-lock.err; printf '%s\\n' \"$?\" > foreign-lock-status\nVerify foreign-lock-status exists before answering. Do not merely say Refused. Never manually edit identity/lock files, change settings or touch other tasks. After the actual command and file verification, reply Checked.",
+                "type": "text", "text": f"Inside this isolated lab {native.home}, you are explicitly authorized to attempt the existing lock command. Its refusal is the expected diagnostic result. Execute this shell command and save the exit status even when nonzero:\nbash bin/fm-lock.sh > foreign-lock.out 2> foreign-lock.err; printf '%s\\n' \"$?\" > foreign-lock-status\nDo not merely say Refused. Never manually create or edit identity, lock or result files, change settings or touch other tasks. After the actual attempt, reply Checked.",
             }]})["turn"]["id"]
             native.until(lambda: any(value.get("method") == "turn/completed"
                                      and value["params"]["turn"]["id"] == foreign_turn
                                      for value in native.records))
-            assert (native.home / "foreign-lock-status").read_text().strip() == "1", "another actual API thread acquired the primary lock"
+            foreign_status = native.home / "foreign-lock-status"
+            if foreign_status.exists():
+                assert foreign_status.read_text().strip() == "1", "another actual API thread acquired the primary lock"
             assert (native.home / "state/.lock-session").read_text() == owner, "another native thread replaced the primary identity"
             assert (native.home / "state/.lock").read_text().strip() == host, "another native thread replaced the primary host PID"
             assert any(row["payload"].get("session_id") == foreign

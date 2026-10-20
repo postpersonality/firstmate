@@ -8,10 +8,11 @@
 # Only a genuine primary, the native thread id and the existing session lock
 # may park. fm-lock.sh remains the sole writer of the lock and its sidecar.
 # Stop only revalidates the thread already recorded in that sidecar; a free,
-# legacy PID-only or other thread's lock is bound only by the native
-# SessionStart hook. fm-turnend-guard.sh keeps its one-block legacy
-# guard for a PID-only lock this app-server holds. The recorded thread attached
-# to another live app-server that holds the lock stays read-only here.
+# stale, legacy PID-only or other thread's lock is bound only by the native
+# SessionStart hook. fm-turnend-guard.sh calls this script only for the
+# recorded thread and keeps its non-claiming one-block guard for every other
+# thread. The recorded thread attached to another live app-server that holds
+# the lock stays read-only here.
 # The lock verification is bounded to 8s plus 1s termination grace. It is
 # skipped for an already bound and verified owner.
 # Lock verification and the checkpoint share a 20s budget beneath the existing
@@ -21,8 +22,8 @@
 # decides or dispatches work.
 # Once the recorded thread has pending work, Stop fails closed: lock failure,
 # checkpoint-lock contention, checkpoint failure and an unhandled repeated wake
-# each return another continuation. Another thread's Stop, or a duplicate
-# attachment while the owning app-server lives, is never blocked.
+# each return another continuation. Another thread's Stop never parks here,
+# and a duplicate attachment while the owning app-server lives is never blocked.
 # Interrupting the native turn cancels its synchronous hook and its foreground
 # checkpoint. Empty homes and a verified away daemon do not park here.
 # FM_CODEX_STOP_CHECKPOINT may shorten the bound (1..20), never raise it.
