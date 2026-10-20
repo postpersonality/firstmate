@@ -19,16 +19,22 @@ make_home() {
   chmod 700 "$home/state/lab.check.sh"
   FM_HOME="$home" bash "$ROOT/bin/fm-check-register.sh" lab >/dev/null
   cat > "$home/app-server" <<'SH'
-printf '%s\n' "$$" > "$FM_HOME/state/.lock"
+if [ "${TEST_KEEP_LOCK:-0}" != 1 ]; then printf '%s\n' "$$" > "$FM_HOME/state/.lock"; fi
 if [ "${TEST_NO_SESSION:-0}" != 1 ]; then printf '%s\n' "${TEST_LOCK_SESSION:-S1}" > "$FM_HOME/state/.lock-session"; fi
 if [ "${TEST_UNKNOWN_ID:-0}" = 1 ]; then unset CODEX_THREAD_ID CODEX_SESSION_ID; fi
+if [ "${TEST_HOLD:-0}" = 1 ]; then
+  while [ ! -e "$FM_HOME/release" ]; do sleep 0.1; done
+  exit 0
+fi
 if [ "${TEST_LOCK_ONLY:-0}" = 1 ]; then bash "$TEST_ROOT/bin/fm-lock.sh"; exit $?; fi
 unset CODEX_THREAD_ID CODEX_SESSION_ID
 if [ "${TEST_START:-0}" = 1 ]; then
-  printf '{"hook_event_name":"SessionStart","session_id":"S1","source":"startup"}\n' | bash "$FM_HOME/bin/fm-sessionstart-run.sh"
+  printf '{"hook_event_name":"SessionStart","session_id":"S1","source":"%s"}\n' "${TEST_START_SOURCE:-startup}" \
+    | bash "$FM_HOME/bin/fm-sessionstart-run.sh"
   exit $?
 fi
-printf '{"hook_event_name":"Stop","session_id":"%s","turn_id":"T1","stop_hook_active":true}\n' "${TEST_STOP_SESSION:-S1}" \
+printf '{"hook_event_name":"Stop","session_id":"%s","turn_id":"T1","stop_hook_active":%s}\n' \
+  "${TEST_STOP_SESSION:-S1}" "${TEST_STOP_ACTIVE:-true}" \
   | bash "$TEST_ROOT/bin/fm-turnend-guard.sh"
 SH
   printf '%s\n' "$home"
@@ -209,7 +215,12 @@ home=$(make_home legacy-stop)
 for thread in S2 S1; do
   status=0
   TEST_NO_SESSION=1 TEST_STOP_SESSION=$thread run_stop "$home" || status=$?
-  expect_code 0 "$status" "Stop of thread $thread must not adopt a legacy PID-only lock"
+  expect_code 0 "$status" "the legacy guard must allow thread $thread once stop_hook_active bounds it"
+  status=0
+  TEST_NO_SESSION=1 TEST_STOP_SESSION=$thread TEST_STOP_ACTIVE=false run_stop "$home" || status=$?
+  expect_code 2 "$status" "an unsupervised legacy PID-only lock must block thread $thread once"
+  assert_contains "$(cat "$home/err")" 'legacy PID-only session lock' "the legacy block for thread $thread omitted the bind migration"
+  assert_contains "$(cat "$home/err")" 'bind it once with bin/fm-lock.sh' "the legacy block for thread $thread omitted the bind command"
   assert_absent "$home/state/.lock-session" "Stop of thread $thread adopted a legacy PID-only lock"
   assert_absent "$home/state/.watch.lock/pid" 'an unclaimed legacy lock started a watcher'
 done
@@ -219,8 +230,49 @@ expect_code 0 "$status" 'the explicit owner claim must bind the legacy lock'
 status=0
 TEST_NO_SESSION=1 run_stop "$home" || status=$?
 expect_code 2 "$status" 'the explicitly claimed primary must be supervised at Stop'
+assert_contains "$(cat "$home/err")" 'checkpoint:' 'the bound primary did not get its checkpoint return'
 status=0
-TEST_NO_SESSION=1 TEST_STOP_SESSION=S2 run_stop "$home" || status=$?
+TEST_NO_SESSION=1 TEST_STOP_SESSION=S2 TEST_STOP_ACTIVE=false run_stop "$home" || status=$?
 expect_code 0 "$status" 'another thread of the same app-server must not be blocked'
+assert_contains "$(cat "$home/out")" 'does not record this native thread' 'the other thread got no read-only notice'
 assert_contains "$(cat "$home/state/.lock-session")" 'S1' 'another thread replaced the claimed primary'
-pass 'Codex API Stop: a legacy PID-only lock binds only through an explicit owner claim'
+pass 'Codex API Stop: a legacy PID-only lock keeps a bounded guard and binds only through an explicit owner claim'
+
+home=$(make_home legacy-resume)
+status=0
+TEST_START=1 TEST_START_SOURCE=resume TEST_NO_SESSION=1 run_stop "$home" || status=$?
+expect_code 0 "$status" 'a resume nudge must never block session initialization'
+assert_contains "$(cat "$home/out")" 'bin/fm-session-start.sh' 'a thread resumed under a legacy PID-only lock was not nudged to bind'
+assert_absent "$home/state/.lock-session" 'the resume nudge adopted the legacy lock'
+TEST_LOCK_ONLY=1 TEST_NO_SESSION=1 run_stop "$home" || fail 'the explicit owner claim did not bind the legacy lock'
+status=0
+TEST_START=1 TEST_START_SOURCE=resume TEST_NO_SESSION=1 run_stop "$home" || status=$?
+expect_code 0 "$status" 'a resume nudge must never block session initialization'
+[ ! -s "$home/out" ] || fail 'the bound primary thread was nudged again on resume'
+pass 'Codex API SessionStart: resume nudges a legacy PID-only owner until its thread is bound'
+
+home=$(make_home duplicate)
+TEST_HOLD=1 run_stop "$home" &
+holder_job=$!
+for _ in {1..50}; do
+  [ ! -s "$home/state/.lock-session" ] || break
+  sleep 0.1
+done
+assert_present "$home/state/.lock-session" 'fixture app-server never recorded its thread'
+holder=$(cat "$home/state/.lock")
+for attempt in 1 2; do
+  status=0
+  TEST_KEEP_LOCK=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
+  expect_code 0 "$status" "duplicate attachment attempt $attempt must stay read-only while the owning app-server lives"
+  assert_contains "$(cat "$home/out")" "live process $holder owns the session lock" 'the duplicate attachment got no read-only notice'
+  [ ! -s "$home/err" ] || fail 'the duplicate attachment received an impossible repair continuation'
+done
+[ "$(cat "$home/state/.lock")" = "$holder" ] || fail 'the duplicate attachment took over a live owner'
+assert_absent "$home/state/.watch.lock/pid" 'the duplicate attachment started a watcher'
+: > "$home/release"
+wait "$holder_job"
+status=0
+TEST_KEEP_LOCK=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
+expect_code 2 "$status" 'the recorded thread must be supervised once the previous app-server is gone'
+[ "$(cat "$home/state/.lock")" != "$holder" ] || fail 'the recorded thread did not reclaim the stale app-server lock'
+pass 'Codex API Stop: the same thread in another app-server is read-only while the owner lives and reclaims after it exits'

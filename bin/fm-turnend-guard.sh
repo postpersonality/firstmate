@@ -49,6 +49,8 @@
 #
 # Native Codex app-server Stops delegate to bin/fm-codex-stop-watch.sh before
 # the legacy loop flag: that synchronous caller owns the checkpoint return.
+# A legacy PID-only lock held by this app-server names no thread, so its Stops
+# keep the one-block guard below and are told how the primary binds its thread.
 # Loop-guard, legacy codex/Grok (default) mode: never block twice in the same turn.
 # Codex uses stop_hook_active and Grok uses stopHookActive; typed camel-case
 # takes precedence when both spellings are present. A true value means the
@@ -152,6 +154,7 @@ STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '
   else false
   end
 ' 2>/dev/null) || exit 0
+LEGACY_CODEX_LOCK=0
 # On the native API path a live watcher is not a delivery owner. The synchronous
 # Stop caller retains the checkpoint return, including after another hook blocked.
 if [ "$CLAUDE_MODE" -eq 0 ] && [ "$CURSOR_MODE" -eq 0 ] \
@@ -159,8 +162,11 @@ if [ "$CLAUDE_MODE" -eq 0 ] && [ "$CURSOR_MODE" -eq 0 ] \
   # shellcheck source=bin/fm-session-lock-lib.sh
   . "$SCRIPT_DIR/fm-session-lock-lib.sh"
   if fm_session_lock_codex_api_pid >/dev/null; then
-    printf '%s' "$PAYLOAD" | "$SCRIPT_DIR/fm-codex-stop-watch.sh"
-    exit $?
+    if fm_session_lock_recorded_session_id "$STATE" >/dev/null || ! fm_session_lock_owned_by_self "$STATE"; then
+      printf '%s' "$PAYLOAD" | "$SCRIPT_DIR/fm-codex-stop-watch.sh"
+      exit $?
+    fi
+    LEGACY_CODEX_LOCK=1
   fi
 fi
 if [ "$CLAUDE_MODE" -eq 0 ] && [ "$STOP_HOOK_ACTIVE" = "true" ]; then
@@ -262,6 +268,9 @@ block_stop() {
       printf '●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.\n'
     fi
     printf '●  %s\n' "$reason"
+    if [ "$LEGACY_CODEX_LOCK" -eq 1 ]; then
+      printf '●  This app-server holds a legacy PID-only session lock that names no thread. If this thread is the firstmate primary, bind it once with bin/fm-lock.sh so later Stops retain its checkpoint; any other thread ends without fleet actions.\n'
+    fi
     printf '●%s\n' "$rule"
   } >&2
   exit 2

@@ -9,8 +9,11 @@
 # may park. fm-lock.sh remains the sole writer of the lock and its sidecar.
 # Stop only revalidates the thread already recorded in that sidecar; a free,
 # legacy PID-only or other thread's lock needs an explicit owner claim through
-# fm-lock.sh or SessionStart. The lock verification is bounded to 8s plus 1s
-# termination grace. It is skipped for an already bound and verified owner.
+# fm-lock.sh or SessionStart. fm-turnend-guard.sh keeps its one-block legacy
+# guard for a PID-only lock this app-server holds. The recorded thread attached
+# to another live app-server that holds the lock stays read-only here.
+# The lock verification is bounded to 8s plus 1s termination grace. It is
+# skipped for an already bound and verified owner.
 # Lock verification and the checkpoint share a 20s budget beneath the existing
 # 30s hook registration, with 1s watcher termination grace. A healthy existing
 # watcher is followed through its durable queue rather than duplicated or killed.
@@ -18,7 +21,8 @@
 # decides or dispatches work.
 # Once the recorded thread has pending work, Stop fails closed: lock failure,
 # checkpoint-lock contention, checkpoint failure and an unhandled repeated wake
-# each return another continuation. Another thread's Stop is never blocked.
+# each return another continuation. Another thread's Stop, or a duplicate
+# attachment while the owning app-server lives, is never blocked.
 # Interrupting the native turn cancels its synchronous hook and its foreground
 # checkpoint. Empty homes and a verified away daemon do not park here.
 # FM_CODEX_STOP_CHECKPOINT may shorten the bound (1..20), never raise it.
@@ -51,8 +55,13 @@ turn=$(printf '%s' "$PAYLOAD" | jq -r '.turn_id')
 notice() { jq -cn --arg message "$1" '{systemMessage:$message}'; }
 owned() { fm_session_lock_owned_by_self "$STATE"; }
 recorded() { [ "$(fm_session_lock_recorded_session_id "$STATE" || true)" = "$session" ]; }
+mine() { recorded && ! fm_session_lock_foreign_owner_live "$STATE"; }
 if ! recorded; then
   notice 'FIRSTMATE SUPERVISION: the session lock does not record this native thread; Stop never claims it, so no checkpoint was started. The primary claims it explicitly with bin/fm-lock.sh.'
+  exit 0
+fi
+if fm_session_lock_foreign_owner_live "$STATE"; then
+  notice "FIRSTMATE SUPERVISION: live process $FM_SESSION_LOCK_FOREIGN_OWNER_PID owns the session lock for this thread; this attachment is read-only, so no checkpoint was started."
   exit 0
 fi
 # Revalidate through the existing writer, including a stale PID recorded by a
@@ -64,7 +73,7 @@ if [ "$FM_SUP_NEEDED" = false ] && [ "$FM_SUP_QUEUE_PENDING" = false ]; then exi
 if fm_afk_daemon_owns_supervision "$STATE"; then exit 0; fi
 
 continuation() {
-  recorded || { notice 'FIRSTMATE SUPERVISION: session-lock ownership changed during Stop; checkpoint feedback withheld.'; exit 0; }
+  mine || { notice 'FIRSTMATE SUPERVISION: session-lock ownership changed during Stop; checkpoint feedback withheld.'; exit 0; }
   printf 'firstmate watcher wake: %s\n' "$1" >&2
   printf 'Drain bin/fm-wake-drain.sh, handle its current wakes and permitted next fleet actions, then run its exact WAKE_ACK_REQUIRED command. Respect real captain/security waits and explicit stops.\n' >&2
   exit 2
@@ -103,7 +112,7 @@ if fm_watcher_healthy "$STATE" "$SCRIPT_DIR/fm-watch.sh" "${FM_GUARD_GRACE:-300}
   # A previously yielded checkpoint may still own the singleton. Retain a
   # native return path while it finishes; its queue, not its output, is durable.
   while [ "$SECONDS" -lt "$deadline" ]; do
-    recorded || exit 0
+    mine || exit 0
     [ ! -s "$STATE/.wake-queue" ] || delivered 'existing watcher published a durable wake'
     fm_watcher_healthy "$STATE" "$SCRIPT_DIR/fm-watch.sh" "${FM_GUARD_GRACE:-300}" "$FM_HOME" || break
     sleep 1
