@@ -128,7 +128,7 @@ grep -rqF 'Blocker email next-step: NO_MAIL' "$FM_HOME/state/inbox" || fail 'a f
 grep -rqF 'Blocker email next-step: SELF_RESOLVE' "$FM_HOME/state/inbox" || fail 'the retried outcome must reach the inbox too'
 pass 'authorized corrections return to Firstmate without mail; each new outcome is a new note'
 
-FM_MAIL_PASS= reject_unreviewed nopass 'configure FM_MAIL_PASS'
+FM_MAIL_PASS='' reject_unreviewed nopass 'configure FM_MAIL_PASS'
 before=$(reviews)
 CRITIC_INSUFFICIENT=1 reject nopass
 [ "$(reviews)" -gt "$before" ] || fail 'a repaired configuration gap was not reviewed fresh'
