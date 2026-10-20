@@ -135,7 +135,10 @@ export class Store {
     catch (error: any) { if (!/NOT_FOUND/.test(`${error.code} ${error.stdout} ${error.message}`)) throw error; task = this.firstmate.show(caseId, true); archived = true; }
     if (task.kind !== 'program') throw new Error('Это не дело');
     const goal = this.get(caseId, task);
-    const entry = (t: FirstmateTask) => ({ id: t.id, title: t.title, phase: phase(t), links: nativeLinks(t), report: hasReport(t) });
+    const entry = (t: FirstmateTask) => {
+      const { id, title, state, actions, holdKind, inFlight, links, report } = this.get(t.id, t);
+      return { id, title, state, actions, holdKind, inFlight, phase: phase(t), links, report };
+    };
     const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
     const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t, true)));
     const sources = goal.body.split('\n').filter(l => l.startsWith(sourceLine)).map(l => l.slice(sourceLine.length).trim());
@@ -236,6 +239,11 @@ export class Store {
       const note = this.firstmate.note(text, this.requestId(kind, task.id), kind === 'start' ? task.id : undefined);
       return { note, ready: this.firstmate.ready() };
     }
+    if (action === 'close' && task.hold_kind === 'captain') {
+      const output = this.firstmate.answer(task.id, 'Закрыть как неактуальную', 'Закрыть как неактуальную', 'done');
+      if (/^skipped:/m.test(output)) throw new Error(output);
+      return { output };
+    }
     if (action === 'answer' || action === 'release') {
       const answer = action === 'answer' ? need(data.answer, 'ответ') : data.answer || 'Разрешаю работу';
       const output = this.firstmate.answer(task.id, answer, action === 'answer' ? 'Ответить' : 'Разрешить работу', action === 'answer' ? 'done' : 'release');
@@ -289,7 +297,7 @@ export class Store {
   folders() { return [...new Set(this.list().map(g => g.folder).filter(Boolean))].sort(); }
 
   overview() {
-    return overview(this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh'), this.firstmate.archive());
+    return overview(this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh'), this.firstmate.archive(), this.firstmate.list());
   }
 
   // Pinning is the backlog row's priority: 0 puts it in focus, 2 is the backlog default.

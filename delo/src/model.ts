@@ -32,7 +32,7 @@ export function actions(task: { state: string; held?: string | boolean; hold_kin
   if (task.kind === 'program') return []; // A дело has its own buttons on its page.
   if (task.state === 'in_flight') return ['close'];
   if (task.state === 'done') return task.kind === 'captain' || task.hold_kind === 'captain' ? [] : ['reopen'];
-  if (task.hold_kind === 'captain') return [task.kind === 'captain' ? 'answer' : 'release', 'later'];
+  if (task.hold_kind === 'captain') return [task.kind === 'captain' ? 'answer' : 'release', 'later', 'close'];
   if (task.held === true || task.held === 'yes') return ['unhold', 'close', 'decline'];
   return ['start', 'pause', 'close', 'decline'];
 }

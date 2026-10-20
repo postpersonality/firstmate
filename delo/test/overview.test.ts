@@ -48,8 +48,30 @@ test('a row whose body has a line equal to «Личное» is personal', () => 
   assert.deepEqual(view.next.flatMap(g => g.rows).map(r => [r.id, r.personal]), [['mine', true], ['work', false]]);
 });
 
+test('overview and focus actions come from current backlog state, warnings have none', () => {
+  const records = [record('ready', { priority: '0' }), record('held', { held: 'yes', hold_kind: 'captain' }), record('paused', { held: 'yes', hold_kind: 'parked' }), record('done', { state: 'done' })];
+  const view = overview({ decisions_open: [{ id: 'held' }], gates: [{ id: 'ready' }, { id: 'paused' }, { id: 'warning' }], landed: [{ id: 'done' }] }, { backlog: { records } });
+  assert.deepEqual(view.focus[0].actions, ['start', 'pause', 'close', 'decline']);
+  assert.deepEqual(view.waiting[0].rows[0].actions, ['release', 'later', 'close']);
+  assert.deepEqual(view.next.flatMap(g => g.rows).map(r => r.actions), [['start', 'pause', 'close', 'decline'], ['unhold', 'close', 'decline'], []]);
+  assert.deepEqual(view.done[0].rows[0].actions, ['reopen']);
+});
+
+test('native task rows supply computed holds when the fleet snapshot omits them', () => {
+  const fleet = { backlog: { records: [record('paused', { hold_kind: 'parked', priority: '0' }), record('expired', { hold_kind: 'parked' })] } };
+  const native = [
+    { id: 'paused', title: 'paused', body: '', state: 'queued' as const, held: 'yes', hold_kind: 'parked' },
+    { id: 'expired', title: 'expired', body: '', state: 'queued' as const, held: 'no', hold_kind: 'parked' },
+  ];
+  const view = overview({ gates: [{ id: 'paused' }, { id: 'expired' }] }, fleet, [], native);
+  assert.deepEqual(view.focus[0].actions, ['unhold', 'close', 'decline']);
+  assert.equal(view.focus[0].state, 'paused');
+  assert.deepEqual(view.next[0].rows[1].actions, ['start', 'pause', 'close', 'decline']);
+  assert.equal(view.next[0].rows[1].state, 'active');
+});
+
 test('rows group by repo, rows without one go last under «Без проекта»', () => {
-  const row = (id: string, repo?: string) => ({ id, title: id, repo, pinned: false, open: true, task: true, personal: false });
+  const row = (id: string, repo?: string) => ({ id, title: id, repo, pinned: false, open: true, task: true, personal: false, actions: [] });
   assert.deepEqual(groupByRepo([row('a'), row('b', 'zeta'), row('c', 'alpha'), row('d', 'zeta')]).map(g => [g.repo, g.rows.map(r => r.id)]), [['alpha', ['c']], ['zeta', ['b', 'd']], ['Без проекта', ['a']]]);
 });
 

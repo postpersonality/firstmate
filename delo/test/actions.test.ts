@@ -11,8 +11,8 @@ import { firstmateHome, stubLog } from './firstmate-home.ts';
 test('card actions follow the backlog row state', () => {
   assert.deepEqual(actions({ state: 'queued', held: 'no', hold_kind: '-', kind: 'ship' }), ['start', 'pause', 'close', 'decline']);
   assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'parked', kind: 'ship' }), ['unhold', 'close', 'decline']);
-  assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'captain', kind: 'captain' }), ['answer', 'later']);
-  assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'captain', kind: 'scout' }), ['release', 'later']);
+  assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'captain', kind: 'captain' }), ['answer', 'later', 'close']);
+  assert.deepEqual(actions({ state: 'queued', held: 'yes', hold_kind: 'captain', kind: 'scout' }), ['release', 'later', 'close']);
   assert.deepEqual(actions({ state: 'in_flight', held: 'no', kind: 'ship' }), ['close']);
   assert.deepEqual(actions({ state: 'done', held: 'no', kind: 'ship' }), ['reopen']);
   assert.deepEqual(actions({ state: 'done', held: 'no', kind: 'captain' }), []);
@@ -56,10 +56,13 @@ test('card actions reach Firstmate through notes, answers and backlog commands',
     assert.equal(store.act(flying, 'close', {}).note.outcome, 'created');
     assert.equal(store.firstmate.show(flying).state, 'in_flight');
     assert.ok(store.inbox(flying).requests.some(r => r.requestId === `delo-close-${flying}-1`));
+    hold('hold', flying, '--reason', 'Нужен выбор во время работы');
+    assert.equal(store.firstmate.show(flying).state, 'in_flight');
+    assert.equal(store.act(flying, 'close', {}).note.outcome, 'replay', 'closing active held work remains a request to firstmate');
+    assert.equal(store.firstmate.show(flying).state, 'in_flight');
 
     hold('hold', 'cap-a', '--title', 'Какой путь', '--reason', 'Нужен выбор пути');
-    assert.deepEqual(store.get('cap-a').actions, ['answer', 'later']);
-    assert.throws(() => store.act('cap-a', 'close', {}), /недоступно/);
+    assert.deepEqual(store.get('cap-a').actions, ['answer', 'later', 'close']);
     store.act('cap-a', 'later', { reason: 'Вернуться в декабре', until: '2026-12-01' });
     assert.equal(store.firstmate.show('cap-a').hold_until, '2026-12-01');
     store.act('cap-a', 'answer', { answer: 'Идём вторым путём' });
@@ -68,12 +71,39 @@ test('card actions reach Firstmate through notes, answers and backlog commands',
 
     hold('hold', 'cap-b', '--title', 'Можно начинать', '--reason', 'Нужно разрешение');
     store.firstmate.update('cap-b', { kind: 'ship' });
-    assert.deepEqual(store.get('cap-b').actions, ['release', 'later']);
+    assert.deepEqual(store.get('cap-b').actions, ['release', 'later', 'close']);
     store.act('cap-b', 'release', {});
     assert.match(backlog(), /Resolution mode: released/);
     assert.equal(store.firstmate.show('cap-b').state, 'queued');
     assert.equal(store.firstmate.show('cap-b').held, 'no');
     assert.equal(existsSync(stubLog), false, 'no agent or Herdr stub was called');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('closing obsolete held work records the explicit choice through the captain-hold owner', () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-held-close-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root) });
+    const fm = store.firstmate.home;
+    const hold = (id: string) => run(join(fm, 'bin', 'fm-captain-hold.sh'), ['hold', id, '--reason', 'Нужно решение'], fm, 45000, { ...process.env, FM_HOME: fm });
+    for (const kind of ['scout', 'captain']) {
+      const id = store.firstmate.add(undefined, 'Больше не актуальна', '', { kind }).id;
+      hold(id);
+      if (kind === 'scout') { store.act(id, 'release', {}); hold(id); }
+      const before = store.firstmate.show(id);
+      assert.equal(store.get(id).actions.includes('close'), true);
+      assert.deepEqual([before.state, before.held], ['queued', 'yes'], 'viewing offers controls without acting');
+      store.act(id, 'close', {});
+      const after = store.firstmate.show(id);
+      assert.equal(after.state, 'done');
+      assert.match(after.body ?? '', /Resolution recorded by fm-captain-hold\./);
+      assert.match(after.body ?? '', /Resolution mode: answered/);
+      assert.match(after.body ?? '', /Answer: Закрыть как неактуальную/);
+      assert.match(after.body ?? '', /Answer as shown to the captain: Закрыть как неактуальную/);
+      assert.match(readFileSync(join(fm, 'state', '.wake-queue'), 'utf8'), new RegExp(`captain answered through delo: ${id}`));
+    }
+    assert.equal(store.firstmate.receipts().pending.length, 0, 'held closure uses the answer owner, not a free-text note');
+    assert.equal(existsSync(stubLog), false, 'no worker lifecycle command runs');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

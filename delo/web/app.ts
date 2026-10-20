@@ -1,7 +1,7 @@
 import type { Goal } from '../src/model.ts';
 import type { Overview, Row, CaseRow } from '../src/overview.ts';
 type ViewGoal = Goal & { inbox?: { requests: { requestId: string; at: string; state: string; acknowledged: boolean; reply: unknown }[]; ready?: any }; worker?: { harness: string } };
-type CaseTask = { id: string; title: string; phase: keyof typeof phaseLabels; links: string[]; report: boolean };
+type CaseTask = Pick<Goal, 'id' | 'title' | 'state' | 'actions' | 'holdKind' | 'inFlight' | 'links' | 'report'> & { phase: keyof typeof phaseLabels };
 type ViewCase = Goal & { archived: boolean; sources: string[]; tasks: CaseTask[]; earlier: CaseTask[] };
 const phaseLabels = { working: 'в работе', waiting: 'ждёт меня', next: 'дальше', done: 'сделано' };
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -16,6 +16,7 @@ const field = (name: string, label: string, value = '', multiline = false, requi
 let csrf = ''; let view: Overview | undefined;
 let kind = ''; let current: ViewGoal | undefined;
 let submitDialog: (form: FormData) => Promise<void> = async () => {};
+const pendingTasks = new Set<string>();
 
 async function api<T = any>(path: string, body?: unknown, method?: string): Promise<T> {
   const response = await fetch(path, { method: method ?? (body === undefined ? 'GET' : 'POST'), headers: { 'content-type': 'application/json', 'x-delo-csrf': csrf }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -74,14 +75,29 @@ async function newAgent(c: ViewCase) {
   interactive.onchange = () => { if (interactive.checked) document.querySelector<HTMLSelectElement>('#dialog-body [name=harness]')!.value = 'codex'; };
 }
 const actionLabels: Record<string, string> = { start: 'Взять в работу', pause: 'Пауза', unhold: 'Снять паузу', close: 'Закрыть', decline: 'Отказ', answer: 'Ответить', release: 'Разрешить работу', later: 'Позже', reopen: 'Вернуть' };
-async function taskAction(g: ViewGoal, action: string) {
+const taskState = (g: { state?: Goal['state']; holdKind?: string; inFlight?: boolean }) => g.state === 'done' ? 'Закрыта' : g.inFlight ? 'В работе' : g.holdKind === 'captain' ? 'Ждёт решения' : g.state === 'paused' ? 'На паузе' : g.state === 'active' ? 'В очереди' : '';
+function taskControls(g: Pick<Goal, 'id' | 'actions' | 'holdKind' | 'inFlight'>) {
+  const pending = pendingTasks.has(g.id);
+  return `<div class="actions task-actions">${g.actions.map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}" ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
+}
+function taskPending(id: string, on: boolean) {
+  if (on) pendingTasks.add(id); else pendingTasks.delete(id);
+  document.querySelectorAll<HTMLButtonElement>('[data-task-action], [data-action="pin"]').forEach(b => { if (b.dataset.id === id) b.disabled = on; });
+  document.querySelectorAll<HTMLElement>('[data-task-pending]').forEach(e => { if (e.dataset.id === id) e.hidden = !on; });
+}
+async function taskAction(g: Pick<Goal, 'id' | 'holdKind' | 'inFlight'>, action: string) {
   const path = `/api/tasks/${encodeURIComponent(g.id)}/${action}`;
   const run = async (body: Record<string, unknown> = {}) => {
-    const result = await api(path, body);
-    message(result.note ? receipt(result) : `${actionLabels[action]}: готово.`);
-    await reload();
+    if (pendingTasks.has(g.id)) return;
+    taskPending(g.id, true);
+    try {
+      const result = await api(path, body);
+      message(result.note ? receipt(result) : `${actionLabels[action]}: готово.`);
+      await reload();
+    } finally { taskPending(g.id, false); }
   };
-  if (action === 'decline') modal('Отказ', field('reason', 'Причина отказа', '', false, true), async f => run({ reason: f.get('reason') }), 'Отказаться');
+  if (action === 'close' && g.holdKind === 'captain' && !g.inFlight) modal('Закрыть задачу', '<p>Задача больше не актуальна? Она будет закрыта, а ваш выбор сохранится в её истории.</p>', () => run(), 'Закрыть как неактуальную');
+  else if (action === 'decline') modal('Отказ', field('reason', 'Причина отказа', '', false, true), async f => run({ reason: f.get('reason') }), 'Отказаться');
   else if (action === 'answer') modal('Ответить', field('answer', 'Ответ', '', false, true), async f => run({ answer: f.get('answer') }), 'Ответить');
   else if (action === 'release') modal('Разрешить работу', field('answer', 'Комментарий (необязательно)'), async f => run(f.get('answer') ? { answer: f.get('answer') } : {}), 'Разрешить работу');
   else if (action === 'later') modal('Позже', `${field('reason', 'Почему позже', '', false, true)}<label>Вернуться<input type="date" name="until" required></label>`, async f => run({ reason: f.get('reason'), until: f.get('until') }), 'Отложить');
@@ -91,9 +107,9 @@ async function taskAction(g: ViewGoal, action: string) {
 const sections = [['waiting', 'Ждёт меня'], ['working', 'В работе'], ['next', 'Дальше'], ['done', 'Сделано']] as const;
 function row(r: Row, inFocus = false) {
   const marks = [r.kind ? badge(r.kind) : '', r.personal ? badge('личное') : '', r.pinned && !inFocus ? badge('В фокусе') : '', r.noWorker ? badge('нет исполнителя') : ''].join('');
-  const detail = [r.id, r.reason || r.current].filter(Boolean).join(' · ');
-  const pin = r.open ? `<button class="quiet" data-action="pin" data-id="${esc(r.id)}" data-on="${r.pinned ? '' : '1'}">${r.pinned ? 'Открепить' : 'Закрепить'}</button>` : '';
-  return `<div class="row${r.task ? ' go' : ' warning'}"><div class="row-content"><strong>${r.task ? `<a href="#${encodeURIComponent(r.id)}">${esc(r.title)}</a>` : esc(r.title)}</strong> ${marks}<small>${esc(detail)}${r.reportPath === ownReport(r.id) ? ` · ${reportAnchor(r.id)}` : ''}</small></div>${pin}</div>`;
+  const detail = [r.id, taskState(r), r.reason || r.current].filter(Boolean).join(' · ');
+  const pin = r.open ? `<button class="quiet" data-action="pin" data-id="${esc(r.id)}" data-on="${r.pinned ? '' : '1'}" ${pendingTasks.has(r.id) ? 'disabled' : ''}>${r.pinned ? 'Открепить' : 'Закрепить'}</button>` : '';
+  return `<div class="row${r.task ? ' go' : ' warning'}"><div class="row-content"><strong>${r.task ? `<a href="#${encodeURIComponent(r.id)}">${esc(r.title)}</a>` : esc(r.title)}</strong> ${marks}<small>${esc(detail)}${r.reportPath === ownReport(r.id) ? ` · ${reportAnchor(r.id)}` : ''}</small></div><div class="row-actions">${r.task ? taskControls(r) : ''}${pin}</div></div>`;
 }
 function caseRow(c: CaseRow) {
   return `<div class="row go"><div class="row-content"><strong><a href="#case:${encodeURIComponent(c.id)}">${esc(c.title)}</a></strong><small>${esc(Object.entries(phaseLabels).map(([k, l]) => `${l} ${c.counts[k as keyof typeof phaseLabels]}`).join(' · '))}</small></div></div>`;
@@ -127,12 +143,12 @@ function executor(g: ViewGoal) {
 }
 function renderGoal(g: ViewGoal) {
   current = g; document.title = `${g.title} — Дело`;
-  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(g.id)}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p class="muted">${esc(g.why || 'Зачем нужна цель, пока не записано')}</p>${executor(g)}${requests(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${g.actions.map(a => `<button data-task-action="${a}">${actionLabels[a]}</button>`).join('')}</div></div><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section><section class="section"><div class="section-heading"><h2>Бриф</h2></div><details class="brief-box"><summary>Зачем, критерий готовности и контекст</summary><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl>${closed(g) ? '<p class="disabled-note">Бриф заморожен после закрытия цели.</p>' : ''}</details></section>`;
+  $('main').innerHTML = `<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(g.id)} · ${esc(taskState(g))}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p class="muted">${esc(g.why || 'Зачем нужна цель, пока не записано')}</p>${executor(g)}${requests(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${taskControls(g)}</div></div><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section><section class="section"><div class="section-heading"><h2>Бриф</h2></div><details class="brief-box"><summary>Зачем, критерий готовности и контекст</summary><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl>${closed(g) ? '<p class="disabled-note">Бриф заморожен после закрытия цели.</p>' : ''}</details></section>`;
 }
 
 const brief = (g: Goal) => `<div class="brief-box"><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl></div>`;
 const linkList = (refs: string[], report?: string) => refs.map(ref => report && ref === ownReport(report) ? reportAnchor(report) : /^https?:\/\//.test(ref) ? `<a href="${esc(ref)}" target="_blank" rel="noopener noreferrer">${esc(ref)}</a>` : esc(ref)).join(' · ');
-const caseTask = (t: CaseTask, live: boolean) => `<div class="row${live ? ' go' : ''}"><div class="row-content"><strong>${live ? `<a href="#${encodeURIComponent(t.id)}">${esc(t.title)}</a>` : esc(t.title)}</strong><small>${esc(t.id)} · ${esc(phaseLabels[t.phase])}${t.links.length ? ' · ' : ''}${linkList(t.links, t.report ? t.id : undefined)}</small></div></div>`;
+const caseTask = (t: CaseTask, live: boolean) => `<div class="row${live ? ' go' : ''}"><div class="row-content"><strong>${live ? `<a href="#${encodeURIComponent(t.id)}">${esc(t.title)}</a>` : esc(t.title)}</strong><small>${esc(t.id)} · ${esc(taskState(t))}${t.links.length ? ' · ' : ''}${linkList(t.links, t.report ? t.id : undefined)}</small></div>${live ? taskControls(t) : ''}</div>`;
 function renderCase(c: ViewCase) {
   current = c; document.title = `${c.title} — Дело`;
   const open = !c.archived && c.state !== 'done';
@@ -197,12 +213,12 @@ async function reload() {
 $('new-goal').onclick = () => { newGoal().catch(e => message(e.message, true)); };
 $('new-case').onclick = newCase;
 $('dialog-close').onclick = () => ($('dialog') as HTMLDialogElement).close();
-$('dialog-form').onsubmit = async event => { event.preventDefault(); $('dialog-submit').setAttribute('disabled', ''); try { await submitDialog(new FormData($('dialog-form') as HTMLFormElement)); ($('dialog') as HTMLDialogElement).close(); } catch (e: any) { $('dialog-error').textContent = e.message; } finally { $('dialog-submit').removeAttribute('disabled'); } };
+$('dialog-form').onsubmit = async event => { event.preventDefault(); if (($('dialog-submit') as HTMLButtonElement).disabled) return; $('dialog-submit').setAttribute('disabled', ''); try { await submitDialog(new FormData($('dialog-form') as HTMLFormElement)); ($('dialog') as HTMLDialogElement).close(); } catch (e: any) { $('dialog-error').textContent = e.message; } finally { $('dialog-submit').removeAttribute('disabled'); } };
 $('main').onclick = async event => {
   const taskButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-task-action]');
-  if (taskButton && current) { taskButton.disabled = true; try { await taskAction(current, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } finally { taskButton.disabled = false; } return; }
+  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight }, taskButton.dataset.taskAction!); } catch (e: any) { message(e.message, true); } return; }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
-  if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, input, select, textarea, label')) go.querySelector('a')?.click(); return; }
+  if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, button, input, select, textarea, label, .task-actions, .row-actions')) go.querySelector('a')?.click(); return; }
   try { if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'open-report') { button.disabled = true; await api(`/api/reports/${encodeURIComponent(button.dataset.id!)}/open`, {}); return; } if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); return; }
     if (button.dataset.action === 'pin') { button.disabled = true; view = await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); renderOverview(); return; } if (button.dataset.action!.endsWith('-case') && current) return await caseAction(current as ViewCase, button.dataset.action!); await goalAction(button.dataset.action!); }
   catch (e: any) { message(e.message, true); } finally { button.disabled = false; }

@@ -1,8 +1,10 @@
-import { phase, type Phase } from './model.ts';
+import { actions, phase, type Phase, type Goal } from './model.ts';
+import type { FirstmateTask } from './firstmate.ts';
 // Main screen from the Firstmate snapshots: sections follow fm-bearings.v1, row fields come from fm-fleet-snapshot.v1.
 export type Row = {
   id: string; title: string; kind?: string; repo?: string; pinned: boolean; open: boolean; task: boolean; personal: boolean;
   reason?: string; current?: string; noWorker?: boolean; blockedBy?: string; prUrl?: string; reportPath?: string; owner?: string;
+  actions: Goal['actions']; state?: Goal['state']; holdKind?: string; inFlight?: boolean;
 };
 export type Group = { repo: string; rows: Row[] };
 export type CaseRow = Row & { counts: Record<Phase, number> };
@@ -26,14 +28,19 @@ export function groupByRepo(rows: Row[]): Group[] {
 // A task belongs to a дело when the first line of its body is `Дело: <id>`.
 export const caseOf = (lines: unknown) => { const first = Array.isArray(lines) ? lines[0] : typeof lines === 'string' ? lines.split('\n')[0] : undefined; return typeof first === 'string' ? /^Дело: (\S+)$/.exec(first.trim())?.[1] : undefined; };
 
-export function overview(bearings: any, fleet: any, archive: any[] = []): Overview {
+export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: FirstmateTask[] = []): Overview {
   const records = new Map<string, any>((fleet.backlog?.records ?? []).map((r: any) => [r.id, r]));
+  // Fleet snapshots omit the computed held bit; tasks-axi owns expiry and action availability.
+  const native = new Map(tasks.map(t => [t.id, t]));
   const workers = new Map<string, any>((fleet.tasks ?? []).map((t: any) => [t.id, t]));
   const row = (id: string, title: string | undefined, extra: Partial<Row> = {}): Row => {
     const r = records.get(id);
+    const task = native.get(id) ?? r;
     return {
       ...extra, id, title: value(r?.title) ?? value(title) ?? id, kind: value(r?.kind) ?? extra.kind, repo: value(r?.repo) ?? extra.repo,
       pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(r?.pr_url), reportPath: value(r?.report_path),
+      actions: r ? actions(task) : [], state: !r ? undefined : task.state === 'done' ? 'done' : task.held === true || task.held === 'yes' ? 'paused' : 'active',
+      holdKind: value(task?.hold_kind), inFlight: task?.state === 'in_flight',
     };
   };
   const current = (id: string, fallback?: string) => {
