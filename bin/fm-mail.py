@@ -14,7 +14,6 @@
 # so credentials never appear in argv or logs. read/poll use BODY.PEEK so mail
 # is never marked seen before firstmate answers it.
 import imaplib
-import math
 import os
 import re
 import socket
@@ -37,7 +36,7 @@ def mail_timeout():
         value = float(raw)
     except (TypeError, ValueError):
         value = 20.0
-    if not math.isfinite(value) or value <= 0:
+    if value <= 0:
         value = 20.0
     return value
 

@@ -1551,7 +1551,10 @@ visudo -cf /etc/sudoers.d/firstmate-gate
 ```
 
 Every ancestor directory of the home also needs search permission for the gate account, for example `setfacl -m "u:$GATE_USER:x" <directory>`.
-The default ACL reaches a record Firstmate creates later only through that file's group permission bits; a record created with mode 0600 stays unreadable, and the gate then refuses the request instead of reviewing partial evidence.
+The recursive line also migrates the steering records already in `state/<task>.inbox/` and `handled/`.
+The default ACL reaches a record Firstmate creates later only through that file's group permission bits, and a steering record is created with mode 0600.
+With `FM_CAPTAIN_ALERT_GATE_USER` in the home's `.env`, the steering inbox (`bin/fm-task-inbox-lib.sh`) grants that account alone read access to each new record before publishing it, as a named ACL entry that leaves the owning group and others without access; the grant stays on the record when it moves to `handled/`.
+A record the gate account cannot read is not skipped: `alert-preflight` names it, and the gate refuses that task's request naming it instead of reviewing partial evidence.
 Install and authenticate the Claude CLI as the gate account, then write the gate configuration as that account; the password is read without echo and never enters chat, arguments, history or logs:
 
 ```sh
@@ -1566,14 +1569,14 @@ The home's `.env` then carries only the submitting side:
 
 ```sh
 FM_CAPTAIN_ALERT_GATE=        # absolute path of the installed gate program
-FM_CAPTAIN_ALERT_GATE_USER=   # the gate account
+FM_CAPTAIN_ALERT_GATE_USER=   # the gate account; new steering records also get its read grant
 ```
 
 The sending account's credential never goes into the home's `.env`: the submitting agent can read that file and would be able to send unreviewed mail.
 For the same reason the inbound IMAP account must not be the gate's sending account.
 No recipient is inferred from Git identity.
 Outgoing activation does not arm inbound polling.
-Run `FM_HOME=/path/to/home bin/fm-mail.sh alert-preflight` to list missing gate parameters and corrective actions without printing credentials, sending mail or contacting the critic.
+Run `FM_HOME=/path/to/home bin/fm-mail.sh alert-preflight` to list missing gate parameters, canonical task records the gate account cannot read, and corrective actions without printing credentials, sending mail or contacting the critic.
 Presence checks do not prove native authentication, SMTP authentication or inbox arrival.
 Activation stays pending until the gate is deployed with real local credentials and the delivery of a real blocker has been verified.
 
@@ -2483,7 +2486,7 @@ FM_IMAP_PORT=993   # mail-plane IMAP server port
 FM_SMTP_HOST=      # mail-plane SMTP server hostname
 FM_SMTP_PORT=465   # mail-plane SMTP server port
 FM_CAPTAIN_ALERT_GATE=        # installed outgoing blocker gate program; recipient, credential and critic live with its own account
-FM_CAPTAIN_ALERT_GATE_USER=   # the gate account that sudo -n runs it as
+FM_CAPTAIN_ALERT_GATE_USER=   # the gate account that sudo -n runs it as; the steering inbox grants it read access to new records
 FMX_PAIRING_TOKEN=      # Relay pairing token; .env opt-in authorizes replies and eligible lifecycle actions
 FMX_RELAY_URL=https://myfirstmate.io   # optional Relay endpoint override, mainly for local relay development
 FMX_ENV_FILE=           # optional alternate .env file for direct Relay client invocations; bootstrap still checks $FM_HOME/.env

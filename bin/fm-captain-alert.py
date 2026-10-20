@@ -27,7 +27,9 @@ configuration and the records and refuses any change.
 Receipts: $FM_CAPTAIN_ALERT_STATE/<id>/<binding>/, mode 0700/0600. SMTP is tried
 at most once per event: a sent or attempted event never sends again. A critic
 verdict is replayed for unchanged evidence; a failure before SMTP retries fresh.
-alert-preflight names gaps on both sides without critic, authentication or SMTP.
+alert-preflight names gaps on both sides, including every canonical record the
+gate account cannot read, without critic, authentication or SMTP. A refusal
+names the unreadable record; none is skipped.
 No skip/configurable-off path exists.
 """
 import fcntl
@@ -162,28 +164,59 @@ def gaps(cfg):
     return found
 
 
+def canonical(home, task):
+    inbox = home / 'state' / (task + '.inbox')
+    steering = []
+    for directory in (inbox, inbox / 'handled'):
+        try:
+            steering += [directory / name for name in os.listdir(directory) if name.endswith('.msg')]
+        except FileNotFoundError:
+            pass
+        except OSError:
+            raise ValueError('the gate account cannot list ' + str(directory.relative_to(home))
+                             + '; grant it read access as the deployment describes') from None
+    return [('brief', home / 'data' / task / 'brief.md'), *(('steering', p) for p in sorted(steering, key=lambda p: p.name)),
+            ('status', home / 'state' / (task + '.status')), ('authority', home / 'AGENTS.md')]
+
+
 def evidence(home, task):
     home = Path(home).resolve(strict=True)
-    inbox = home / 'state' / (task + '.inbox')
-    steering = sorted([*inbox.glob('*.msg'), *inbox.glob('handled/*.msg')], key=lambda p: p.name)
-    refs = [('brief', home / 'data' / task / 'brief.md'), *(('steering', p) for p in steering),
-            ('status', home / 'state' / (task + '.status')), ('authority', home / 'AGENTS.md')]
     sources, total = [], 0
-    for role, path in refs:
+    for role, path in canonical(home, task):
+        name = str(path.relative_to(home))
         try:
             real = path.resolve(strict=True)
-        except OSError:
+            if home not in real.parents or not real.is_file():
+                raise ValueError('canonical ' + role + ' record must be a file inside the Firstmate home')
+            with real.open('rb') as stream:
+                raw = stream.read(MAX_EVIDENCE - total + 1)
+        except FileNotFoundError:
             raise ValueError('task ' + task + ' lacks its canonical ' + role + ' record') from None
-        if home not in real.parents or not real.is_file():
-            raise ValueError('canonical ' + role + ' record must be a file inside the Firstmate home')
-        with real.open('rb') as stream:
-            raw = stream.read(MAX_EVIDENCE - total + 1)
+        except OSError:
+            raise ValueError('the gate account cannot read ' + name + '; grant it read access as the deployment describes') from None
         total += len(raw)
         if total > MAX_EVIDENCE:
             raise ValueError('canonical task records exceed 512 KiB')
-        sources.append(dict(role=role, path=str(path.relative_to(home)), text=raw.decode('utf-8'),
-                            sha256=digest(raw)))
+        sources.append(dict(role=role, path=name, text=raw.decode('utf-8'), sha256=digest(raw)))
     return sources
+
+
+def unreadable(home):
+    home = Path(home).resolve(strict=True)
+    paths, found = {home / 'state', home / 'AGENTS.md'}, []
+    for meta in home.glob('state/*.meta'):
+        try:
+            paths.update([meta, *(path for _, path in canonical(home, meta.name[:-len('.meta')]))])
+        except ValueError as error:
+            found.append(str(error))
+    for path in sorted(paths):
+        try:
+            os.close(os.open(path, os.O_RDONLY | os.O_NONBLOCK))
+        except FileNotFoundError:
+            pass
+        except OSError:
+            found.append('the gate account cannot read ' + str(path.relative_to(home)))
+    return found
 
 
 def bind_task(home, task, key):
@@ -416,10 +449,14 @@ def main():
         return 0
     if sys.argv[1:] == ['preflight']:
         try:
-            found = gaps(load())
+            cfg = load()
+            found = gaps(cfg) or unreadable(cfg['FM_CAPTAIN_ALERT_HOME'])
         except ValueError as error:
             found = [str(error)]
-        print('\n'.join(found) if found else 'ready: gate configuration complete; critic, authentication and SMTP not contacted')
+        except OSError:
+            found = ['FM_CAPTAIN_ALERT_HOME must be an existing Firstmate home the gate account can read']
+        print('\n'.join(found) if found else 'ready: gate configuration complete and canonical task records readable; '
+              'critic, authentication and SMTP not contacted')
         return int(bool(found))
     if sys.argv[1:] == ['alert-preflight']:
         try:

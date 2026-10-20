@@ -91,10 +91,6 @@ if [ -f "$ENV_FILE" ]; then
     esac
     key="${line%%=*}"
     key="${key#"${key%%[![:space:]]*}"}"
-    case "$key" in
-      FM_MAIL_*|FM_IMAP_*|FM_SMTP_*|FM_CAPTAIN_ALERT_GATE|FM_CAPTAIN_ALERT_GATE_USER) ;;
-      *) continue ;;
-    esac
     val="${line#*=}"
     val="${val#"${val%%[![:space:]]*}"}"
     val="${val%"${val##*[![:space:]]}"}"

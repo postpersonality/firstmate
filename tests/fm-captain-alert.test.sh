@@ -88,7 +88,7 @@ from pathlib import Path
 r = Path(os.environ['ALERT_TMP'])
 for key in ['Q23','next-step','permission','failed','invalid','changed','bad-hash','smtp-fail','insufficient',
             'recipient-change','ghost','escape','with-sources','self-gate','loose','undeployed',
-            'reworked-a','reworked-b','respawn']:
+            'reworked-a','reworked-b','respawn','unreadable']:
     task = {'ghost':'ghost', 'escape':'escape', 'reworked-a':'reworked'}.get(key, 'demo')
     request = {'id':key, 'task':task, 'decision':'stale' if key == 'reworked-b' else 'default',
         'subject':'Permission needed: ' + key,
@@ -171,6 +171,19 @@ reject_unreviewed ghost 'lacks its canonical brief record'
 reject_unreviewed escape 'inside the Firstmate home'
 reject_unreviewed with-sources 'the gate reads the evidence'
 pass 'evidence comes only from canonical task records inside the home'
+
+printf '%s' 'Later steering the gate account cannot read.' > "$FM_HOME/state/demo.inbox/002.msg"
+chmod 000 "$FM_HOME/state/demo.inbox/002.msg"
+rc=0
+mail_cli alert-preflight > "$ALERT_TMP/out" 2>&1 || rc=$?
+[ "$rc" -ne 0 ] || fail 'preflight must report an unreadable steering record'
+assert_contains "$(cat "$ALERT_TMP/out")" 'cannot read state/demo.inbox/002.msg' 'preflight names the unreadable record'
+reject_unreviewed unreadable 'cannot read state/demo.inbox/002.msg'
+rm -f "$FM_HOME/state/demo.inbox/002.msg"
+chmod 000 "$FM_HOME/state/demo.inbox/handled"
+reject_unreviewed unreadable 'cannot list state/demo.inbox/handled'
+chmod 755 "$FM_HOME/state/demo.inbox/handled"
+pass 'unreadable steering is named by preflight and refusal, never skipped'
 
 cp "$ALERT_TMP/reworked-a.json" "$ALERT_TMP/reworked.json"
 reject_unreviewed reworked 'task reworked lacks its canonical brief record'
