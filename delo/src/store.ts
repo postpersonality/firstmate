@@ -6,7 +6,7 @@ import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, cl
 import type { Goal, Action } from './model.ts';
 import { validateReview, reviewProjects, reviewOf, reviewLine, reviewInstructions, readReviewProgress } from './review.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
-import { type Overview, overview, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
+import { type Overview, overview, requestsByTask, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
 
 const sections = ['Обложка', 'Зачем', 'Критерий готовности', 'Контекст', 'Ограничения'];
 
@@ -156,9 +156,10 @@ export class Store {
     catch (error: any) { if (!/NOT_FOUND/.test(`${error.code} ${error.stdout} ${error.message}`)) throw error; task = this.firstmate.show(caseId, true); archived = true; }
     if (task.kind !== 'program') throw new Error('Это не дело');
     const goal = this.get(caseId, task);
+    const requests = requestsByTask(this.firstmate.receipts());
     const entry = (t: FirstmateTask) => {
       const { id, title, state, actions, holdKind, reason, inFlight, links, report, review, reviewProgress } = this.get(t.id, t);
-      return { id, title, state, actions, holdKind, reason, inFlight, phase: phase(t), links, report, review, reviewProgress };
+      return { id, title, state, actions, requests: (requests.get(t.id) ?? []).filter(r => actions.includes(r.action)), holdKind, reason, inFlight, phase: phase(t), links, report, review, reviewProgress };
     };
     const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
     const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t, true)));
@@ -291,22 +292,23 @@ export class Store {
     return { task: this.firstmate.reopen(task.id) };
   }
 
-  // A repeated click on a request firstmate has not acknowledged reuses its id, so fm-inbox replays it.
+  // Acknowledgement is not execution: reuse even a handled request while the same action remains available.
+  // shortcut: receipts have no lifecycle generation; keep old requests after reopening until explicit retry semantics exist.
   private requestId(kind: 'start' | 'close' | 'stop', taskId: string) {
     const prefix = `delo-${kind}-${taskId}-`;
     const { pending = [], handled = [] } = this.firstmate.receipts();
     const ours = [...pending, ...handled].filter((r: any) => typeof r.request_id === 'string' && r.request_id.startsWith(prefix) && /^\d+$/.test(r.request_id.slice(prefix.length)));
-    const waiting = ours.find((r: any) => pending.includes(r) && !r.acknowledged);
-    if (waiting) return waiting.request_id;
-    return `${prefix}${Math.max(0, ...ours.map((r: any) => Number(r.request_id.slice(prefix.length)))) + 1}`;
+    const waiting = ours.sort((a: any, b: any) => Number(b.request_id.slice(prefix.length)) - Number(a.request_id.slice(prefix.length)))[0];
+    return waiting?.request_id ?? `${prefix}1`;
   }
 
   // Delo's own notes about this row with their receipt state, and whether firstmate can take a note now.
   inbox(taskId: string) {
     const { pending = [], handled = [] } = this.firstmate.receipts();
+    const latest = requestsByTask({ pending, handled }).get(taskId) ?? [];
     const requests = [...pending.map((r: any) => ({ ...r, state: 'pending' })), ...handled.map((r: any) => ({ ...r, state: 'handled' }))]
-      .filter(r => [`delo-start-${taskId}-`, `delo-close-${taskId}-`, `delo-stop-${taskId}-`].some(p => r.request_id?.startsWith(p)))
-      .map(r => ({ requestId: r.request_id, at: r.at, state: r.state, acknowledged: !!r.acknowledged, reply: r.reply ?? null }));
+      .filter(r => [`delo-start-${taskId}-`, `delo-close-${taskId}-`, `delo-stop-${taskId}-`].some(p => typeof r.request_id === 'string' && r.request_id.startsWith(p) && /^\d+$/.test(r.request_id.slice(p.length))))
+      .map(r => ({ action: latest.find(n => n.requestId === r.request_id)?.action, requestId: r.request_id, at: r.at, state: r.state, acknowledged: !!r.acknowledged, reply: r.reply ?? null }));
     return { requests, ready: requests.some(r => r.state === 'pending') ? this.firstmate.ready() : undefined };
   }
 
@@ -339,7 +341,7 @@ export class Store {
       promise: Promise.all([this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh')]).then(([bearings, fleet]) => {
         // A mutation during the read also invalidates requests already in flight.
         if (this.overviewRead !== read) return this.overview();
-        const result = overview(bearings, fleet, this.firstmate.archive(), this.firstmate.list());
+        const result = overview(bearings, fleet, this.firstmate.archive(), this.firstmate.list(), this.firstmate.receipts());
         read.expires = Date.now() + 2000;
         return result;
       }).catch(error => { if (this.overviewRead === read) this.overviewRead = undefined; throw error; }),

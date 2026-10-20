@@ -1,7 +1,7 @@
-import type { Goal } from '../src/model.ts';
+import type { Goal, TaskRequest } from '../src/model.ts';
 import type { Overview, Row, CaseRow } from '../src/overview.ts';
-type ViewGoal = Goal & { inbox?: { requests: { requestId: string; at: string; state: string; acknowledged: boolean; reply: unknown }[]; ready?: any }; worker?: { harness: string; current?: string; reason?: string; prUrl?: string } };
-type CaseTask = Pick<Goal, 'id' | 'title' | 'state' | 'actions' | 'holdKind' | 'reason' | 'inFlight' | 'links' | 'report' | 'review' | 'reviewProgress'> & { phase: keyof typeof phaseLabels };
+type ViewGoal = Goal & { inbox?: { requests: { action?: TaskRequest['action']; requestId: string; at: string; state: string; acknowledged: boolean; reply: unknown }[]; ready?: any }; worker?: { harness: string; current?: string; reason?: string; prUrl?: string } };
+type CaseTask = Pick<Goal, 'id' | 'title' | 'state' | 'actions' | 'holdKind' | 'reason' | 'inFlight' | 'links' | 'report' | 'requests' | 'review' | 'reviewProgress'> & { phase: keyof typeof phaseLabels };
 type ViewCase = Goal & { archived: boolean; sources: string[]; tasks: CaseTask[]; earlier: CaseTask[] };
 const phaseLabels = { working: 'в работе', waiting: 'ждёт меня', next: 'дальше', done: 'сделано' };
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -82,8 +82,10 @@ const harnesses = ['claude', 'codex', 'opencode', 'pi', 'grok', 'kimi', 'gemini'
 const defaultDirection = 'Разбери текущее дело по ориентировке и прикреплённым материалам. Прочитай источники, необходимые для понимания задания. Если задание понятно, приступай к работе. Если сведений недостаточно, задай уточняющий вопрос.';
 // The receipt of a note for firstmate, as «Взять в работу» and «Новый агент» show it.
 const receipt = (result: any) => {
-  const ready = result.ready && result.ready.can_receive !== true ? ` Firstmate сейчас не принимает заметки (can_receive: ${result.ready.can_receive}, posture: ${result.ready.posture?.state ?? '-'}).` : '';
-  return `Заметка для firstmate: ${result.note.outcome === 'replay' ? 'повтор уже отправленного запроса (replay)' : 'отправлена'}, ${result.note.id}.${ready}`;
+  if (result.note.acknowledged) return 'Firstmate принял просьбу. Ждём изменения задачи.';
+  return result.ready?.can_receive === false
+    ? 'Firstmate сейчас занят; просьба сохранена и будет прочитана позже.'
+    : 'Просьба сохранена для Firstmate. Ждём принятия; выполнение ещё не подтверждено.';
 };
 async function newAgent(c: ViewCase) {
   const folders = await api<string[]>('/api/folders');
@@ -101,9 +103,14 @@ async function newAgent(c: ViewCase) {
 }
 const actionLabels: Record<string, string> = { start: 'Взять в работу', pause: 'Пауза', unhold: 'Снять паузу', close: 'Закрыть', decline: 'Отказ', answer: 'Ответить', release: 'Разрешить работу', later: 'Позже', reopen: 'Вернуть', stop: 'Запросить остановку' };
 const taskState = (g: { state?: Goal['state']; holdKind?: string; inFlight?: boolean }) => g.state === 'done' ? 'Закрыта' : g.holdKind === 'captain' ? (g.inFlight ? 'В работе · ждёт ответа' : 'Ждёт решения') : g.inFlight ? 'В работе' : g.state === 'paused' ? 'На паузе' : g.state === 'active' ? 'В очереди' : '';
-function taskControls(g: Pick<Goal, 'id' | 'title' | 'actions' | 'holdKind' | 'reason' | 'inFlight'>) {
+const requestLabel = (r: TaskRequest) => r.action === 'start'
+  ? r.state === 'pending' ? 'Запуск запрошен. Ждём принятия Firstmate.' : 'Запуск принят. Ждём начала работы.'
+  : r.action === 'stop'
+    ? r.state === 'pending' ? 'Остановка запрошена. Работа ещё не остановлена.' : 'Просьба об остановке принята. Остановка ещё не подтверждена.'
+    : r.state === 'pending' ? 'Закрытие запрошено. Задача ещё не закрыта.' : 'Просьба о закрытии принята. Закрытие ещё не подтверждено.';
+function taskControls(g: Pick<Goal, 'id' | 'title' | 'actions' | 'holdKind' | 'reason' | 'inFlight' | 'requests'>) {
   const pending = pendingTasks.has(g.id);
-  return `<div class="actions task-actions">${g.actions.map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}"${a === 'answer' ? ` data-question="${esc(g.reason)}"` : ''} ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
+  return `<div class="actions task-actions">${g.actions.filter(a => !g.requests?.some(r => r.action === a)).map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}"${a === 'answer' ? ` data-question="${esc(g.reason)}"` : ''} ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}${(g.requests ?? []).filter(r => g.actions.includes(r.action)).map(r => `<small role="status">${requestLabel(r)}</small>`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Выполняется…</small></div>`;
 }
 function taskPending(id: string, on: boolean) {
   if (on) pendingTasks.add(id); else pendingTasks.delete(id);
@@ -118,11 +125,11 @@ async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'
     try {
       const result = await api(path, body);
       if (action === 'stop' || action === 'close' && g.inFlight) {
-        message(action === 'stop' ? 'Просьба об остановке с сохранением сделанного сохранена. Ждём обработки firstmate; задача остаётся открытой, остановка ещё не подтверждена.' : 'Просьба закрыть задачу сохранена. Ждём обработки firstmate; задача пока остаётся в работе.');
+        message(`${receipt(result)} ${action === 'stop' ? 'Остановка ещё не подтверждена. Просьба: сохранить сделанное и оставить задачу открытой.' : 'Закрытие ещё не подтверждено; задача пока остаётся в работе.'}`);
       } else if (action === 'close' && result.task) {
         message(`Задача «${g.title}» закрыта.`, false, () => taskAction(g, 'reopen'));
       } else message(result.note ? receipt(result) : `${actionLabels[action]}: готово.`);
-      refresh();
+      await reload();
     } finally { taskPending(g.id, false); }
   };
   if (action === 'close' || action === 'stop') {
@@ -177,7 +184,7 @@ function link(ref: string, report?: string) {
 function requests(g: ViewGoal) {
   const items = g.inbox?.requests ?? []; const ready = g.inbox?.ready;
   if (!items.length) return '';
-  return `<p class="muted">Запросы firstmate: ${items.map(r => esc(`${r.requestId} · ${r.state === 'pending' ? (r.acknowledged ? 'принят' : 'ждёт') : 'обработан'}${r.reply ? ` · ${typeof r.reply === 'string' ? r.reply : JSON.stringify(r.reply)}` : ''}`)).join('; ')}${ready && ready.can_receive !== true ? esc(` · Firstmate сейчас не принимает заметки (can_receive: ${ready.can_receive}, posture: ${ready.posture?.state ?? '-'})`) : ''}</p>`;
+  return `<details class="muted"><summary>Технические детали просьб</summary><p>${items.map(r => esc(`${r.requestId} · ${r.state === 'pending' && !r.acknowledged ? 'ожидает принятия' : 'принята'}${r.reply ? ` · ${typeof r.reply === 'string' ? r.reply : JSON.stringify(r.reply)}` : ''}`)).join('; ')}${ready ? esc(` · can_receive: ${ready.can_receive}, posture: ${ready.posture?.state ?? '-'}`) : ''}</p></details>`;
 }
 // The chosen executor from the `Исполнитель:` line next to the one the fleet snapshot shows running the task.
 function executor(g: ViewGoal) {

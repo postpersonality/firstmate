@@ -45,10 +45,12 @@ export function phase(task: { state: string; hold_kind?: string }): Phase {
   return task.state === 'done' ? 'done' : task.hold_kind === 'captain' ? 'waiting' : task.state === 'in_flight' ? 'working' : 'next';
 }
 
+export type TaskRequest = { action: 'start' | 'stop' | 'close'; requestId: string; state: 'pending' | 'handled' };
+
 // A card is one Firstmate row; links are the row's own pr/report/doc links.
 export type Goal = {
   review?: Review; reviewProgress?: ReviewProgress;
-  id: string; title: string; state: z.infer<typeof state>; body: string; kind?: string; repo?: string; personal: boolean; actions: Action[];
+  id: string; title: string; state: z.infer<typeof state>; body: string; kind?: string; repo?: string; personal: boolean; actions: Action[]; requests?: TaskRequest[];
   managedBrief?: boolean; prUrl?: string; reason?: string; blockers?: { id: string; title: string }[];
   why: string; doneWhen: string; context: string; constraints: string[]; holdKind?: string; inFlight?: boolean; links: string[]; report: boolean; folder: string; harness: string;
 };

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { overview, groupByRepo, pinRefusal } from '../src/overview.ts';
 import { Store } from '../src/store.ts';
+import { run } from '../src/process.ts';
 import { firstmateHome } from './firstmate-home.ts';
 
 const record = (id: string, fields: Record<string, unknown> = {}): Record<string, unknown> => ({ id, title: id, state: 'queued', kind: 'ship', repo: null, priority: null, ...fields });
@@ -195,7 +196,7 @@ test('failed overview reads are retried instead of being cached', async () => {
   store.firstmate.snapshot = async () => { throw new Error('snapshot failed'); };
   await assert.rejects(store.overview(), /snapshot failed/);
   store.firstmate.snapshot = async () => ({});
-  store.firstmate.list = () => []; store.firstmate.archive = () => [];
+  store.firstmate.list = () => []; store.firstmate.archive = () => []; store.firstmate.receipts = () => ({});
   assert.deepEqual((await store.overview()).focus, []);
 });
 
@@ -210,5 +211,42 @@ test('concurrent pins recheck fresh state and cannot exceed the focus limit', as
     assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
     assert.match((results.find(r => r.status === 'rejected') as PromiseRejectedResult).reason.message, /уже 3/);
     assert.equal((await store.overview()).focus.length, 3);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('synthetic home receipts appear in overview once per read and handled never means executed', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-request-feedback-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  let now = Date.now(); t.mock.method(Date, 'now', () => now);
+  try {
+    const queued = store.firstmate.add('request-a', 'Запустить');
+    const flying = store.firstmate.add('request-a-extra', 'Остановить'); store.firstmate.start(flying.id);
+    const snapshots = async () => ({ gates: [{ id: queued.id }], in_flight: [{ id: flying.id }], backlog: { records: store.firstmate.list() } });
+    store.firstmate.snapshot = snapshots;
+    const original = store.firstmate.receipts.bind(store.firstmate); let reads = 0;
+    store.firstmate.receipts = () => { reads++; return original(); };
+    store.act(queued.id, 'start', {}); store.act(flying.id, 'stop', {}); store.act(flying.id, 'close', {});
+    reads = 0;
+    let view = await store.overview();
+    assert.equal(reads, 1, 'one receipt read for all rows');
+    assert.equal(await store.overview(), view); assert.equal(reads, 1, 'cached overview does not reread receipts');
+    assert.deepEqual(view.next[0].rows[0].requests?.map(r => [r.action, r.state]), [['start', 'pending']]);
+    assert.deepEqual(view.working[0].rows[0].requests?.map(r => [r.action, r.state]).sort(), [['close', 'pending'], ['stop', 'pending']]);
+    for (const note of original().pending) run(join(store.firstmate.home, 'bin', 'fm-inbox.sh'), ['drain', '--ack', note.id], store.firstmate.home, 45000, { ...process.env, FM_HOME: store.firstmate.home });
+    now += 2001; view = await store.overview();
+    assert.deepEqual(view.next[0].rows[0].requests?.map(r => [r.action, r.state]), [['start', 'handled']]);
+    assert.deepEqual(view.working[0].rows[0].requests?.map(r => [r.action, r.state]).sort(), [['close', 'handled'], ['stop', 'handled']]);
+    const restarted = new Store({ firstmateHome: store.firstmate.home });
+    for (const [id, action] of [[queued.id, 'start'], [flying.id, 'stop'], [flying.id, 'close']] as const) {
+      assert.equal(restarted.act(id, action, {}).note.outcome, 'replay', 'handled request is reused across server restarts');
+    }
+    assert.equal(original().handled.length, 3); assert.equal(original().pending.length, 0);
+    assert.equal(store.firstmate.show(queued.id).state, 'queued');
+    assert.equal(store.firstmate.show(flying.id).state, 'in_flight');
+    store.firstmate.start(queued.id); store.firstmate.done(flying.id); now += 2001;
+    view = await store.overview();
+    assert.deepEqual(view.next[0].rows[0].requests, [], 'actual dispatch replaces the start request');
+    assert.deepEqual(view.working[0].rows[0].requests, [], 'actual completion replaces stop/close requests');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

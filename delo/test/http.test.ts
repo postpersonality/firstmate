@@ -51,7 +51,7 @@ while (!fs.existsSync(process.env.FM_HOME + '/release') && Date.now() < end) Ato
 console.log('{}');
 `, { mode: 0o755 });
   const store = new Store({ firstmateHome: root });
-  store.firstmate.list = () => []; store.firstmate.archive = () => [];
+  store.firstmate.list = () => []; store.firstmate.archive = () => []; store.firstmate.receipts = () => ({});
   const server = serve(store, 0);
   try {
     await new Promise<void>(resolve => server.once('listening', resolve));

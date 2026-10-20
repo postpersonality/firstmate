@@ -66,7 +66,10 @@ export function router(store: Store, opener = 'xdg-open') {
       const route = /^\/api\/goals\/([^/]+)$/.exec(url.pathname);
       if (!route) return send({ error: 'Не найдено' }, 404);
       const goalId = decodeURIComponent(route[1]); id.parse(goalId);
-      if (req.method === 'GET') return send({ ...store.get(goalId), inbox: store.inbox(goalId), worker: await store.worker(goalId) });
+      if (req.method === 'GET') {
+        const goal = store.get(goalId); const inbox = store.inbox(goalId);
+        return send({ ...goal, requests: inbox.requests.filter(r => r.action && goal.actions.includes(r.action)), inbox, worker: await store.worker(goalId) });
+      }
       if (req.method === 'PATCH') return send(store.update(goalId, await req.json()));
       return send({ error: 'Метод не поддерживается' }, 405);
     } catch (error: any) { return send({ error: error instanceof ZodError ? error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : error.message }, ['Цель не найдена', 'Отчёт не найден'].includes(error.message) ? 404 : 400); }

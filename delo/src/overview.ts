@@ -1,14 +1,32 @@
-import { actions, phase, type Phase, type Goal } from './model.ts';
+import { actions, phase, type Phase, type Goal, type TaskRequest } from './model.ts';
 import type { FirstmateTask } from './firstmate.ts';
 // Main screen from the Firstmate snapshots: sections follow fm-bearings.v1, row fields come from fm-fleet-snapshot.v1.
 export type Row = {
   id: string; title: string; kind?: string; repo?: string; pinned: boolean; open: boolean; task: boolean; personal: boolean;
   reason?: string; current?: string; noWorker?: boolean; blockedBy?: string; blockers?: { id: string; title: string }[]; prUrl?: string; reportPath?: string; owner?: string;
-  actions: Goal['actions']; state?: Goal['state']; holdKind?: string; inFlight?: boolean;
+  requests?: TaskRequest[]; actions: Goal['actions']; state?: Goal['state']; holdKind?: string; inFlight?: boolean;
 };
 export type Group = { repo: string; rows: Row[] };
 export type CaseRow = Row & { counts: Record<Phase, number> };
 export type Overview = { generated: string; cases: CaseRow[]; focus: Row[]; waiting: Group[]; working: Group[]; next: Group[]; done: Group[]; kinds: string[]; repos: string[] };
+
+// Receipt acceptance is independent of the backlog state: handled never means executed.
+export function requestsByTask(receipts: { pending?: any[]; handled?: any[] } = {}) {
+  const result = new Map<string, TaskRequest[]>();
+  for (const [state, entries] of [['pending', receipts.pending ?? []], ['handled', receipts.handled ?? []]] as const) {
+    for (const entry of entries) {
+      const match = /^delo-(start|stop|close)-(.+)-(\d+)$/.exec(entry.request_id ?? '');
+      if (!match) continue;
+      const request: TaskRequest = { action: match[1] as TaskRequest['action'], requestId: entry.request_id, state: state === 'handled' || entry.acknowledged ? 'handled' : 'pending' };
+      const own = result.get(match[2]) ?? [];
+      const previous = own.findIndex(r => r.action === request.action);
+      if (previous < 0) own.push(request);
+      else if (Number(own[previous].requestId.split('-').at(-1)) <= Number(match[3])) own[previous] = request;
+      result.set(match[2], own);
+    }
+  }
+  return result;
+}
 
 export const focusLimit = 3;
 export const noRepo = 'Без проекта';
@@ -44,7 +62,8 @@ export function groupByRepo(rows: Row[]): Group[] {
 // A task belongs to a дело when the first line of its body is `Дело: <id>`.
 export const caseOf = (lines: unknown) => { const first = Array.isArray(lines) ? lines[0] : typeof lines === 'string' ? lines.split('\n')[0] : undefined; return typeof first === 'string' ? /^Дело: (\S+)$/.exec(first.trim())?.[1] : undefined; };
 
-export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: FirstmateTask[] = []): Overview {
+export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: FirstmateTask[] = [], receipts = {}): Overview {
+  const requests = requestsByTask(receipts);
   const records = new Map<string, any>((fleet.backlog?.records ?? []).map((r: any) => [r.id, r]));
   // Fleet snapshots omit the computed held bit; tasks-axi owns expiry and action availability.
   const native = new Map(tasks.map(t => [t.id, t]));
@@ -56,6 +75,7 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
     return {
       ...extra, id, title: value(r?.title) ?? value(title) ?? id, kind: value(r?.kind) ?? extra.kind, repo: value(r?.repo) ?? extra.repo,
       pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(worker?.pr?.url) ?? value(r?.pr_url), reportPath: value(r?.report_path),
+      requests: (requests.get(id) ?? []).filter(request => task && actions(task).includes(request.action)),
       actions: r ? actions(task) : [], state: !r ? undefined : task.state === 'done' ? 'done' : task.held === true || task.held === 'yes' ? 'paused' : 'active',
       reason: value(r?.hold_reason) ?? extra.reason,
       blockers: taskBlockers({ ...r, blocked_by: extra.blockedBy ?? r?.blocked_by }, records),

@@ -106,19 +106,21 @@ test('browser app uses the real router for goal forms, the card and task actions
     releaseRequest!();
     await until(() => taskButtons().length && taskButtons().every(b => !b.disabled));
     assert.equal(window.location.hash, '', 'list action does not navigate');
+    await until(() => focus()?.textContent?.includes('Запуск запрошен'));
+    assert.equal(taskButtons().some(b => b.dataset.taskAction === 'start'), false);
     assert.equal(store.inbox(nativeId).requests.length, 1, 'start reuses the existing request path');
     failRequest = true;
     taskButtons().find(b => b.dataset.taskAction === 'pause')!.click();
     await until(() => window.document.getElementById('message')?.textContent === 'Не удалось выполнить действие');
     assert.ok(taskButtons().every(b => !b.disabled), 'failure restores the buttons for retry');
     taskButtons().find(b => b.dataset.taskAction === 'pause')!.click();
-    await until(() => taskButtons().some(b => b.dataset.taskAction === 'unhold'));
+    await until(() => taskButtons().some(b => !b.disabled && b.dataset.taskAction === 'unhold'));
     assert.match(focus()?.textContent ?? '', /На паузе/);
     const confirm = () => (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     for (const paused of [true, false]) {
       if (!paused) {
         taskButtons().find(b => b.dataset.taskAction === 'unhold')!.click();
-        await until(() => taskButtons().some(b => b.dataset.taskAction === 'start'));
+        await until(() => taskButtons().some(b => !b.disabled && b.dataset.taskAction === 'pause'));
       }
       const before = mutations;
       taskButtons().find(b => b.dataset.taskAction === 'close')!.click();
@@ -131,20 +133,20 @@ test('browser app uses the real router for goal forms, the card and task actions
       assert.equal(store.get(nativeId).state, paused ? 'paused' : 'active');
       taskButtons().find(b => b.dataset.taskAction === 'close')!.click();
       confirm(); confirm();
-      await until(() => taskButtons().some(b => b.dataset.taskAction === 'reopen') && window.document.querySelector('#message button'));
+      await until(() => taskButtons().some(b => !b.disabled && b.dataset.taskAction === 'reopen') && window.document.querySelector('#message button'));
       assert.equal(mutations, before + 1, 'double confirmation closes once');
       const undo = window.document.querySelector('#message button') as HTMLButtonElement;
       assert.equal(undo.textContent, 'Вернуть');
       undo.click();
-      await until(() => taskButtons().some(b => b.dataset.taskAction === (paused ? 'unhold' : 'start')));
+      await until(() => taskButtons().some(b => !b.disabled && b.dataset.taskAction === (paused ? 'unhold' : 'pause')));
       assert.equal(store.firstmate.show(nativeId).state, 'queued');
       assert.equal(store.firstmate.show(nativeId).held, paused ? 'yes' : 'no', 'undo preserves the existing parked hold');
     }
     taskButtons().find(b => b.dataset.taskAction === 'pause')!.click();
-    await until(() => taskButtons().some(b => b.dataset.taskAction === 'unhold'));
+    await until(() => taskButtons().some(b => !b.disabled && b.dataset.taskAction === 'unhold'));
 
     taskButtons().find(b => b.dataset.taskAction === 'unhold')!.click();
-    await until(() => taskButtons().some(b => b.dataset.taskAction === 'start'));
+    await until(() => taskButtons().some(b => !b.disabled && b.dataset.taskAction === 'pause'));
     assert.equal((window.document.querySelector(`main section a[href="#${nativeId}"]`) as HTMLAnchorElement | null)?.textContent, 'UI цель', 'a row opens the goal card');
     (window.document.querySelector(`main section a[href="#${nativeId}"]`)?.closest('.row')?.querySelector('small') as HTMLElement).click();
     await until(() => window.location.hash === `#${nativeId}`);
@@ -205,9 +207,9 @@ test('browser app uses the real router for goal forms, the card and task actions
       releaseRequest!();
       await until(() => !dialogOpen());
       assert.equal(store.firstmate.show(nativeId).state, 'in_flight');
-      assert.match(window.document.getElementById('message')!.textContent!, /Просьба.*сохранена/);
-      button().click(); confirm();
-      await until(() => !dialogOpen());
+      assert.match(window.document.getElementById('message')!.textContent!, /просьба.*сохранена/i);
+      await until(() => !button());
+      assert.match(window.document.querySelector('main')!.textContent!, action === 'stop' ? /Остановка запрошена/ : /Закрытие запрошено/);
       assert.equal(store.inbox(nativeId).requests.filter(r => r.requestId.startsWith(`delo-${action}-${nativeId}-`)).length, 1);
     }
 
@@ -243,10 +245,10 @@ test('browser app uses the real router for goal forms, the card and task actions
     const caseHash = window.location.hash;
     (window.document.querySelector(`[data-task-action="close"][data-id="${member}"]`) as HTMLButtonElement).click();
     (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
-    await until(() => window.document.querySelector(`[data-task-action="reopen"][data-id="${member}"]`));
+    await until(() => window.document.querySelector(`[data-task-action="reopen"][data-id="${member}"]:not(:disabled)`));
     assert.equal(window.location.hash, caseHash, 'a case list action keeps the case page open');
     (window.document.querySelector(`[data-task-action="reopen"][data-id="${member}"]`) as HTMLButtonElement).click();
-    await until(() => window.document.querySelector(`[data-task-action="start"][data-id="${member}"]`));
+    await until(() => window.document.querySelector(`[data-task-action="start"][data-id="${member}"]:not(:disabled)`));
     assert.equal(store.firstmate.show(member).state, 'queued');
     (window.document.querySelector(`[data-task-action="decline"][data-id="${member}"]`) as HTMLButtonElement).click();
     assert.equal(window.document.getElementById('dialog-title')?.textContent, 'Отказ');
@@ -298,7 +300,7 @@ test('«Новый агент» appears only on an open дело, defaults its f
     document.getElementById('dialog-form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     await until(() => /Новый агент: задача/.test(document.querySelector('.message')?.textContent ?? ''));
     const task = store.getCase(c.id).tasks[0]!;
-    assert.match(document.querySelector('.message')!.textContent!, new RegExp(`задача ${task.id}\\. Заметка для firstmate: отправлена`));
+    assert.match(document.querySelector('.message')!.textContent!, new RegExp(`задача ${task.id}\\. Firstmate сейчас занят; просьба сохранена`));
     assert.equal(store.firstmate.show(task.id).body, `Дело: ${c.id}\nИсполнитель: codex\nИнтерактивно\nПапка: ${folder}\n\n${input('direction').value}`);
 
     mkdirSync(join(store.firstmate.home, 'state'), { recursive: true });
@@ -474,4 +476,45 @@ test('task cards expose full status, blockers, PR/report and native prose while 
     assert.equal(store.get(managed.id).managedBrief, true);
     assert.equal(store.get(goal.id).managedBrief, false);
   } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('request feedback shows pending and accepted without claiming execution or exposing technical IDs', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-ui-receipts-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  const task = store.create({ title: 'Синтетическая просьба' });
+  let now = Date.now(); t.mock.method(Date, 'now', () => now);
+  store.firstmate.snapshot = async () => {
+    const records = store.firstmate.list();
+    return { gates: records.filter(r => r.state === 'queued').map(r => ({ id: r.id })), in_flight: records.filter(r => r.state === 'in_flight').map(r => ({ id: r.id })), backlog: { records } };
+  };
+  const handle = router(store);
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: 'http://localhost:4317/', runScripts: 'outside-only' });
+  const { window } = dom; const document = window.document;
+  window.setInterval = (() => 0) as typeof window.setInterval;
+  (window as any).fetch = async (input: string, init: RequestInit = {}) => handle(new Request(new URL(input, window.location.href), init));
+  const until = async (check: () => unknown) => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 25)); assert.ok(check()); };
+  const text = () => document.querySelector('main')?.textContent ?? '';
+  const control = () => document.querySelector(`[data-task-action="start"][data-id="${task.id}"]`) as HTMLButtonElement | null;
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    await until(control); control()!.click();
+    await until(() => text().includes('Запуск запрошен'));
+    assert.equal(control(), null);
+    assert.match(text(), /В очереди/);
+    assert.doesNotMatch(document.getElementById('message')!.textContent!, /delo-start-|can_receive|posture/);
+    const note = store.firstmate.receipts().pending[0];
+    run(join(store.firstmate.home, 'bin', 'fm-inbox.sh'), ['drain', '--ack', note.id], store.firstmate.home, 45000, { ...process.env, FM_HOME: store.firstmate.home });
+    now += 2001; (document.querySelector('[data-action="refresh"]') as HTMLButtonElement).click();
+    await until(() => text().includes('Запуск принят'));
+    assert.equal(control(), null); assert.match(text(), /В очереди/);
+    assert.equal(store.firstmate.show(task.id).state, 'queued');
+    window.location.hash = task.id;
+    await until(() => document.querySelector('main h1')?.textContent === task.title);
+    assert.equal(control(), null); assert.match(text(), /Запуск принят/);
+    const technical = [...document.querySelectorAll('details')].find(e => e.querySelector('summary')?.textContent === 'Технические детали просьб');
+    assert.ok(technical); assert.equal(technical.open, false);
+    assert.match(technical.textContent!, /delo-start-/);
+    assert.doesNotMatch(text().replace(technical.textContent!, ''), /delo-start-|can_receive|posture/);
+  } finally { dom.window.close(); rmSync(root, { recursive: true, force: true }); }
 });
