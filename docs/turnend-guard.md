@@ -301,7 +301,7 @@ The registrations in detail:
 
 ### Codex API Stop ownership
 
-The existing synchronous project Stop registration delegates to `bin/fm-codex-stop-watch.sh` when the nearest harness is a Codex app-server.
+The existing synchronous project Stop registration delegates to `bin/fm-codex-stop-watch.sh` when the nearest harness is a Codex app-server and the session lock records the payload's thread.
 The hook payload supplies its native thread id; environment variables alone are not assumed to exist.
 The checkpoint fits beneath its existing 30-second registration; the script header owns the checkpoint cap, state files and exact mechanics.
 It retains the existing foreground checkpoint's result and returns it through exit-2 Stop feedback, so a short assistant reply cannot discard that return.
@@ -312,17 +312,19 @@ The script never decides fleet actions or acknowledges wakes; the resumed primar
 Successful bounded parks may continue even when another Stop hook set `stop_hook_active`.
 That flag describes a previous hook continuation, not a delivered fleet wake or an explicit captain stop.
 Once the lock records this thread and supervision work is pending, Stop fails closed: session-lock verification failure, checkpoint-lock contention, checkpoint failure and an identical wake left unhandled each return another continuation, and unhandled rows remain durable.
-A Stop from a thread the lock does not record is never blocked.
+A Stop from a thread the lock does not record never parks and never claims the lock.
+While another live session holds the lock, that Stop is read-only: it gets a notice and is not blocked.
+Under a free, stale, PID-1 or legacy PID-only lock with supervision work pending, it keeps the one-block guard bounded by `stop_hook_active`, and the block names the upgrade below; an empty fleet stays silent.
 The recorded thread attached to another app-server is not blocked either while the app-server holding the lock is live: it is read-only, so it gets a notice and starts no checkpoint.
 Native interruption cancels the synchronous return owner; an empty fleet or held/parked backlog alone starts no supervision work.
 The existing away daemon remains a legitimate alternate owner.
 
 `bin/fm-session-lock-lib.sh` partitions a shared app-server PID by its native thread id in the existing `state/.lock-session` sidecar.
 `bin/fm-lock.sh` remains its sole writer, and it writes only from a native hook outside the Linux tool sandbox, where the app-server PID is verifiable.
-Stop only revalidates the thread already recorded there; a free or legacy PID-only lock is bound only by the native SessionStart hook.
+Stop only revalidates the thread already recorded there; a free or stale lock is bound only by the native SessionStart hook.
+A legacy PID-only lock held by a live app-server names no thread, so no thread adopts it; it is claimed only after that app-server exits and the lock is stale.
 Native SessionStart `startup`, `clear` and `compact` run `bin/fm-session-start.sh` in the hook; `resume`, `reload` and `fork` do too unless the lock already records that thread with this app-server.
 A different recorded thread cannot acquire or park that home merely because it shares the daemon PID.
-A legacy PID-only lock held by this app-server names no thread, so its Stops keep the one-block guard bounded by `stop_hook_active`, and the block names the upgrade below.
 
 Inside the native Linux tool sandbox the model's shell sees `codex-linux-sandbox` as PID 1, not the host app-server.
 There `bin/fm-lock.sh` only confirms a lock whose sidecar already records the thread beside a host PID, leaving both files unchanged.
@@ -331,16 +333,18 @@ It refuses every other lock, including a free, PID-only, stale or PID-1 lock, so
 To upgrade a primary that took the helm before thread binding:
 
 1. Let the primary's current turn end; the legacy Stop block is bounded by `stop_hook_active`.
-2. Restart the primary's app-server and resume the primary thread before any other thread. Its native SessionStart `resume` runs `bin/fm-session-start.sh` outside the sandbox, takes over the lock the exited app-server left, and prints `lock acquired: harness pid <new app-server pid>`.
+2. Restart the primary's app-server and resume the primary thread before any other thread. Its native SessionStart `resume` runs `bin/fm-session-start.sh` outside the sandbox, takes over the lock the exited app-server left, and prints `lock acquired: harness pid <new app-server pid>`. Without the restart, SessionStart refuses the live legacy lock and prints `READ-ONLY SESSION`.
 3. Confirm that `state/.lock-session` names the primary thread and that line 1 of `state/.lock` is the new app-server PID. A start refused by another live owner prints `READ-ONLY SESSION` and binds nothing.
 4. Later Stops of that thread run `bin/fm-codex-stop-watch.sh` and fail closed as described above.
+
+Only the portable regression covers this restart and resume; no native run has exercised it.
 
 This keeps a known boundary.
 While the recorded thread's app-server lives, every other native thread, in that app-server or another, stays read-only, even after the recorded thread is abandoned or archived.
 Thread liveness is not observed; moving the primary to another thread requires ending the app-server that holds the lock first.
 
 The guarantee requires the enabled, trusted project Stop hook to execute in a live native runtime with that event identity and verifiable app-server ancestry.
-It does not cover a disabled/untrusted or timed-out hook, native interruption, runtime termination, a lock not yet claimed for this thread, a duplicate attachment while the lock's app-server is live, or a client whose native event and ancestry cannot establish that identity.
+It does not cover a disabled/untrusted or timed-out hook, native interruption, runtime termination, a lock not yet claimed for this thread, which keeps only the one-block guard, a duplicate attachment while the lock's app-server is live, or a client whose native event and ancestry cannot establish that identity.
 The global semantic Stop checker, native goals and domain completion/decision authority remain separate owners.
 [`verification/supervision.md`](verification/supervision.md) owns native evidence; `tests/fm-codex-stop-watch.test.sh` covers portable behavior and the opt-in native API guard exercises actual continuations and worker steering.
 

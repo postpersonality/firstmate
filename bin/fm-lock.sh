@@ -12,7 +12,9 @@
 # every other reader takes the first line as the pid.
 #
 # Native Codex app-server threads share a daemon PID; their matching native
-# thread ids partition that PID through the same library and sidecar.
+# thread ids partition that PID through the same library and sidecar. A live
+# app-server's PID-only lock names no thread, so no thread adopts it; it is
+# claimed only once that app-server has exited and the lock is stale.
 # The trusted id itself is recorded beside the lock in state/.lock-session, a
 # sidecar written only here and only under the claim lock: refreshed on every
 # confirmed-own acquisition, including the early already-mine exit that waits
@@ -169,6 +171,10 @@ confirm_own_lock() {  # <recorded-pid>
   fi
   recorded=$(cat "$LOCK" 2>/dev/null || true)
   if fm_session_lock_owned_by_self "$STATE"; then
+    if fm_session_lock_codex_api_pid >/dev/null && ! fm_session_lock_recorded_session_id "$STATE" >/dev/null; then
+      echo "error: this Codex app-server (pid $recorded) holds a legacy PID-only session lock that names no thread, so no thread adopts it; operate read-only, then restart the app-server and resume the primary thread so its native SessionStart claims the stale lock" >&2
+      exit 1
+    fi
     publish_lock_session_or_die
     commit_lock_session
     release_claim_lock
