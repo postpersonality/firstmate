@@ -356,11 +356,13 @@ When the automatic transition gate applies, dispatch and completion each move th
 The ordinary successful path therefore keeps the backlog and live task set in sync ([`bin/fm-backlog-transition-lib.sh`](../bin/fm-backlog-transition-lib.sh)).
 Under that gate, dispatch accepts only an unheld, unblocked Queued or In flight item in this home; a missing, Done, held, or dependency-blocked item is refused before any endpoint or local copy is created.
 A `program` row is a long-lived umbrella row that stays In flight without a worker, gets role `program` in the snapshots, and is never dispatched.
+A `firstmate` row is an action firstmate itself owes, marked by `bin/fm-captain-hold.sh complete --firstmate-action`; it is never dispatched to a worker, and [`bin/fm-tasks-axi.sh`](../bin/fm-tasks-axi.sh) holds it only for the captain, an external condition, or a date.
 
 [`bin/fm-tasks-axi.sh`](../bin/fm-tasks-axi.sh) refuses `add --start` and its `create --start` alias.
 Either would place a row In flight without a task record, status file, or inbox, counting it as live work that nobody is doing.
 The wrapper still passes through the documented direct transition `tasks-axi start <id>`.
 Completion refuses to report success until the item is closed, and session start reconciles this home's own books after an interrupted run.
+A ship or scout dispatched under this gate records `completion_required=1`, so unforced teardown and the wrapper's `done` and `close` refuse it until its outcome review, recorded by `bin/fm-captain-hold.sh complete`, passes [`verify`](captain-hold-lifecycle.md#checking-before-teardown-verify).
 
 When a spawn is interrupted after launch delivery began, its exit path re-reads the paired task record and the backlog row under the same per-task lock as the commit, repairs a row the commit believed it had moved, and reports only what was verified or honestly attempted, never intent phrased as outcome ([`bin/fm-spawn.sh`](../bin/fm-spawn.sh); [`tests/fm-backlog-atomicity.test.sh`](../tests/fm-backlog-atomicity.test.sh)).
 
