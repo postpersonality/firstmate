@@ -13,6 +13,66 @@ import { run } from '../src/process.ts';
 const require = createRequire(import.meta.url);
 const { JSDOM } = require('jsdom') as any;
 
+test('public overview and case pages group all waits and keep closed retained workers completed', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-waiting-ui-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  const task = (id: string, extra: any = {}) => ({ id, title: id, kind: 'ship', repo: 'project', state: 'in_flight', body: 'Дело: case', ...extra });
+  const tasks = [task('case', { kind: 'program', body: '' }),
+    task('human', { hold_kind: 'captain', hold_reason: 'Выбрать вариант' }), task('coordinator'), task('ci'),
+    task('dependency', { state: 'queued', blocked_by: 'busy' }), task('held', { state: 'queued', held: 'yes', hold_kind: 'parked', hold_reason: 'Ждём поставщика' }),
+    task('ready'), task('busy'), task('closed', { state: 'done' }), task('unknown', { kind: 'scout' })];
+  const fleet = { backlog: { records: tasks.map(t => ({ ...t, body_lines: t.body.split('\n') })) }, tasks: [
+    { id: 'coordinator', current_state: { state: 'needs-decision', detail: 'Нужен разбор' } },
+    { id: 'ci', current_state: { state: 'working', source: 'run-step', detail: 'ci running' } },
+    { id: 'ready', mode: 'local-only', current_state: { state: 'unknown' } },
+    { id: 'busy', current_state: { state: 'working' } },
+    { id: 'closed', current_state: { state: 'unknown' } },
+    { id: 'unknown', current_state: { state: 'unknown' }, hints: { pending_decision: true, last_event_text: 'done: ready' } },
+  ] };
+  const bearings = { generated: '2026-10-20T16:00:00Z', decisions_open: [{ id: 'human' }], in_flight: fleet.tasks.map(t => ({ id: t.id })), gates: [{ id: 'dependency' }, { id: 'held' }] };
+  t.mock.method(store.firstmate, 'snapshot', async (script: string) => script === 'fm-bearings-snapshot.sh' ? bearings : fleet);
+  t.mock.method(store.firstmate, 'delivery', async (worker: any) => worker?.id === 'ready' ? { state: 'pending', head: 'a'.repeat(40) } : undefined);
+  t.mock.method(store.firstmate, 'list', () => tasks);
+  t.mock.method(store.firstmate, 'archive', () => []);
+  t.mock.method(store.firstmate, 'receipts', () => ({ pending: [], handled: [] }));
+  t.mock.method(store.firstmate, 'show', (id: string) => tasks.find(t => t.id === id)!);
+  const handle = router(store);
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: 'http://localhost:4317/', runScripts: 'outside-only' });
+  const { window } = dom; const document = window.document;
+  window.setInterval = (() => 0) as typeof window.setInterval;
+  (window as any).fetch = async (input: string, init: RequestInit = {}) => handle(new Request(new URL(input, window.location.href), init));
+  const until = async (check: () => unknown) => { for (let i = 0; i < 100 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(check()); };
+  const rowIds = (section: string) => [...document.querySelectorAll(`#overview-${section} .row strong a`)].map(a => a.getAttribute('href')!.slice(1)).sort();
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    await until(() => document.querySelector('#overview-waiting'));
+    assert.match(document.querySelector('#overview-waiting h2')!.textContent!, /^Ждёт 6$/);
+    assert.deepEqual(rowIds('waiting'), ['ci', 'coordinator', 'dependency', 'held', 'human', 'ready']);
+    assert.deepEqual(rowIds('working'), ['busy']); assert.deepEqual(rowIds('done'), ['closed']); assert.deepEqual(rowIds('next'), ['unknown']);
+    assert.match(document.querySelector('#overview-waiting')!.textContent!, /Ответственный: Firstmate/);
+    assert.match(document.querySelector('a[href="#held"]')!.closest('.row')!.textContent!, /Ждём поставщика.*Ответственный неизвестен/);
+    assert.ok(document.querySelector('#overview-waiting [data-task-action="answer"]'), 'human answers remain available');
+    assert.ok(document.querySelector('#overview-waiting [data-task-action="unhold"]'), 'held tasks can resume');
+    assert.ok(document.querySelector('#overview-done [data-task-action="reopen"]'), 'closed tasks can return');
+    assert.match(document.querySelector('a[href="#case:case"]')!.closest('.row')!.textContent!, /в работе 1 · ждёт 6 · дальше 1 · сделано 1/);
+    const kind = document.getElementById('kind') as HTMLSelectElement;
+    kind.value = 'scout'; kind.dispatchEvent(new window.Event('change'));
+    assert.deepEqual(rowIds('waiting'), []);
+    const resetKind = document.getElementById('kind') as HTMLSelectElement;
+    resetKind.value = ''; resetKind.dispatchEvent(new window.Event('change'));
+    (document.querySelector('#overview-waiting a[href="#coordinator"]') as HTMLAnchorElement).click();
+    await until(() => document.querySelector('main h1')?.textContent === 'coordinator');
+    assert.match(document.querySelector('.page-heading')!.textContent!, /Нужен разбор/);
+    const response = await handle(new Request('http://localhost:4317/api/cases/case'));
+    assert.equal(response.status, 200);
+    const c = await response.json();
+    assert.deepEqual(c.tasks.filter((t: any) => t.phase === 'waiting').map((t: any) => t.id).sort(), ['ci', 'coordinator', 'dependency', 'held', 'human', 'ready']);
+    window.location.hash = 'case:case';
+    await until(() => document.querySelector('[data-action="agent-case"]'));
+    assert.match(document.querySelector('main')!.textContent!, /ждёт.*Нужен разбор/);
+  } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 test('browser app uses the real router for goal forms, the card and task actions', async () => {
   const root = mkdtempSync(join(tmpdir(), 'delo-ui-'));
   const store = new Store({ firstmateHome: firstmateHome(root) }); let handle = router(store);
@@ -41,7 +101,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     await until(() => window.document.querySelector('main h1'));
     assert.equal(window.document.title, 'Дело — что происходит');
     assert.equal(window.document.getElementById('sidebar'), null);
-    assert.deepEqual([...window.document.querySelectorAll('main h2')].map(h => h.firstChild?.textContent?.trim()), ['Ждёт меня', 'В работе', 'Дальше', 'Сделано']);
+    assert.deepEqual([...window.document.querySelectorAll('main h2')].map(h => h.firstChild?.textContent?.trim()), ['Ждёт', 'В работе', 'Дальше', 'Сделано']);
     const dialogOpen = () => (window.document.getElementById('dialog') as HTMLDialogElement).open;
     const product = join(root, 'product'); mkdirSync(product);
     window.document.getElementById('new-goal')?.click(); await until(dialogOpen);

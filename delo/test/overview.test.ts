@@ -11,9 +11,82 @@ import { firstmateHome } from './firstmate-home.ts';
 const record = (id: string, fields: Record<string, unknown> = {}): Record<string, unknown> => ({ id, title: id, state: 'queued', kind: 'ship', repo: null, priority: null, ...fields });
 const ids = (groups: { rows: { id: string }[] }[]) => groups.flatMap(g => g.rows.map(r => r.id));
 
-test('sections follow bearings, orphan In flight rows join «В работе» without a worker', () => {
+test('all established waits share one section; closed and unknown retained workers never imply work', () => {
+  const records = [
+    record('human', { hold_kind: 'captain', hold_reason: 'Выбрать вариант' }),
+    record('coordinator', { state: 'in_flight' }), record('checks', { state: 'in_flight' }),
+    record('dependency', { blocked_by: 'working' }), record('held', { held: 'yes', hold_kind: 'parked', hold_reason: 'Ждём поставщика' }),
+    record('working', { state: 'in_flight' }), record('ready', { state: 'in_flight' }),
+    record('closed', { state: 'done', hold_kind: 'captain', hold_reason: 'Старый вопрос' }),
+    record('unknown', { state: 'in_flight' }), record('queued'),
+  ];
+  const tasks = [
+    { id: 'coordinator', current_state: { state: 'parked', detail: 'needs-decision: нужен разбор' } },
+    { id: 'checks', current_state: { state: 'working', source: 'run-step', detail: 'validating (running)' } },
+    { id: 'working', current_state: { state: 'working', source: 'pane', detail: 'harness busy' } },
+    { id: 'ready', mode: 'local-only', delivery: { state: 'pending', head: 'a'.repeat(40) }, current_state: { state: 'unknown' } },
+    { id: 'closed', current_state: { state: 'working' } },
+    { id: 'unknown', current_state: { state: 'unknown' }, hints: { pending_decision: true, last_event_text: 'done: ready in branch fm/old' } },
+  ];
+  const view = overview({ decisions_open: [{ id: 'human' }, { id: 'closed' }], in_flight: tasks.map(t => ({ id: t.id })), gates: records.map(r => ({ id: r.id })), landed: [{ id: 'closed' }] }, { backlog: { records }, tasks });
+  assert.deepEqual(ids(view.waiting).sort(), ['checks', 'coordinator', 'dependency', 'held', 'human', 'ready']);
+  assert.deepEqual(ids(view.working), ['working']);
+  assert.deepEqual(ids(view.next).sort(), ['queued', 'unknown']);
+  assert.deepEqual(ids(view.done), ['closed']);
+  const rows = new Map(view.waiting.flatMap(g => g.rows).map(r => [r.id, r]));
+  assert.equal(rows.get('human')?.owner, 'Капитан');
+  assert.equal(rows.get('coordinator')?.owner, 'Firstmate');
+  assert.equal(rows.get('held')?.owner, undefined, 'an external hold never invents a responsible person');
+  assert.equal(rows.get('held')?.reason, 'Ждём поставщика');
+  assert.match(rows.get('checks')?.reason ?? '', /проверк/);
+  assert.match(rows.get('ready')?.reason ?? '', /посадк/);
+  assert.match(view.next.flatMap(g => g.rows).find(r => r.id === 'unknown')?.current ?? '', /неизвестно/);
+  const all = [...ids(view.waiting), ...ids(view.working), ...ids(view.next), ...ids(view.done)];
+  assert.equal(new Set(all).size, all.length, 'a row has exactly one section despite overlapping Bearings lists');
+  assert.deepEqual(rows.get('human')?.actions, ['release', 'later', 'close']);
+  assert.deepEqual(rows.get('ready')?.actions, ['stop', 'close']);
+  assert.deepEqual(view.done[0].rows[0].actions, []);
+});
+
+test('a landed or resumed handoff stops awaiting landing and historical ready text is insufficient', () => {
+  const records = ['pending', 'landed', 'resumed', 'stale'].map(id => record(id, { state: 'in_flight' }));
+  const tasks = [
+    { id: 'pending', current_state: { state: 'unknown' }, delivery: { state: 'pending' } },
+    { id: 'landed', current_state: { state: 'unknown' }, delivery: { state: 'landed' } },
+    { id: 'resumed', current_state: { state: 'working' }, delivery: { state: 'pending' } },
+    { id: 'stale', current_state: { state: 'unknown' }, hints: { last_event_text: 'done: ready in branch fm/stale' } },
+  ];
+  const view = overview({}, { backlog: { records }, tasks });
+  assert.deepEqual(ids(view.waiting), ['pending']);
+  assert.deepEqual(ids(view.working), ['resumed']);
+  assert.deepEqual(ids(view.next), ['landed', 'stale']);
+});
+
+test('completed retained metadata without an open backlog obligation stays completed', () => {
+  const view = overview({ in_flight: [{ id: 'finished' }] }, { tasks: [{ id: 'finished', current_state: { state: 'done' } }] });
+  assert.deepEqual(ids(view.done), ['finished']);
+  assert.deepEqual(ids(view.waiting), []);
+  assert.deepEqual(ids(view.working), []);
+});
+
+test('canonical unresolved decisions and external waits survive unknown liveness without inferring a captain call', () => {
+  const records = ['question', 'external', 'ci', 'failed'].map(id => record(id, { state: 'in_flight' }));
+  const tasks = [
+    { id: 'question', current_state: { state: 'unknown' }, hints: { open_decisions: [{ key: 'review', verb: 'needs-decision', summary: 'Проверить замечание' }] } },
+    { id: 'external', current_state: { state: 'paused', detail: 'Ждём загрузки данных' } },
+    { id: 'ci', current_state: { state: 'working', source: 'pane', detail: 'ci running' } },
+    { id: 'failed', current_state: { state: 'failed', detail: 'Шаг завершился с ошибкой' } },
+  ];
+  const view = overview({}, { backlog: { records }, tasks });
+  assert.deepEqual(ids(view.waiting), ['question', 'external', 'ci', 'failed']);
+  assert.equal(view.waiting[0].rows[0].owner, 'Firstmate');
+  assert.equal(view.waiting[0].rows[1].owner, undefined);
+  assert.match(view.waiting[0].rows[1].reason ?? '', /Ждём загрузки данных/);
+});
+
+test('sections reconcile bearings with backlog and only proven work joins «В работе»', () => {
   const fleet = {
-    backlog: { records: [record('ask', { repo: 'delo', hold_reason: 'Нужен выбор' }), record('run', { repo: 'delo', state: 'in_flight' }), record('orphan', { kind: 'scout', state: 'in_flight' }), record('next', { repo: 'fm', priority: '0' }), record('old', { state: 'done', priority: '0' })] },
+    backlog: { records: [record('ask', { repo: 'delo', hold_kind: 'captain', hold_reason: 'Нужен выбор' }), record('run', { repo: 'delo', state: 'in_flight' }), record('orphan', { kind: 'scout', state: 'in_flight' }), record('next', { repo: 'fm', priority: '0' }), record('old', { state: 'done', priority: '0' })] },
     tasks: [{ id: 'run', current_state: { state: 'working', detail: 'пишет тесты' } }],
     main_inventory: { orphan_in_flight: ['orphan'] },
   };
@@ -25,10 +98,10 @@ test('sections follow bearings, orphan In flight rows join «В работе» w
   const view = overview(bearings, fleet);
   assert.deepEqual(ids(view.waiting), ['ask']);
   assert.equal(view.waiting[0].rows[0].reason, 'Нужен выбор');
-  assert.deepEqual(ids(view.working), ['run', 'orphan']);
+  assert.deepEqual(ids(view.working), ['run']);
   assert.equal(view.working[0].rows[0].current, 'Работает');
-  assert.equal(view.working[1].rows[0].noWorker, true);
-  assert.deepEqual(ids(view.next), ['next', '(main-inventory)']);
+  assert.equal(view.next.flatMap(g => g.rows).find(r => r.id === 'orphan')?.noWorker, true);
+  assert.deepEqual(ids(view.next), ['next', 'orphan', '(main-inventory)']);
   assert.equal(view.next.flatMap(g => g.rows).find(r => r.id === '(main-inventory)')?.task, false);
   assert.deepEqual(ids(view.done), ['old']);
   assert.deepEqual(view.focus.map(r => r.id), ['next'], 'a Done row never stays in focus');
@@ -39,7 +112,7 @@ test('sections follow bearings, orphan In flight rows join «В работе» w
 test('«Дела» lists open program rows with task counts from the records and the archive', () => {
   const records = [record('c1', { kind: 'program', state: 'in_flight' }), record('c0', { kind: 'program', state: 'done' }), record('w', { state: 'in_flight', body_lines: ['Дело: c1'] }),
     record('q', { hold_kind: 'captain', body_lines: ['Дело: c1'] }), record('n', { body_lines: ['Дело: c1', 'текст'] }), record('d', { state: 'done', body_lines: ['Дело: c1'] }), record('x', { body_lines: ['Не дело: c1'] })];
-  const view = overview({}, { backlog: { records } }, [{ id: 'a', body: 'Дело: c1\nтекст' }, { id: 'b', body: 'Дело: c0' }]);
+  const view = overview({}, { backlog: { records }, tasks: [{ id: 'w', current_state: { state: 'working' } }] }, [{ id: 'a', body: 'Дело: c1\nтекст' }, { id: 'b', body: 'Дело: c0' }]);
   assert.deepEqual(view.cases.map(r => [r.id, r.counts]), [['c1', { working: 1, waiting: 1, next: 1, done: 2 }]]);
 });
 
@@ -54,7 +127,8 @@ test('overview and focus actions come from current backlog state, warnings have 
   const view = overview({ decisions_open: [{ id: 'held' }], gates: [{ id: 'ready' }, { id: 'paused' }, { id: 'warning' }], landed: [{ id: 'done' }] }, { backlog: { records } });
   assert.deepEqual(view.focus[0].actions, ['start', 'pause', 'close', 'decline']);
   assert.deepEqual(view.waiting[0].rows[0].actions, ['release', 'later', 'close']);
-  assert.deepEqual(view.next.flatMap(g => g.rows).map(r => r.actions), [['start', 'pause', 'close', 'decline'], ['unhold', 'close', 'decline'], []]);
+  assert.deepEqual(view.next.flatMap(g => g.rows).map(r => r.actions), [['start', 'pause', 'close', 'decline'], []]);
+  assert.deepEqual(view.waiting[0].rows.find(r => r.id === 'paused')?.actions, ['unhold', 'close', 'decline']);
   assert.deepEqual(view.done[0].rows[0].actions, ['reopen']);
 });
 
@@ -67,8 +141,8 @@ test('native task rows supply computed holds when the fleet snapshot omits them'
   const view = overview({ gates: [{ id: 'paused' }, { id: 'expired' }] }, fleet, [], native);
   assert.deepEqual(view.focus[0].actions, ['unhold', 'close', 'decline']);
   assert.equal(view.focus[0].state, 'paused');
-  assert.deepEqual(view.next[0].rows[1].actions, ['start', 'pause', 'close', 'decline']);
-  assert.equal(view.next[0].rows[1].state, 'active');
+  assert.deepEqual(view.next[0].rows.find(r => r.id === 'expired')?.actions, ['start', 'pause', 'close', 'decline']);
+  assert.equal(view.next[0].rows.find(r => r.id === 'expired')?.state, 'active');
 });
 
 test('rows group by repo, rows without one go last under «Без проекта»', () => {
@@ -124,17 +198,17 @@ test('rows expose full holds, unresolved dependencies, fleet PRs and honest work
     backlog: { records }, main_inventory: { orphan_in_flight: ['orphan'] },
     tasks: states.map(([id, current_state]) => ({ id, current_state, pr: id === 'check' ? { url: 'https://example.org/pull/2' } : undefined })),
   });
-  const blocked = view.next[0].rows[0];
+  const blocked = view.waiting[0].rows.find(r => r.id === 'rr-refund-q3')!;
   assert.equal(blocked.reason, reason);
   assert.deepEqual(blocked.blockers, [{ id: 'rr-refund-q2', title: 'Согласовать возвраты' }, { id: 'missing', title: 'missing' }]);
   assert.deepEqual(view.focus[0].blockers, blocked.blockers);
-  assert.deepEqual(view.next[0].rows[1].blockers, []);
-  const rows = view.working.flatMap(g => g.rows);
+  assert.deepEqual(view.next[0].rows.find(r => r.id === 'released')?.blockers, []);
+  const rows = [...view.working, ...view.waiting, ...view.next].flatMap(g => g.rows);
   for (const [id, , label] of states) assert.equal(rows.find(r => r.id === id)?.current, label, id);
   assert.equal(rows.find(r => r.id === 'orphan')?.current, 'Нет исполнителя');
   assert.equal(rows.find(r => r.id === 'check')?.prUrl, 'https://example.org/pull/2');
   const hinted = overview({ in_flight: [{ id: 'ask' }] }, { backlog: { records }, tasks: [{ id: 'ask', current_state: { state: 'unknown' }, hints: { pending_decision: true } }] });
-  assert.equal(hinted.working[0].rows[0].current, 'Состояние неизвестно', 'unknown is never upgraded using a hint');
+  assert.equal(hinted.next.flatMap(g => g.rows).find(r => r.id === 'ask')?.current, 'Состояние неизвестно', 'unknown is never upgraded using a hint');
 });
 
 test('overview cache expires and every accepted mutation invalidates it', async t => {
@@ -222,7 +296,7 @@ test('synthetic home receipts appear in overview once per read and handled never
   try {
     const queued = store.firstmate.add('request-a', 'Запустить');
     const flying = store.firstmate.add('request-a-extra', 'Остановить'); store.firstmate.start(flying.id);
-    const snapshots = async () => ({ gates: [{ id: queued.id }], in_flight: [{ id: flying.id }], backlog: { records: store.firstmate.list() } });
+    const snapshots = async () => ({ gates: [{ id: queued.id }], in_flight: [{ id: flying.id }], backlog: { records: store.firstmate.list() }, tasks: [{ id: flying.id, current_state: { state: 'working' } }] });
     store.firstmate.snapshot = snapshots;
     const original = store.firstmate.receipts.bind(store.firstmate); let reads = 0;
     store.firstmate.receipts = () => { reads++; return original(); };
@@ -247,6 +321,6 @@ test('synthetic home receipts appear in overview once per read and handled never
     store.firstmate.start(queued.id); store.firstmate.done(flying.id); now += 2001;
     view = await store.overview();
     assert.deepEqual(view.next[0].rows[0].requests, [], 'actual dispatch replaces the start request');
-    assert.deepEqual(view.working[0].rows[0].requests, [], 'actual completion replaces stop/close requests');
+    assert.deepEqual(view.done[0].rows[0].requests, [], 'actual completion replaces stop/close requests');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

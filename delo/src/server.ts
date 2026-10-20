@@ -59,7 +59,7 @@ export function router(store: Store, opener = 'xdg-open') {
       const caseRoute = /^\/api\/cases\/([^/]+)(?:\/(close|reopen|continue|agent))?$/.exec(url.pathname);
       if (caseRoute) {
         const caseId = decodeURIComponent(caseRoute[1]); id.parse(caseId);
-        if (req.method === 'GET' && !caseRoute[2]) return send(store.getCase(caseId));
+        if (req.method === 'GET' && !caseRoute[2]) return send(store.getCase(caseId, await store.overview()));
         if (req.method === 'POST' && caseRoute[2] === 'close') return send(store.closeCase(caseId, await req.json()));
         if (req.method === 'POST' && caseRoute[2] === 'reopen') return send(store.reopenCase(caseId));
         if (req.method === 'POST' && caseRoute[2] === 'continue') return send(store.continueCase(caseId), 201);

@@ -1,10 +1,11 @@
-import { actions, phase, type Phase, type Goal, type TaskRequest } from './model.ts';
+import { actions, type Phase, type Goal, type TaskRequest } from './model.ts';
 import type { FirstmateTask } from './firstmate.ts';
-// Main screen from the Firstmate snapshots: sections follow fm-bearings.v1, row fields come from fm-fleet-snapshot.v1.
+// Bearings supplies context; backlog and reconciled worker state determine each row's section.
 export type Row = {
   id: string; title: string; kind?: string; repo?: string; pinned: boolean; open: boolean; task: boolean; personal: boolean;
   reason?: string; current?: string; noWorker?: boolean; blockedBy?: string; blockers?: { id: string; title: string }[]; prUrl?: string; reportPath?: string; owner?: string;
   requests?: TaskRequest[]; actions: Goal['actions']; state?: Goal['state']; holdKind?: string; inFlight?: boolean;
+  phase?: Phase;
 };
 export type Group = { repo: string; rows: Row[] };
 export type CaseRow = Row & { counts: Record<Phase, number> };
@@ -53,6 +54,32 @@ export function workerState(worker: any): string {
   return ({ parked: 'Исполнитель на паузе', paused: 'Исполнитель на паузе', blocked: 'Работа заблокирована', done: 'Работа исполнителя завершена', failed: 'Работа завершилась с ошибкой' } as Record<string, string>)[state.state] ?? 'Состояние неизвестно';
 }
 
+// Unknown state and historical wake events cannot establish either work or a wait.
+export function position(task: any, worker: any, records: Map<string, any>): { phase: Phase; reason?: string; owner?: string } {
+  if (task?.state === 'done') return { phase: 'done' };
+  const reason = value(task?.hold_reason);
+  const blockers = taskBlockers(task ?? {}, records);
+  if (blockers.length) return { phase: 'waiting', reason: reason ?? 'Ожидает завершения задач' };
+  if (task?.hold_kind === 'captain') return { phase: 'waiting', reason: reason ?? 'Ожидает ответа', owner: 'Капитан' };
+  if (task?.held === true || task?.held === 'yes' || task?.held === undefined && reason && task?.hold_kind) {
+    return { phase: 'waiting', reason: [reason ?? 'Задача отложена', value(task.hold_until) ? `До ${task.hold_until}` : undefined].filter(Boolean).join(' · ') };
+  }
+  const state = worker?.current_state?.state;
+  const detail = value(worker?.current_state?.detail);
+  if (['unknown', 'done'].includes(state) && worker?.delivery?.state === 'pending') return { phase: 'waiting', reason: 'Результат готов, ожидает локальной посадки', owner: 'Firstmate' };
+  const decision = state === 'unknown' ? worker?.hints?.open_decisions?.[0] : undefined;
+  if (decision) return { phase: 'waiting', reason: value(decision.summary) ?? 'Ожидает разрешения открытого вопроса', owner: decision.verb === 'needs-decision' ? 'Firstmate' : undefined };
+  if (state === 'needs-decision' || ['parked', 'paused', 'blocked'].includes(state) && (worker.hints?.pending_decision === true || /^needs-decision\b/.test(detail ?? ''))) {
+    return { phase: 'waiting', reason: `Исполнителю нужен ответ Firstmate${detail ? `: ${detail.replace(/^needs-decision:\s*/, '')}` : ''}`, owner: 'Firstmate' };
+  }
+  if (state === 'done' && !task?.state) return { phase: 'done' };
+  if (state === 'done') return { phase: 'waiting', reason: worker.pr?.url ? 'Результат готов, ожидает ревью или слияния' : 'Результат готов, ожидает разбора и завершения задачи', owner: 'Firstmate' };
+  if (state === 'failed') return { phase: 'waiting', reason: `Нужен разбор ошибки исполнителя${detail ? `: ${detail}` : ''}`, owner: 'Firstmate' };
+  if (['parked', 'paused', 'blocked'].includes(state)) return { phase: 'waiting', reason: `Исполнитель ожидает продолжения${detail ? `: ${detail}` : ''}` };
+  if (state === 'working' && workerState(worker) === 'Идёт проверка') return { phase: 'waiting', reason: 'Ожидает завершения проверки' };
+  return { phase: state === 'working' ? 'working' : 'next' };
+}
+
 export function groupByRepo(rows: Row[]): Group[] {
   const groups = new Map<string, Row[]>();
   for (const row of rows) groups.set(row.repo || noRepo, [...groups.get(row.repo || noRepo) ?? [], row]);
@@ -66,40 +93,56 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
   const requests = requestsByTask(receipts);
   const records = new Map<string, any>((fleet.backlog?.records ?? []).map((r: any) => [r.id, r]));
   // Fleet snapshots omit the computed held bit; tasks-axi owns expiry and action availability.
-  const native = new Map(tasks.map(t => [t.id, t]));
+  for (const task of tasks) records.set(task.id, { ...records.get(task.id), ...task, body_lines: records.get(task.id)?.body_lines ?? task.body?.split('\n') });
   const workers = new Map<string, any>((fleet.tasks ?? []).map((t: any) => [t.id, t]));
+  for (const t of bearings.in_flight ?? []) if (!workers.has(t.id) && !records.has(t.id)) workers.set(t.id, { current_state: { state: t.state } });
   const row = (id: string, title: string | undefined, extra: Partial<Row> = {}): Row => {
     const r = records.get(id);
-    const task = native.get(id) ?? r;
+    const task = r;
     const worker = workers.get(id);
+    const place = position(task, worker, records);
     return {
       ...extra, id, title: value(r?.title) ?? value(title) ?? id, kind: value(r?.kind) ?? extra.kind, repo: value(r?.repo) ?? extra.repo,
       pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(worker?.pr?.url) ?? value(r?.pr_url), reportPath: value(r?.report_path),
       requests: (requests.get(id) ?? []).filter(request => task && actions(task).includes(request.action) && (request.action !== 'close' || task.state === 'in_flight')),
       actions: r ? actions(task) : [], state: !r ? undefined : task.state === 'done' ? 'done' : task.held === true || task.held === 'yes' ? 'paused' : 'active',
-      reason: value(r?.hold_reason) ?? extra.reason,
+      reason: place.reason ?? extra.reason, owner: place.owner, phase: place.phase,
       blockers: taskBlockers({ ...r, blocked_by: extra.blockedBy ?? r?.blocked_by }, records),
-      current: worker || task?.state === 'in_flight' ? workerState(worker) : extra.current,
+      current: worker || task?.state === 'in_flight' ? `${task?.state === 'done' && worker ? 'Сохранённый исполнитель · ' : ''}${workerState(worker)}` : extra.current,
       holdKind: value(task?.hold_kind), inFlight: task?.state === 'in_flight',
+      noWorker: task?.state === 'in_flight' && !worker || extra.noWorker,
     };
   };
-  const waiting = (bearings.decisions_open ?? []).map((d: any) => row(d.id, d.summary, { reason: value(records.get(d.id)?.hold_reason) ?? value(d.summary), owner: d.owner }));
-  const working = [
+  const decisions = new Set<string>((bearings.decisions_open ?? []).map((d: any) => d.id));
+  const candidates = [
+    ...(bearings.decisions_open ?? []).map((d: any) => row(d.id, d.summary, { reason: value(d.summary) })),
     ...(bearings.in_flight ?? []).map((t: any) => row(t.id, t.name, { kind: value(t.kind), repo: value(t.repo) })),
     ...(fleet.main_inventory?.orphan_in_flight ?? []).map((id: string) => row(id, undefined, { noWorker: true })),
+    ...(bearings.gates ?? []).map((g: any) => {
+      const warning = !records.has(g.id) && g.id.startsWith('(');
+      return row(g.id, warning ? 'Требуется внимание Firstmate' : g.title, {
+        reason: warning ? 'Нужно проверить состояние задач' : records.has(g.id) ? undefined : value(g.reason),
+        blockedBy: value(g.blocked_by),
+      });
+    }),
+    ...(bearings.landed ?? []).map((l: any) => row(l.id, l.what)),
+    ...[...records.values()].filter(r => r.id && r.kind !== 'program').map(r => row(r.id, r.title)),
   ];
-  const next = (bearings.gates ?? []).map((g: any) => {
-    const warning = !records.has(g.id) && g.id.startsWith('(');
-    return row(g.id, warning ? 'Требуется внимание Firstmate' : g.title, {
-      reason: warning ? 'Нужно проверить состояние задач' : records.has(g.id) ? undefined : value(g.reason),
-      blockedBy: value(g.blocked_by), owner: g.owner,
-    });
-  });
-  const done = (bearings.landed ?? []).map((l: any) => row(l.id, l.what, { owner: l.owner }));
+  const sections: Record<Phase, Row[]> = { waiting: [], working: [], next: [], done: [] };
+  const landed = new Set((bearings.landed ?? []).map((l: any) => l.id));
+  for (const r of new Map<string, Row>(candidates.map(r => [r.id, r])).values()) {
+    if (records.get(r.id)?.kind === 'program') continue;
+    const task = records.get(r.id) ?? archive.find(t => t.id === r.id);
+    const place = position(task ?? (r.blockedBy ? { blocked_by: r.blockedBy } : undefined), workers.get(r.id), records);
+    if (!task && decisions.has(r.id)) { place.phase = 'waiting'; place.owner = 'Капитан'; }
+    else if (!task && landed.has(r.id)) place.phase = 'done';
+    sections[place.phase].push({ ...r, phase: place.phase, reason: place.phase === 'done' ? undefined : place.reason ?? r.reason, owner: place.owner });
+  }
+  const { waiting, working, next, done } = sections;
   const all = [...waiting, ...working, ...next, ...done];
   const focus = [...records.values()].filter(pinned).map(r => row(r.id, r.title));
   // Open program rows sit in no Bearings section, so «Дела» reads them from the fleet records and counts their tasks there and in the archive.
-  const members = [...[...records.values()].map(r => [caseOf(r.body_lines), phase(r)]), ...archive.map(t => [caseOf(t.body), 'done'])];
+  const members = [...[...records.values()].map(r => [caseOf(r.body_lines), position(r, workers.get(r.id), records).phase]), ...archive.filter(t => !records.has(t.id)).map(t => [caseOf(t.body), 'done'])];
   const cases = [...records.values()].filter(r => r.kind === 'program' && r.state !== 'done').map(r => ({
     ...row(r.id, r.title), counts: Object.fromEntries((['working', 'waiting', 'next', 'done'] as const).map(p => [p, members.filter(([c, m]) => c === r.id && m === p).length])) as Record<Phase, number>,
   }));

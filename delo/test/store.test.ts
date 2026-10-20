@@ -28,7 +28,7 @@ test('create writes the typed body, the title source and the personal line to th
     assert.equal(backlog.split(url).length - 1, 1);
     assert.equal(goal.personal, true);
     assert.deepEqual(goal.actions, ['unhold', 'close', 'decline']);
-    assert.equal((await store.overview()).next.flatMap(g => g.rows).find(r => r.id === goal.id)?.personal, true);
+    assert.equal((await store.overview()).waiting.flatMap(g => g.rows).find(r => r.id === goal.id)?.personal, true);
     const empty = store.create({ title: 'Без описания', blockedBy: goal.id });
     assert.equal(store.firstmate.show(empty.id).body, '');
     assert.equal(store.firstmate.show(empty.id).kind, 'ship');

@@ -40,11 +40,8 @@ export function actions(task: { state: string; held?: string | boolean; hold_kin
   return ['start', 'pause', 'close', 'decline'];
 }
 
-// Where a row stands for a дело's counters and task list.
+// Where a row stands for a дело's counters and task list; overview.position owns classification.
 export type Phase = 'waiting' | 'working' | 'next' | 'done';
-export function phase(task: { state: string; hold_kind?: string }): Phase {
-  return task.state === 'done' ? 'done' : task.hold_kind === 'captain' ? 'waiting' : task.state === 'in_flight' ? 'working' : 'next';
-}
 
 export type TaskRequest = { action: 'start' | 'stop' | 'close'; requestId: string; state: 'pending' | 'handled' };
 

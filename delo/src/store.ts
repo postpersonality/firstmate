@@ -2,11 +2,11 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, phase, id } from './model.ts';
+import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, id } from './model.ts';
 import type { Goal, Action } from './model.ts';
 import { validateReview, reviewProjects, reviewOf, reviewLine, reviewInstructions, readReviewProgress } from './review.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
-import { type Overview, overview, requestsByTask, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
+import { type Overview, overview, position, requestsByTask, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
 
 const sections = ['Обложка', 'Зачем', 'Критерий готовности', 'Контекст', 'Ограничения'];
 
@@ -167,18 +167,22 @@ export class Store {
   }
 
   // A closed дело leaves the backlog for the archive after done_keep closures; its page then reads it from there, read-only.
-  getCase(caseId: string) {
+  getCase(caseId: string, view?: Overview) {
     let task: FirstmateTask; let archived = false;
     try { task = this.firstmate.show(caseId); }
     catch (error: any) { if (!/NOT_FOUND/.test(`${error.code} ${error.stdout} ${error.message}`)) throw error; task = this.firstmate.show(caseId, true); archived = true; }
     if (task.kind !== 'program') throw new Error('Это не дело');
     const goal = this.get(caseId, task);
     const requests = requestsByTask(this.firstmate.receipts());
+    const records = this.firstmate.list();
+    const byId = new Map(records.map(t => [t.id, t]));
+    const places = new Map((['waiting', 'working', 'next', 'done'] as const).flatMap(phase => (view?.[phase] ?? []).flatMap(g => g.rows.map(r => [r.id, { phase, reason: r.reason, owner: r.owner, current: r.current }] as const))));
     const entry = (t: FirstmateTask) => {
       const { id, title, state, actions, holdKind, reason, inFlight, links, report, review, reviewProgress } = this.get(t.id, t);
-      return { id, title, state, actions, requests: (requests.get(t.id) ?? []).filter(r => actions.includes(r.action) && (r.action !== 'close' || inFlight)), holdKind, reason, inFlight, phase: phase(t), links, report, review, reviewProgress };
+      const place = t.state === 'done' ? position(t, undefined, byId) : places.get(t.id) ?? position(t, undefined, byId);
+      return { id, title, state, actions, requests: (requests.get(t.id) ?? []).filter(r => actions.includes(r.action) && (r.action !== 'close' || inFlight)), holdKind, reason: place.reason ?? reason, owner: place.owner, current: 'current' in place ? place.current : undefined, inFlight, phase: place.phase, links, report, review, reviewProgress };
     };
-    const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
+    const tasks = records.filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
     const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t, true)));
     const sources = goal.body.split('\n').filter(l => l.startsWith(sourceLine)).map(l => l.slice(sourceLine.length).trim());
     return { ...goal, reviewProgress: goal.review ? [...tasks, ...earlier].find(t => t.review)?.reviewProgress : undefined, archived, sources, tasks, earlier, links: [...new Set([...sources, ...goal.links, ...[...tasks, ...earlier].flatMap(t => t.links)])] };
@@ -359,8 +363,11 @@ export class Store {
   // The executor actually running a task, from the fleet snapshot's worker record.
   async worker(taskId: string) {
     const record = ((await this.firstmate.snapshot('fm-fleet-snapshot.sh')).tasks ?? []).find((t: any) => t.id === taskId);
-    const current = workerState(record);
-    return { harness: field(record?.harness) ?? '', current, reason: ['Вопрос исполнителя', 'Работа заблокирована', 'Исполнитель на паузе', 'Работа завершилась с ошибкой'].includes(current) ? field(record?.current_state?.detail) : undefined, prUrl: field(record?.pr?.url) };
+    const tasks = this.firstmate.list();
+    const task = tasks.find(t => t.id === taskId);
+    const place = position(task, { ...record, delivery: await this.firstmate.delivery(record) }, new Map(tasks.map(t => [t.id, t])));
+    const current = `${task?.state === 'done' && record ? 'Сохранённый исполнитель · ' : ''}${workerState(record)}`;
+    return { harness: field(record?.harness) ?? '', current, phase: place.phase, reason: place.reason, owner: place.owner, prUrl: field(record?.pr?.url) };
   }
 
   // Suggestions for the folder field: every folder an open backlog task names.
@@ -372,10 +379,13 @@ export class Store {
     if (this.overviewRead && this.overviewRead.expires > Date.now()) return this.overviewRead.promise;
     const read: { promise: Promise<Overview>; expires: number } = {
       expires: Infinity,
-      promise: Promise.all([this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh')]).then(([bearings, fleet]) => {
+      promise: Promise.all([this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh')]).then(async ([bearings, fleet]) => {
+        const tasks = this.firstmate.list();
+        const done = new Set(tasks.filter(t => t.state === 'done').map(t => t.id));
+        fleet = { ...fleet, tasks: await Promise.all((fleet.tasks ?? []).map(async (t: any) => ({ ...t, delivery: done.has(t.id) ? undefined : await this.firstmate.delivery(t) }))) };
         // A mutation during the read also invalidates requests already in flight.
         if (this.overviewRead !== read) return this.overview();
-        const result = overview(bearings, fleet, this.firstmate.archive(), this.firstmate.list(), this.firstmate.receipts());
+        const result = overview(bearings, fleet, this.firstmate.archive(), tasks, this.firstmate.receipts());
         read.expires = Date.now() + 2000;
         return result;
       }).catch(error => { if (this.overviewRead === read) this.overviewRead = undefined; throw error; }),

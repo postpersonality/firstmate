@@ -30,6 +30,47 @@ export class Firstmate {
 
   async snapshot(script: 'fm-bearings-snapshot.sh' | 'fm-fleet-snapshot.sh') { return JSON.parse(await runAsync(join(this.home, 'bin', script), ['--json'], this.home, 45000, this.env())); }
 
+  // A ready handoff is separate from runtime liveness; reuse the status fold and named-head owner.
+  async delivery(worker: any): Promise<{ state: 'pending' | 'landed'; head: string } | undefined> {
+    if (worker?.kind !== 'ship' || worker.mode !== 'local-only' || !['unknown', 'done'].includes(worker.current_state?.state) || !worker.branch || !worker.spawn_gen || !/^[\p{L}\p{N}][\p{L}\p{N}_.-]{0,120}$/u.test(worker.id ?? '')) return;
+    const args = [join(this.home, 'bin'), join(this.home, 'state'), worker.id, worker.spawn_gen, worker.paths?.worktree?.path ?? '', worker.project, worker.branch];
+    try {
+      const result = await runAsync('bash', ['-c', `
+set -e
+. "$1/fm-dod-lib.sh"
+meta="$2/$3.meta"
+log="$2/$3.status"
+generation=$(sed -n 's/^spawn_gen=//p' "$meta")
+[ "$generation" = "$4" ] || exit 0
+[ "$(sed -n 's/^worktree=//p' "$meta")" = "$5" ] || exit 0
+[ "$(sed -n 's/^project=//p' "$meta")" = "$6" ] || exit 0
+[ "$(sed -n 's/^branch=//p' "$meta")" = "$7" ] || exit 0
+line=$(status_current_line "$log" ship)
+[ "$(status_line_verb "$line")" = done ] || exit 0
+fm_dod_accept_ship_done ship local-only "$5" "$6" "$line" "$2" "$3" "$meta" >/dev/null || exit 0
+[ -z "$(git -C "$5" status --porcelain)" ] || exit 0
+head=$(git -C "$5" rev-parse --verify HEAD)
+[ "$(git -C "$6" rev-parse --verify "refs/heads/$7")" = "$head" ] || exit 0
+base=$(git -C "$6" symbolic-ref --quiet --short refs/remotes/origin/HEAD || true)
+base=$(printf '%s' "$base" | sed 's@^origin/@@')
+if [ -z "$base" ]; then
+  for candidate in main master; do
+    if git -C "$6" show-ref --verify --quiet "refs/heads/$candidate"; then base=$candidate; break; fi
+  done
+fi
+[ -n "$base" ] || exit 0
+git -C "$6" rev-parse --verify "refs/heads/$base" >/dev/null
+state=pending
+if git -C "$6" merge-base --is-ancestor "$head" "refs/heads/$base"; then state=landed; fi
+[ "$(status_current_line "$log" ship)" = "$line" ] || exit 0
+[ "$(sed -n 's/^spawn_gen=//p' "$meta")" = "$generation" ] || exit 0
+printf '%s %s' "$state" "$head"
+`, 'delo-delivery', ...args], this.home, 10000, { ...this.env(), GIT_OPTIONAL_LOCKS: '0' });
+      const [state, head] = result.split(' ');
+      if ((state === 'pending' || state === 'landed') && /^[a-f0-9]{40,64}$/.test(head ?? '')) return { state, head };
+    } catch { /* Missing or changing delivery evidence leaves the current state uncertain. */ }
+  }
+
   private bodyArgs(body: string) {
     const folder = mkdtempSync(join(tmpdir(), 'delo-firstmate-body-'));
     const file = join(folder, 'body.md');
