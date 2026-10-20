@@ -132,12 +132,13 @@ test('fixture review worker consumes the start request, enriches local context a
     assert.equal(await exited, 0, output);
     const done = await (await request(`/api/goals/${task.id}`)).json();
     assert.equal(done.reviewProgress.status, 'done'); assert.equal(done.state, 'done');
+    assert.equal(done.reviewProgress.result, 'нужны исправления; fixture', 'the result is available beside the phases');
     assert.equal(done.reviewProgress.phases.length, 4); assert.ok(done.reviewProgress.elapsedMs > 0);
     assert.equal(done.report, true);
     const report = await (await request(`/api/reports/${task.id}`)).json();
     assert.match(report.text, /Вердикт: нужны исправления/);
     assert.match(report.text, /Доказанное fixture замечание: unreachable branch/, 'progress completion preserves the skill-authored report');
-    assert.match(readFileSync(join(home, 'state', task.id + '.status'), 'utf8'), /done/);
+    assert.match(readFileSync(join(home, 'state', task.id + '.status'), 'utf8'), /^done \[at=\d+\]:.*нужны исправления/m);
   } finally {
     if (childProcess?.exitCode === null) childProcess.kill('SIGKILL');
     rmSync(root, { recursive: true, force: true });

@@ -33,9 +33,9 @@ export function recordReviewProgress(home: string, taskId: string, input: unknow
     progress.current = event === 'end' ? 'unknown' : phase;
   }
   progress.elapsedMs = Date.parse(now) - Date.parse(progress.startedAt);
-  if (event === 'done' || event === 'failed') { progress.status = event; progress.endedAt = now; if (event === 'failed') progress.error = detail || 'Агент сообщил об ошибке'; }
+  if (event === 'done' || event === 'failed') { progress.status = event; progress.endedAt = now; progress.result = detail; if (event === 'failed') progress.error = detail || 'Агент сообщил об ошибке'; }
   saveProgress(home, taskId, progress);
-  reviewStatus(home, taskId, event === 'failed' ? 'failed' : 'working', `review ${phase} ${event}; at=${now}; elapsed=${progress.elapsedMs}ms${detail ? '; ' + detail : ''}`);
+  reviewStatus(home, taskId, event === 'done' || event === 'failed' ? event : 'working', `review ${phase} ${event}; at=${now}; elapsed=${progress.elapsedMs}ms${detail ? '; ' + detail : ''}`);
   if (event === 'done' || event === 'failed') {
     const path = join(home, 'data', taskId, 'report.md');
     const summary = ['## Ход ревью', `Итог: ${progress.status}`, `Начало: ${progress.startedAt}`, `Окончание: ${now}`, `Общее время: ${progress.elapsedMs} ms`, detail,
