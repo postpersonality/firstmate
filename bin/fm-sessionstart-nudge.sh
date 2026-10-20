@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # Print the one-line session-start instruction only for a genuine firstmate
 # primary whose current harness session has not already acquired the home lock.
-# A native Codex thread (FM_CODEX_HOOK_SESSION_ID, set by fm-sessionstart-run.sh)
-# has acquired it only when the sidecar records that thread, so a thread resumed
-# under a legacy PID-only lock is nudged to bind.
 # Every silence and error path exits 0 because Claude SessionStart exit 2 blocks
 # session initialization.
 set -u
@@ -48,14 +45,7 @@ lock_is_in_ancestry() {
   return 1
 }
 
-codex_thread_recorded() {
-  [ -n "${FM_CODEX_HOOK_SESSION_ID:-}" ] || return 0
-  # shellcheck source=bin/fm-session-lock-lib.sh
-  . "$SCRIPT_DIR/fm-session-lock-lib.sh"
-  [ "$(fm_session_lock_recorded_session_id "$STATE" || true)" = "$FM_CODEX_HOOK_SESSION_ID" ]
-}
-
-lock_is_in_ancestry && codex_thread_recorded && exit 0
+lock_is_in_ancestry && exit 0
 nudge=
 fm_operational_input_encode session-start \
   "Run \`bin/fm-session-start.sh\` now, exactly once, before executing any other instructions." \

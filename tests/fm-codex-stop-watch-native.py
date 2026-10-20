@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import select
-import shlex
 import shutil
 import signal
 import subprocess
@@ -79,8 +78,24 @@ cp "$FM_HOME/state/.lock" "$FM_HOME/tool-lock-after"
 bash "$FM_HOME/bin/fm-watch-checkpoint.sh" --seconds 1 > "$FM_HOME/tool-checkpoint.out" 2> "$FM_HOME/tool-checkpoint.err"
 printf '%s\\n' "$?" > "$FM_HOME/tool-checkpoint-status"
 printf '%s %s\\n' "$owned" "$rc" > "$FM_HOME/tool-lock-status"
+mkdir -p "$FM_HOME/legacy-state" "$FM_HOME/free-state"
+cp "$FM_HOME/state/.lock" "$FM_HOME/legacy-state/.lock"
+FM_STATE_OVERRIDE="$FM_HOME/legacy-state" bash "$FM_HOME/bin/fm-lock.sh" > "$FM_HOME/tool-legacy.out" 2>&1
+legacy=$?
+FM_STATE_OVERRIDE="$FM_HOME/free-state" bash "$FM_HOME/bin/fm-lock.sh" > "$FM_HOME/tool-free.out" 2>&1
+printf '%s %s\\n' "$legacy" "$?" > "$FM_HOME/tool-unowned-status"
 exit "$rc"
 ''')
+        # The digest body stays out of this lab; the real session-open router
+        # still classifies the native event and runs the lock writer in the hook.
+        (self.home / "bin/fm-session-start.sh").write_text(
+            '#!/usr/bin/env bash\nexec bash "$FM_HOME/bin/fm-lock.sh"\n')
+        (self.home / "native-start.sh").write_text(
+            '#!/usr/bin/env bash\npayload=$(cat)\n'
+            'output=$(printf "%s" "$payload" | bash "$FM_HOME/bin/fm-sessionstart-run.sh" 2>&1)\n'
+            'jq -cn --argjson payload "$payload" --arg output "$output" '
+            "'{payload:$payload,output:$output}' >> \"$FM_HOME/native-starts.jsonl\"\n"
+            'printf "%s\\n" "$output"\n')
         subprocess.run(["git", "init", "-q", self.home], check=True)
         self.env = {key: value for key, value in os.environ.items()
                     if not key.startswith(("FM_", "CODEX_", "CLAUDE_"))
@@ -136,7 +151,9 @@ else:
             'jq -cn --argjson payload "$payload" --argjson status "$status" --rawfile feedback "$output" '
             "'{payload:$payload,status:$status,feedback:$feedback}' >> \"$FM_HOME/native-results.jsonl\"\n"
             'cat "$output" >&2\nrm -f "$output"\nexit "$status"\n')
-        hooks = {"hooks": {"Stop": [{"hooks": [
+        hooks = {"hooks": {"SessionStart": [{"hooks": [
+            {"type": "command", "command": 'bash "$FM_HOME/native-start.sh"', "timeout": 30},
+        ]}], "Stop": [{"hooks": [
             {"type": "command", "command": 'bash "$FM_HOME/primer.sh"', "timeout": 30},
             {"type": "command", "command": 'bash "$FM_HOME/native-hook.sh"', "timeout": 30},
         ]}]}}
@@ -163,19 +180,19 @@ else:
         result = self.request("thread/start", {
             "cwd": str(self.home), "model": MODEL, "approvalPolicy": "never",
             "sandbox": "workspace-write", "ephemeral": False,
-            # Invocation-local consent for these two reviewed fixture hooks.
+            # Invocation-local consent for these three reviewed fixture hooks.
             # No trust store or global Codex settings are modified.
             "config": {"bypass_hook_trust": True, "project_doc_max_bytes": 0},
         })
         self.thread = result["thread"]["id"]
-        path = shlex.quote(str(self.home))
         prompt = (
             f"This is an isolated native Firstmate supervision test in {self.home}. "
             "Only work inside that directory; never use tmux, Herdr, network, other tasks or delegation. "
-            f"First run bash {path}/bin/fm-lock.sh and reply exactly 'All five received.' "
+            "First reply exactly 'All five received.' "
             "On any hook continuation or firstmate watcher wake, first run bash tool-proof.sh once "
             "after that hook; it records only environment-presence "
-            "booleans and checks actual session ownership and fm-lock. Never forge identity or bypass a refusal. "
+            "booleans and checks actual session ownership and fm-lock, including its refusal of lab-local legacy and free locks. "
+            "Never forge identity or bypass a refusal. "
             "Then use the shell tool to drain bin/fm-wake-drain.sh with stdout and stderr captured. If it presents worker.status "
             "saying ready for already authorized validation, enqueue exactly one durable instruction "
             "through the public command: FM_SEND_IDEMPOTENT=1 bash bin/fm-send.sh worker "
@@ -255,6 +272,17 @@ else:
                 return True
         return False
 
+    def bound(self):
+        start = [row for row in self.rows("native-starts.jsonl")
+                 if row["payload"].get("session_id") == self.thread]
+        assert start and "lock acquired: harness pid" in start[0]["output"], \
+            "native SessionStart did not bind the primary thread outside the tool sandbox"
+        lock = (self.home / "state/.lock").read_text().strip()
+        assert lock != "1" and b"app-server" in Path(f"/proc/{lock}/cmdline").read_bytes(), \
+            "native SessionStart did not record the live host app-server"
+        assert (self.home / "state/.lock-session").read_text().strip() == self.thread
+        return lock
+
     def close(self):
         if self.thread and self.turn and self.proc.poll() is None:
             try:
@@ -275,6 +303,7 @@ for control in (True, False):
     native = Native("before" if control else "after", control=control)
     try:
         native.until(lambda: any(row.get("stop_hook_active") for row in native.rows("native-stops.jsonl")))
+        host = native.bound()
         if control:
             native.until(native.completed)
         else:
@@ -292,8 +321,13 @@ for control in (True, False):
             print(f"ok - {VERSION}: old API Stop stayed idle after the late worker completion", flush=True)
         else:
             native.until(lambda: (native.home / "tool-lock-status").exists())
-            assert (native.home / "tool-lock-status").read_text().strip() == "0 0", "native model tool cannot confirm its Stop-bound lock"
-            assert (native.home / "tool-lock-before").read_bytes() == (native.home / "tool-lock-after").read_bytes(), "model tool replaced the Stop-bound host PID"
+            assert (native.home / "tool-lock-status").read_text().strip() == "0 0", "native model tool cannot confirm its SessionStart-bound lock"
+            assert (native.home / "tool-lock-before").read_bytes() == (native.home / "tool-lock-after").read_bytes(), "model tool replaced the SessionStart-bound host PID"
+            native.until(lambda: (native.home / "tool-unowned-status").exists())
+            assert (native.home / "tool-unowned-status").read_text().strip() == "1 1", "sandboxed model tool claimed a legacy or free lock"
+            assert (native.home / "legacy-state/.lock").read_text().strip() == host, "sandboxed model tool replaced a live legacy host PID"
+            assert not (native.home / "legacy-state/.lock-session").exists(), "sandboxed model tool bound a legacy lock"
+            assert not (native.home / "free-state/.lock").exists(), "sandboxed model tool published PID 1"
             assert (native.home / "tool-checkpoint-status").read_text().strip() in ("0", "124"), "model tool checkpoint failed"
             native.until(inbox.exists)
             native.until(native.sent_then_acked)
@@ -330,14 +364,19 @@ for control in (True, False):
                                      for value in native.records))
             assert (native.home / "foreign-lock-status").read_text().strip() == "1", "another actual API thread acquired the primary lock"
             assert (native.home / "state/.lock-session").read_text() == owner, "another native thread replaced the primary identity"
+            assert (native.home / "state/.lock").read_text().strip() == host, "another native thread replaced the primary host PID"
+            assert any(row["payload"].get("session_id") == foreign
+                       and "another live firstmate session holds the lock" in row["output"]
+                       for row in native.rows("native-starts.jsonl")), "another thread's native SessionStart was not refused"
             print(f"ok - {VERSION}: quiet and late API Stop continuations performed one worker validation; interruption stayed stopped", flush=True)
-            print(f"ok - {VERSION}: Stop-bound model tools kept the host lock, ran drain/ack/send/checkpoint; another actual thread refused", flush=True)
+            print(f"ok - {VERSION}: SessionStart bound the host lock; sandboxed tools only confirmed it, refused legacy and free locks, ran drain/ack/send/checkpoint; another actual thread refused", flush=True)
     finally:
         native.close()
 
 native = Native("empty", empty=True)
 try:
     native.until(native.completed)
+    native.bound()
     assert all(row["status"] == 0 for row in native.rows("native-results.jsonl")), "empty fleet caused a supervision continuation"
     assert not (native.home / "state/.last-watcher-beat").exists(), "empty fleet started a watcher"
     print(f"ok - {VERSION}: empty API primary completed without supervision work", flush=True)

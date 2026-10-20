@@ -40,6 +40,15 @@ SH
   printf '%s\n' "$home"
 }
 
+stub_session_start() {
+  rm "$1/bin"
+  cp -R "$ROOT/bin" "$1/bin"
+  cat > "$1/bin/fm-session-start.sh" <<'SH'
+#!/usr/bin/env bash
+bash "$FM_HOME/bin/fm-lock.sh"
+SH
+}
+
 run_stop() {
   local home=$1
   (cd "$home"; FM_HOME="$home" FM_ROOT_OVERRIDE="$home" TEST_ROOT="$ROOT" \
@@ -135,12 +144,7 @@ assert_contains "$(cat "$home/state/.lock-session")" 'S1' 'legacy API owner did 
 pass 'Codex API session-lock writer: refuses another thread and binds the legacy native owner'
 
 home=$(make_home session-start)
-rm "$home/bin"
-cp -R "$ROOT/bin" "$home/bin"
-cat > "$home/bin/fm-session-start.sh" <<'SH'
-#!/usr/bin/env bash
-bash "$FM_HOME/bin/fm-lock.sh"
-SH
+stub_session_start "$home"
 status=0
 TEST_START=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
 expect_code 0 "$status" 'native SessionStart must route the original payload identity to the lock writer'
@@ -212,6 +216,7 @@ assert_absent "$home/state/.watch.lock/pid" 'contended Stop started a second wat
 pass 'Codex API Stop: a held checkpoint lock returns a continuation instead of a silent Stop'
 
 home=$(make_home legacy-stop)
+stub_session_start "$home"
 for thread in S2 S1; do
   status=0
   TEST_NO_SESSION=1 TEST_STOP_SESSION=$thread run_stop "$home" || status=$?
@@ -220,36 +225,43 @@ for thread in S2 S1; do
   TEST_NO_SESSION=1 TEST_STOP_SESSION=$thread TEST_STOP_ACTIVE=false run_stop "$home" || status=$?
   expect_code 2 "$status" "an unsupervised legacy PID-only lock must block thread $thread once"
   assert_contains "$(cat "$home/err")" 'legacy PID-only session lock' "the legacy block for thread $thread omitted the bind migration"
-  assert_contains "$(cat "$home/err")" 'bind it once with bin/fm-lock.sh' "the legacy block for thread $thread omitted the bind command"
+  assert_contains "$(cat "$home/err")" 'Only the native SessionStart hook binds the firstmate primary thread' "the legacy block for thread $thread omitted the host-side bind"
+  assert_not_contains "$(cat "$home/err")" 'fm-lock.sh' "the legacy block for thread $thread told a sandboxed tool to claim"
   assert_absent "$home/state/.lock-session" "Stop of thread $thread adopted a legacy PID-only lock"
   assert_absent "$home/state/.watch.lock/pid" 'an unclaimed legacy lock started a watcher'
 done
 status=0
-TEST_LOCK_ONLY=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
-expect_code 0 "$status" 'the explicit owner claim must bind the legacy lock'
+TEST_START=1 TEST_START_SOURCE=resume TEST_NO_SESSION=1 run_stop "$home" || status=$?
+expect_code 0 "$status" 'the native SessionStart resume must bind the legacy lock'
 status=0
 TEST_NO_SESSION=1 run_stop "$home" || status=$?
-expect_code 2 "$status" 'the explicitly claimed primary must be supervised at Stop'
+expect_code 2 "$status" 'the primary bound by native SessionStart must be supervised at Stop'
 assert_contains "$(cat "$home/err")" 'checkpoint:' 'the bound primary did not get its checkpoint return'
 status=0
 TEST_NO_SESSION=1 TEST_STOP_SESSION=S2 TEST_STOP_ACTIVE=false run_stop "$home" || status=$?
 expect_code 0 "$status" 'another thread of the same app-server must not be blocked'
 assert_contains "$(cat "$home/out")" 'does not record this native thread' 'the other thread got no read-only notice'
 assert_contains "$(cat "$home/state/.lock-session")" 'S1' 'another thread replaced the claimed primary'
-pass 'Codex API Stop: a legacy PID-only lock keeps a bounded guard and binds only through an explicit owner claim'
+pass 'Codex API Stop: a legacy PID-only lock keeps a bounded guard and binds only through native SessionStart'
 
 home=$(make_home legacy-resume)
+stub_session_start "$home"
 status=0
 TEST_START=1 TEST_START_SOURCE=resume TEST_NO_SESSION=1 run_stop "$home" || status=$?
-expect_code 0 "$status" 'a resume nudge must never block session initialization'
-assert_contains "$(cat "$home/out")" 'bin/fm-session-start.sh' 'a thread resumed under a legacy PID-only lock was not nudged to bind'
-assert_absent "$home/state/.lock-session" 'the resume nudge adopted the legacy lock'
-TEST_LOCK_ONLY=1 TEST_NO_SESSION=1 run_stop "$home" || fail 'the explicit owner claim did not bind the legacy lock'
+expect_code 0 "$status" 'a native resume must never block session initialization'
+assert_contains "$(cat "$home/out")" 'lock acquired: harness pid' 'a thread resumed under a legacy PID-only lock was not bound in the hook'
+assert_not_contains "$(cat "$home/out")" 'fm-session-start.sh' 'the resumed native thread was told to claim from its sandboxed tools'
+assert_contains "$(cat "$home/state/.lock-session")" 'S1' 'the native resume did not record its thread'
 status=0
-TEST_START=1 TEST_START_SOURCE=resume TEST_NO_SESSION=1 run_stop "$home" || status=$?
-expect_code 0 "$status" 'a resume nudge must never block session initialization'
-[ ! -s "$home/out" ] || fail 'the bound primary thread was nudged again on resume'
-pass 'Codex API SessionStart: resume nudges a legacy PID-only owner until its thread is bound'
+TEST_START=1 TEST_START_SOURCE=resume run_stop "$home" || status=$?
+expect_code 0 "$status" 'a native resume must never block session initialization'
+[ ! -s "$home/out" ] || fail 'the bound primary thread was started again on resume'
+status=0
+TEST_START=1 TEST_START_SOURCE=resume TEST_LOCK_SESSION=S2 run_stop "$home" || status=$?
+expect_code 0 "$status" 'a refused native resume must never block session initialization'
+assert_contains "$(cat "$home/err")" 'another live firstmate session holds the lock' 'a resumed thread was not refused by the recorded thread of its live app-server'
+assert_contains "$(cat "$home/state/.lock-session")" 'S2' 'a resumed thread replaced the recorded thread of its live app-server'
+pass 'Codex API SessionStart: resume binds an unrecorded thread in the hook and leaves another recorded thread read-only'
 
 home=$(make_home duplicate)
 TEST_HOLD=1 run_stop "$home" &
@@ -276,3 +288,77 @@ TEST_KEEP_LOCK=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
 expect_code 2 "$status" 'the recorded thread must be supervised once the previous app-server is gone'
 [ "$(cat "$home/state/.lock")" != "$holder" ] || fail 'the recorded thread did not reclaim the stale app-server lock'
 pass 'Codex API Stop: the same thread in another app-server is read-only while the owner lives and reclaims after it exits'
+
+# Native Linux model tools run under codex-linux-sandbox as pid 1 of their own
+# PID namespace, where the host app-server that holds the lock is invisible.
+sandboxed_lock() {  # <home> <thread>
+  local status=0
+  # shellcheck disable=SC2016 # Expanded by the namespace's own shells.
+  (cd "$1"; FM_HOME="$1" FM_ROOT_OVERRIDE="$1" CODEX_THREAD_ID=$2 CODEX_SESSION_ID=$2 \
+    unshare -rpf --mount-proc bash -c 'exec -a codex-linux-sandbox "$0" -c "bash \"\$0/bin/fm-lock.sh\"; exit \$?" "$1"' \
+    "$LAB/codex" "$ROOT") > "$1/out" 2> "$1/err" || status=$?
+  return "$status"
+}
+
+if ! command -v unshare >/dev/null 2>&1 || ! unshare -rpf --mount-proc true >/dev/null 2>&1; then
+  printf '# skip: unprivileged PID namespaces are unavailable here, so the sandboxed lock writer is unverified\n'
+else
+  home=$(make_home sandbox)
+  stub_session_start "$home"
+  TEST_HOLD=1 TEST_NO_SESSION=1 run_stop "$home" &
+  holder_job=$!
+  for _ in {1..50}; do
+    [ ! -s "$home/state/.lock" ] || break
+    sleep 0.1
+  done
+  holder=$(cat "$home/state/.lock")
+  status=0
+  sandboxed_lock "$home" S1 || status=$?
+  expect_code 1 "$status" 'a sandboxed tool must not claim a PID-only lock of a live host app-server'
+  assert_contains "$(cat "$home/err")" 'sandboxed Codex tool cannot verify the host owner' 'the sandboxed refusal named no host-side path'
+  [ "$(cat "$home/state/.lock")" = "$holder" ] || fail 'a sandboxed tool replaced a live legacy host PID'
+  assert_absent "$home/state/.lock-session" 'a sandboxed tool bound a legacy lock'
+  status=0
+  TEST_START=1 TEST_KEEP_LOCK=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
+  expect_code 0 "$status" 'a refused native start must never block session initialization'
+  [ "$(cat "$home/state/.lock")" = "$holder" ] || fail 'another app-server took over while the host owner lived'
+  assert_absent "$home/state/.lock-session" 'another app-server bound the live legacy lock'
+  printf 'S1\n' > "$home/state/.lock-session"
+  cp "$home/state/.lock" "$home/lock.before"
+  status=0
+  sandboxed_lock "$home" S1 || status=$?
+  expect_code 0 "$status" 'the recorded thread must confirm its host-bound lock from the sandbox'
+  assert_contains "$(cat "$home/out")" "lock acquired: harness pid $holder" 'the sandboxed confirmation did not keep the host anchor'
+  cmp -s "$home/lock.before" "$home/state/.lock" || fail 'the sandboxed confirmation rewrote the host anchor'
+  [ "$(cat "$home/state/.lock-session")" = S1 ] || fail 'the sandboxed confirmation rewrote the recorded thread'
+  status=0
+  sandboxed_lock "$home" S2 || status=$?
+  expect_code 1 "$status" 'another sandboxed thread must not claim the recorded thread'
+  cmp -s "$home/lock.before" "$home/state/.lock" || fail 'another sandboxed thread rewrote the host anchor'
+  : > "$home/release"
+  wait "$holder_job" || true
+  status=0
+  sandboxed_lock "$home" S2 || status=$?
+  expect_code 1 "$status" 'a sandboxed tool must not reclaim a stale host lock of another thread'
+  rm "$home/state/.lock-session"
+  status=0
+  sandboxed_lock "$home" S1 || status=$?
+  expect_code 1 "$status" 'a sandboxed tool must not reclaim a stale PID-only host lock'
+  cmp -s "$home/lock.before" "$home/state/.lock" || fail 'a sandboxed tool replaced a stale host PID'
+  assert_absent "$home/state/.lock-session" 'a sandboxed tool bound a stale PID-only lock'
+  for sidecar in none S1; do
+    printf '1\n' > "$home/state/.lock"
+    [ "$sidecar" = none ] || printf '%s\n' "$sidecar" > "$home/state/.lock-session"
+    status=0
+    sandboxed_lock "$home" S1 || status=$?
+    expect_code 1 "$status" "a sandboxed tool must not confirm a PID-1 lock with sidecar $sidecar"
+    [ "$(cat "$home/state/.lock")" = 1 ] || fail 'a sandboxed tool rewrote a PID-1 lock'
+  done
+  rm "$home/state/.lock" "$home/state/.lock-session"
+  status=0
+  sandboxed_lock "$home" S1 || status=$?
+  expect_code 1 "$status" 'a sandboxed tool must not claim a free lock'
+  assert_absent "$home/state/.lock" 'a sandboxed tool published PID 1'
+  assert_absent "$home/state/.lock-session" 'a sandboxed tool recorded a thread without a host anchor'
+  pass 'Codex sandboxed lock writer: confirms only the recorded host owner and never publishes PID 1 or replaces a PID-only, stale or PID-1 lock'
+fi
