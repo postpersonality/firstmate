@@ -26,11 +26,11 @@ export function router(store: Store, opener = 'xdg-open') {
         return new Response(content, { headers: { 'content-type': { 'index.html': 'text/html; charset=utf-8', 'style.css': 'text/css; charset=utf-8', 'app.js': 'text/javascript; charset=utf-8' }[name]!, 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'", 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' } });
       }
       if (req.method === 'GET' && url.pathname === '/api/meta') return send({ csrf });
-      if (req.method === 'GET' && url.pathname === '/api/overview') return send(store.overview());
+      if (req.method === 'GET' && url.pathname === '/api/overview') return send(await store.overview());
       const pin = /^\/api\/tasks\/([^/]+)\/pin$/.exec(url.pathname);
       if (req.method === 'POST' && pin) {
         const taskId = decodeURIComponent(pin[1]); id.parse(taskId);
-        return send(store.pin(taskId, z.object({ pinned: z.boolean() }).parse(await req.json()).pinned));
+        return send(await store.pin(taskId, z.object({ pinned: z.boolean() }).parse(await req.json()).pinned));
       }
       const act = /^\/api\/tasks\/([^/]+)\/(start|pause|unhold|close|stop|decline|answer|release|later|reopen)$/.exec(url.pathname);
       if (req.method === 'POST' && act) {
@@ -65,7 +65,7 @@ export function router(store: Store, opener = 'xdg-open') {
       const route = /^\/api\/goals\/([^/]+)$/.exec(url.pathname);
       if (!route) return send({ error: 'Не найдено' }, 404);
       const goalId = decodeURIComponent(route[1]); id.parse(goalId);
-      if (req.method === 'GET') return send({ ...store.get(goalId), inbox: store.inbox(goalId), worker: store.worker(goalId) });
+      if (req.method === 'GET') return send({ ...store.get(goalId), inbox: store.inbox(goalId), worker: await store.worker(goalId) });
       if (req.method === 'PATCH') return send(store.update(goalId, await req.json()));
       return send({ error: 'Метод не поддерживается' }, 405);
     } catch (error: any) { return send({ error: error instanceof ZodError ? error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : error.message }, ['Цель не найдена', 'Отчёт не найден'].includes(error.message) ? 404 : 400); }

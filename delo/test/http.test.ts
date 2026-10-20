@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../src/store.ts';
@@ -35,5 +35,70 @@ test('HTTP creates a goal, edits it, reads the card and rejects foreign origins 
     assert.equal((await handle(new Request('http://localhost:4317/api/goals'))).status, 404, 'the goal list gave way to the overview');
     const page = await handle(new Request('http://localhost:4317/')); assert.equal(page.status, 200); assert.match(await page.text(), /Дело/);
     const code = await handle(new Request('http://localhost:4317/app.js')); assert.equal(code.status, 200);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('gated snapshots leave HTTP responsive and concurrent overviews share one read', async t => {
+  const { serve } = await import('../src/server.ts');
+  const root = mkdtempSync(join(tmpdir(), 'delo-slow-http-'));
+  mkdirSync(join(root, 'bin'));
+  for (const name of ['fm-bearings-snapshot.sh', 'fm-fleet-snapshot.sh']) writeFileSync(join(root, 'bin', name), `#!/usr/bin/env node
+const fs = require('node:fs');
+fs.appendFileSync(process.env.FM_HOME + '/calls', '${name}\\n');
+const end = Date.now() + 600;
+while (!fs.existsSync(process.env.FM_HOME + '/release') && Date.now() < end) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+console.log('{}');
+`, { mode: 0o755 });
+  const store = new Store({ firstmateHome: root });
+  store.firstmate.list = () => []; store.firstmate.archive = () => [];
+  const server = serve(store, 0);
+  try {
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;
+    let finished = false;
+    const first = fetch(`${base}/api/overview`).then(r => { finished = true; return r.json(); });
+    const second = fetch(`${base}/api/overview`).then(r => r.json());
+    for (let i = 0; i < 100 && !existsSync(join(root, 'calls')); i++) await new Promise(resolve => setTimeout(resolve, 10));
+    const start = performance.now();
+    assert.ok((await fetch(`${base}/api/meta`)).ok);
+    const elapsed = performance.now() - start;
+    t.diagnostic(`meta during gated snapshot: ${elapsed.toFixed(1)} ms`);
+    assert.ok(elapsed < 100, 'meta responds in under 100 ms while snapshot is gated');
+    assert.equal(finished, false, 'the overview is still waiting on the synthetic gate');
+    writeFileSync(join(root, 'release'), '');
+    const [a, b] = await Promise.all([first, second]);
+    assert.deepEqual(a, b);
+    assert.deepEqual(readFileSync(join(root, 'calls'), 'utf8').trim().split('\n').sort(), ['fm-bearings-snapshot.sh', 'fm-fleet-snapshot.sh']);
+    assert.deepEqual(await (await fetch(`${base}/api/overview`)).json(), a, 'a recent overview is cached');
+    assert.equal(readFileSync(join(root, 'calls'), 'utf8').trim().split('\n').length, 2);
+  } finally {
+    writeFileSync(join(root, 'release'), '');
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test('pin and task POSTs return receipts without waiting for an overview', async () => {
+  const { router } = await import('../src/server.ts');
+  const root = mkdtempSync(join(tmpdir(), 'delo-receipt-http-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  const task = store.create({ title: 'Квитанция' });
+  let calls = 0;
+  store.firstmate.snapshot = async script => {
+    calls++;
+    assert.equal(script, 'fm-fleet-snapshot.sh', 'a POST never starts the bearings overview');
+    return { backlog: { records: [{ id: task.id, state: 'queued' }] } };
+  };
+  const handle = router(store);
+  try {
+    const { csrf } = await (await handle(new Request('http://localhost/api/meta'))).json();
+    const post = (action: string, body: unknown) => handle(new Request(`http://localhost/api/tasks/${task.id}/${action}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-delo-csrf': csrf }, body: JSON.stringify(body) }));
+    const pin = await post('pin', { pinned: true });
+    assert.equal(pin.status, 200); assert.deepEqual(await pin.json(), { ok: true });
+    const start = await post('start', {});
+    assert.equal(start.status, 200); assert.ok((await start.json()).note.id);
+    assert.equal(calls, 1, 'only the authoritative pin check needs a snapshot');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

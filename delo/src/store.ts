@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, phase, id } from './model.ts';
 import type { Goal, Action } from './model.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
-import { overview, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
+import { type Overview, overview, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
 
 const sections = ['Обложка', 'Зачем', 'Критерий готовности', 'Контекст', 'Ограничения'];
 
@@ -92,12 +92,16 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\
 // Every card and row comes from the Firstmate backlog; Delo keeps no data of its own.
 export class Store {
   firstmate: Firstmate;
+  private overviewRead?: { promise: Promise<Overview>; expires: number };
+  private revision = 0;
+  private invalidateOverview() { this.overviewRead = undefined; this.revision++; }
   constructor(options: { firstmateHome?: string } = {}) {
     this.firstmate = new Firstmate(options.firstmateHome || process.env.DELO_FIRSTMATE_HOME || defaultFirstmateHome());
   }
 
   // Creation writes only the Firstmate backlog: no template, never --start.
   create(input: unknown): Goal {
+    this.invalidateOverview();
     const data = goalInput.parse(input);
     const { title, sources } = titleSources(data.title);
     if (data.caseId) { const c = this.firstmate.show(data.caseId); if (c.kind !== 'program' || c.state === 'done') throw new Error('Такого открытого дела нет'); }
@@ -109,6 +113,7 @@ export class Store {
 
   // A дело is a program row put In flight at once: it never gets a worker, so it stays there until closed.
   createCase(input: unknown) {
+    this.invalidateOverview();
     const data = caseInput.parse(input);
     const { title, sources } = titleSources(data.title);
     const body = caseBody({ ...data, constraints: lines(data.constraints).map(l => l.replace(/^- /, '')), sources: [...sources.map(l => l.slice(sourceLine.length)), ...lines(data.sources).map(l => l.replace(/^Источник:\s*/, ''))] });
@@ -119,6 +124,7 @@ export class Store {
 
   // «Новый агент»: a task of an open дело through the ordinary create path, then the ordinary start request for firstmate.
   newAgent(caseId: string, input: unknown) {
+    this.invalidateOverview();
     const data = agentInput.parse(input);
     const c = this.getCase(caseId);
     if (c.archived || c.state === 'done') throw new Error('Новый агент запускается только в открытом деле');
@@ -147,6 +153,7 @@ export class Store {
 
   // Q40В: open tasks close only after the warning that lists them is confirmed; each gets the task «Закрыть» note for firstmate.
   closeCase(caseId: string, input: unknown) {
+    this.invalidateOverview();
     const { confirmed } = closeCaseInput.parse(input);
     const c = this.getCase(caseId);
     if (c.archived || c.state === 'done') throw new Error('Дело уже закрыто');
@@ -159,6 +166,7 @@ export class Store {
   }
 
   reopenCase(caseId: string) {
+    this.invalidateOverview();
     const c = this.getCase(caseId);
     if (c.archived || c.state !== 'done') throw new Error('Вернуть можно только закрытое дело из бэклога');
     this.firstmate.reopen(caseId); this.firstmate.start(caseId);
@@ -168,6 +176,7 @@ export class Store {
   // Q42А: an archived дело is not returned; «Продолжить» opens a new дело with its title, brief and sources.
   closedCases() { return this.firstmate.archive().filter(t => t.kind === 'program').map(t => ({ id: t.id, title: t.title, closed: field(t.closed) })); }
   continueCase(caseId: string) {
+    this.invalidateOverview();
     const old = this.getCase(caseId);
     if (!old.archived) throw new Error('Продолжить можно только дело из архива');
     const task = this.firstmate.add(undefined, old.title, caseBody(old), { kind: 'program' });
@@ -206,6 +215,7 @@ export class Store {
   }
 
   update(goalId: string, input: unknown): Goal {
+    this.invalidateOverview();
     const { title: newTitle, body, personal, folder, state: nextState } = goalPatch.parse(input);
     if (newTitle !== undefined || body !== undefined || personal !== undefined || folder !== undefined) {
       const g = this.get(goalId);
@@ -229,6 +239,7 @@ export class Store {
 
   // A card button. Starting and closing a row in flight are notes for firstmate, which owns dispatch.
   act(taskId: string, action: Action, input: unknown) {
+    this.invalidateOverview();
     const data = actionInput.parse(input);
     const task = this.firstmate.show(taskId);
     if (!actions(task).includes(action)) throw new Error('Это действие недоступно для задачи в её состоянии');
@@ -288,23 +299,40 @@ export class Store {
   }
 
   // The executor actually running a task, from the fleet snapshot's worker record.
-  worker(taskId: string) {
-    const record = (this.firstmate.snapshot('fm-fleet-snapshot.sh').tasks ?? []).find((t: any) => t.id === taskId);
+  async worker(taskId: string) {
+    const record = ((await this.firstmate.snapshot('fm-fleet-snapshot.sh')).tasks ?? []).find((t: any) => t.id === taskId);
     return record ? { harness: field(record.harness) ?? '' } : undefined;
   }
 
   // Suggestions for the folder field: every folder an open backlog task names.
   folders() { return [...new Set(this.list().map(g => g.folder).filter(Boolean))].sort(); }
 
-  overview() {
-    return overview(this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh'), this.firstmate.archive(), this.firstmate.list());
+  overview(): Promise<Overview> {
+    if (this.overviewRead && this.overviewRead.expires > Date.now()) return this.overviewRead.promise;
+    const read: { promise: Promise<Overview>; expires: number } = {
+      expires: Infinity,
+      promise: Promise.all([this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh')]).then(([bearings, fleet]) => {
+        // A mutation during the read also invalidates requests already in flight.
+        if (this.overviewRead !== read) return this.overview();
+        const result = overview(bearings, fleet, this.firstmate.archive(), this.firstmate.list());
+        read.expires = Date.now() + 2000;
+        return result;
+      }).catch(error => { if (this.overviewRead === read) this.overviewRead = undefined; throw error; }),
+    };
+    this.overviewRead = read;
+    return read.promise;
   }
 
   // Pinning is the backlog row's priority: 0 puts it in focus, 2 is the backlog default.
-  pin(taskId: string, on: boolean) {
-    const refusal = on ? pinRefusal(this.firstmate.snapshot('fm-fleet-snapshot.sh'), taskId) : undefined;
-    if (refusal) throw new Error(refusal);
+  async pin(taskId: string, on: boolean): Promise<{ ok: true }> {
+    if (on) {
+      let version: number; let fleet: any;
+      do { version = this.revision; fleet = await this.firstmate.snapshot('fm-fleet-snapshot.sh'); } while (version !== this.revision);
+      const refusal = pinRefusal(fleet, taskId);
+      if (refusal) throw new Error(refusal);
+    }
+    this.invalidateOverview();
     this.firstmate.priority(taskId, on ? 0 : 2);
-    return this.overview();
+    return { ok: true };
   }
 }

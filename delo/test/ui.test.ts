@@ -148,7 +148,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal((window.document.querySelector(`main section a[href="#${nativeId}"]`) as HTMLAnchorElement | null)?.textContent, 'UI цель', 'a row opens the goal card');
     (window.document.querySelector(`main section a[href="#${nativeId}"]`)?.closest('.row')?.querySelector('small') as HTMLElement).click();
     await until(() => window.location.hash === `#${nativeId}`);
-    const buttons = async (hash: string) => { window.location.hash = hash; window.dispatchEvent(new window.HashChangeEvent('hashchange')); await new Promise(resolve => setTimeout(resolve, 60)); return [...window.document.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action')); };
+    const buttons = async (hash: string) => { window.location.hash = hash; window.dispatchEvent(new window.HashChangeEvent('hashchange')); await until(() => window.document.querySelector('.page-heading .eyebrow')?.textContent?.includes(`· ${hash} ·`)); return [...window.document.querySelectorAll('[data-task-action]')].map(b => b.getAttribute('data-task-action')); };
     const env = { ...process.env }; for (const name of Object.keys(env)) if (name.startsWith('FM_')) delete env[name]; env.FM_HOME = store.firstmate.home;
     run(join(store.firstmate.home, 'bin', 'fm-captain-hold.sh'), ['hold', 'ui-call', '--title', 'Вопрос капитану', '--reason', 'Нужен выбор'], store.firstmate.home, 45000, env);
     assert.deepEqual(await buttons('ui-call'), ['answer', 'later', 'close']);
@@ -334,4 +334,65 @@ test('overview rows explain dependencies and holds, link fleet PRs, and hide blo
     assert.equal(pr?.getAttribute('rel'), 'noopener noreferrer');
     assert.equal(document.querySelector('[data-task-action="start"][data-id="rr-refund-q3"]'), null);
   } finally { window.close(); }
+});
+
+test('a deep link renders its card before overview and unchanged refresh preserves DOM and focus', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-refresh-ui-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  const goal = store.create({ title: 'Карточка без ожидания' });
+  const handle = router(store);
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: `http://localhost:4317/#${goal.id}`, runScripts: 'outside-only', pretendToBeVisual: true });
+  const { window } = dom;
+  let tick: () => Promise<void> = async () => {};
+  window.setInterval = (fn: () => Promise<void>) => { tick = fn; return 0; };
+  let release: () => void = () => {};
+  let gate = new Promise<void>(resolve => { release = resolve; });
+  const paths: string[] = []; let failOverview = true;
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  let holdCard = false; let releaseCard = () => {};
+  const cardGate = new Promise<void>(resolve => { releaseCard = resolve; });
+  window.fetch = async (path: string, init: RequestInit) => {
+    paths.push(path);
+    if (path === '/api/overview') { await gate; if (failOverview) { failOverview = false; return Response.json({ error: 'Обзор недоступен' }, { status: 400 }); } return Response.json({ generated: String(paths.length), cases: [], focus: [], waiting: [], working: [], next: [], done: [], kinds: [], repos: [] }); }
+    if (holdCard && path.startsWith('/api/goals/') && !init.body) await cardGate;
+    return handle(new Request(new URL(path, window.location.href), init));
+  };
+  const until = async (check: () => unknown) => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(check()); };
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    await until(() => window.document.querySelector('main h1')?.textContent === goal.title);
+    await until(() => paths.includes('/api/overview'));
+    assert.ok(paths.indexOf(`/api/goals/${goal.id}`) < paths.indexOf('/api/overview'));
+    release(); await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(window.document.querySelector('main h1')?.textContent, goal.title, 'failure of the background overview keeps the loaded card');
+    const details = window.document.querySelector('main details'); details.open = true;
+    const button = window.document.querySelector('main [data-action="edit"]'); button.focus();
+    const main = window.document.querySelector('main'); main.scrollTop = 123;
+    await tick();
+    assert.equal(window.document.querySelector('main [data-action="edit"]'), button);
+    assert.equal(window.document.activeElement, button);
+    assert.equal(details.open, true);
+    assert.equal(main.scrollTop, 123);
+    gate = new Promise<void>(resolve => { release = resolve; });
+    button.click(); await until(() => window.document.getElementById('dialog').open);
+    window.document.querySelector('[name=title]').value = 'Сохранено до обзора';
+    window.document.getElementById('dialog-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await until(() => !window.document.getElementById('dialog').open);
+    await until(() => window.document.querySelector('main h1')?.textContent === 'Сохранено до обзора');
+    assert.equal(store.get(goal.id).title, 'Сохранено до обзора', 'an accepted edit finishes while overview is gated');
+    release(); await new Promise(resolve => setTimeout(resolve, 20));
+    window.location.hash = ''; await until(() => window.document.getElementById('kind'));
+    const filter = window.document.getElementById('kind'); filter.focus();
+    await tick();
+    assert.equal(window.document.getElementById('kind'), filter, 'generated timestamp alone does not rebuild the overview');
+    assert.equal(window.document.activeElement, filter);
+    holdCard = true;
+    const before = paths.filter(p => p === `/api/goals/${goal.id}`).length;
+    window.location.hash = goal.id;
+    await until(() => paths.filter(p => p === `/api/goals/${goal.id}`).length > before);
+    window.location.hash = ''; await until(() => window.document.getElementById('kind'));
+    releaseCard(); await new Promise(resolve => setTimeout(resolve, 40));
+    assert.equal(window.document.getElementById('kind'), filter, 'a late card response cannot replace the overview after navigating back');
+  } finally { release(); releaseCard(); window.close(); rmSync(root, { recursive: true, force: true }); }
 });

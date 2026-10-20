@@ -46,7 +46,7 @@ test('a дело gathers its tasks from the backlog and the archive, closes only
     axi('done', first, '--pr', 'https://github.com/o/r/pull/7', '--report', `data/${first}/report.md`);
     store.act(store.create({ title: 'Без дела' }).id, 'close', {});
     assert.match(archive(), new RegExp(first), 'done_keep = 1 moved the closed task to the archive');
-    assert.deepEqual(store.overview().cases.map(r => [r.id, r.counts]), [[c.id, { working: 0, waiting: 0, next: 1, done: 1 }]]);
+    assert.deepEqual((await store.overview()).cases.map(r => [r.id, r.counts]), [[c.id, { working: 0, waiting: 0, next: 1, done: 1 }]]);
 
     await open(`case:${c.id}`, () => document.querySelector('main h1')?.textContent === 'Пробное дело');
     assert.deepEqual([...document.querySelectorAll('main h2')].map(h => h.textContent), ['Бриф', 'Задачи', 'Закрыты раньше', 'Ссылки']);

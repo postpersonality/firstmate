@@ -85,24 +85,24 @@ test('pinRefusal allows three pins and refuses a fourth, a Done row and an unkno
   assert.match(pinRefusal({ backlog: { records } }, 'nope') ?? '', /нет в бэклоге/);
 });
 
-test('Store pins through the backlog priority and keeps the backlog unchanged on a refused fourth pin', () => {
+test('Store pins through the backlog priority and keeps the backlog unchanged on a refused fourth pin', async () => {
   const root = mkdtempSync(join(tmpdir(), 'delo-pin-'));
   try {
     const store = new Store({ firstmateHome: firstmateHome(root) });
     for (const id of ['p1', 'p2', 'p3', 'p4']) store.firstmate.add(id, `Задача ${id}`);
-    for (const id of ['p1', 'p2', 'p3']) store.pin(id, true);
+    for (const id of ['p1', 'p2', 'p3']) await store.pin(id, true);
     const backlog = join(store.firstmate.home, 'data', 'backlog.md');
-    assert.deepEqual(store.overview().focus.map(r => r.id).sort(), ['p1', 'p2', 'p3']);
+    assert.deepEqual((await store.overview()).focus.map(r => r.id).sort(), ['p1', 'p2', 'p3']);
     assert.equal(readFileSync(backlog, 'utf8').match(/\(priority: 0\)/g)?.length, 3);
     const before = readFileSync(backlog, 'utf8');
-    assert.throws(() => store.pin('p4', true), /уже 3/);
+    await assert.rejects(store.pin('p4', true), /уже 3/);
     assert.equal(readFileSync(backlog, 'utf8'), before);
-    const after = store.pin('p2', false);
+    await store.pin('p2', false);
+    const after = await store.overview();
     assert.deepEqual(after.focus.map(r => r.id).sort(), ['p1', 'p3']);
     assert.match(readFileSync(backlog, 'utf8'), /p2 .*\(priority: 2\)/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-
 
 test('rows expose full holds, unresolved dependencies, fleet PRs and honest worker states', () => {
   const reason = 'Пауза до согласования условий. '.repeat(20);
@@ -134,4 +134,81 @@ test('rows expose full holds, unresolved dependencies, fleet PRs and honest work
   assert.equal(rows.find(r => r.id === 'check')?.prUrl, 'https://example.org/pull/2');
   const hinted = overview({ in_flight: [{ id: 'ask' }] }, { backlog: { records }, tasks: [{ id: 'ask', current_state: { state: 'unknown' }, hints: { pending_decision: true } }] });
   assert.equal(hinted.working[0].rows[0].current, 'Состояние неизвестно', 'unknown is never upgraded using a hint');
+});
+
+test('overview cache expires and every accepted mutation invalidates it', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-overview-cache-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  let calls = 0; let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  store.firstmate.snapshot = async () => { calls++; return {}; };
+  try {
+    const first = await store.overview();
+    assert.equal(calls, 2);
+    assert.equal(await store.overview(), first);
+    now += 2001;
+    assert.notEqual(await store.overview(), first);
+    assert.equal(calls, 4);
+    const task = store.create({ title: 'Свежая задача' });
+    await store.overview(); assert.equal(calls, 6, 'create invalidates');
+    store.update(task.id, { title: 'Правка' });
+    await store.overview(); assert.equal(calls, 8, 'update invalidates');
+    store.act(task.id, 'pause', {});
+    await store.overview(); assert.equal(calls, 10, 'action invalidates');
+    // Action availability is checked against the backlog, independently of the overview cache.
+    assert.throws(() => store.act(task.id, 'start', {}), /недоступно/);
+    assert.equal(store.firstmate.receipts().pending.length, 0);
+    const c = store.createCase({ title: 'Дело' });
+    await store.overview(); assert.equal(calls, 12);
+    store.newAgent(c.id, { direction: 'Исследуй' });
+    await store.overview(); assert.equal(calls, 14, 'new-agent request invalidates');
+    store.closeCase(c.id, { confirmed: store.getCase(c.id).tasks.map(t => t.id) });
+    await store.overview(); assert.equal(calls, 16);
+    store.reopenCase(c.id);
+    await store.overview(); assert.equal(calls, 18);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a mutation during an overview read prevents stale in-flight data from being cached or returned', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-overview-race-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  const releases: (() => void)[] = [];
+  let calls = 0;
+  store.firstmate.snapshot = async () => {
+    calls++;
+    if (calls <= 2) { await new Promise<void>(resolve => releases.push(resolve)); return { generated: 'old' }; }
+    return { generated: 'new' };
+  };
+  try {
+    const before = store.overview();
+    store.create({ title: 'Изменение во время снимка' });
+    const after = await store.overview();
+    releases.forEach(release => release());
+    assert.equal((await before).generated, 'new');
+    assert.equal(await store.overview(), after);
+    assert.equal(calls, 4);
+  } finally { releases.forEach(release => release()); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('failed overview reads are retried instead of being cached', async () => {
+  const store = new Store({ firstmateHome: tmpdir() });
+  store.firstmate.snapshot = async () => { throw new Error('snapshot failed'); };
+  await assert.rejects(store.overview(), /snapshot failed/);
+  store.firstmate.snapshot = async () => ({});
+  store.firstmate.list = () => []; store.firstmate.archive = () => [];
+  assert.deepEqual((await store.overview()).focus, []);
+});
+
+test('concurrent pins recheck fresh state and cannot exceed the focus limit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-pin-race-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  try {
+    for (const id of ['a', 'b', 'c', 'd']) store.firstmate.add(id, id);
+    await store.pin('a', true); await store.pin('b', true);
+    await store.overview();
+    const results = await Promise.allSettled([store.pin('c', true), store.pin('d', true)]);
+    assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+    assert.match((results.find(r => r.status === 'rejected') as PromiseRejectedResult).reason.message, /уже 3/);
+    assert.equal((await store.overview()).focus.length, 3);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

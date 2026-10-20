@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { run } from './process.ts';
+import { run, runAsync } from './process.ts';
 import { decode } from '@toon-format/toon';
 
 export type FirstmateState = 'queued' | 'in_flight' | 'done';
@@ -18,14 +18,16 @@ export class Firstmate {
   private readonly command: string;
   constructor(home: string, command?: string) { this.home = resolve(home); this.command = command ?? join(this.home, 'bin', 'fm-tasks-axi.sh'); }
 
-  private call(args: string[], command = this.command, input?: string) {
+  private env() {
     const env = { ...process.env };
     for (const name of Object.keys(env)) if (name.startsWith('FM_') || inheritedNames.includes(name)) delete env[name];
     env.FM_HOME = this.home;
-    return run(command, args, this.home, 45000, env, input);
+    return env;
   }
 
-  snapshot(script: 'fm-bearings-snapshot.sh' | 'fm-fleet-snapshot.sh') { return JSON.parse(this.call(['--json'], join(this.home, 'bin', script))); }
+  private call(args: string[], command = this.command, input?: string) { return run(command, args, this.home, 45000, this.env(), input); }
+
+  async snapshot(script: 'fm-bearings-snapshot.sh' | 'fm-fleet-snapshot.sh') { return JSON.parse(await runAsync(join(this.home, 'bin', script), ['--json'], this.home, 45000, this.env())); }
 
   private bodyArgs(body: string) {
     const folder = mkdtempSync(join(tmpdir(), 'delo-firstmate-body-'));
