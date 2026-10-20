@@ -2389,13 +2389,13 @@ test_effort_pin_malformed_file_refuses_and_removal_restores_choice() {
   rec=$(make_spawn_case effort-pin-malformed claude "$id")
   read_case_record "$rec"
   log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
-  for bad in 'xhigh high' extreme XHIGH ''; do
+  for bad in 'xhigh high' extreme XHIGH '' medium max; do
     n=$((n + 1))
     pin_worker_effort "$HOME_DIR" "$bad"
     out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
     status=$?
     expect_code 1 "$status" "malformed pin '$bad' must refuse"
-    assert_contains "$out" "config/crew-effort must hold exactly one of low, medium, high, xhigh, max, ultra (got '$bad')" \
+    assert_contains "$out" "config/crew-effort must hold exactly xhigh (got '$bad')" \
       "the refusal must quote the malformed pin '$bad'"
     assert_refused_before_launch "$id" "malformed pin $n"
   done
