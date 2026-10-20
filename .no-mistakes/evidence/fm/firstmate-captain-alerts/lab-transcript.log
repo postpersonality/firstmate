@@ -1,0 +1,383 @@
+
+===== S1-refusals-before-any-native-review  [2026-10-20T19:15:19Z] smtp-mode=ok
+--- legacy unreviewed send entrypoints
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh send owner@example.invalid Bypass unreviewed body
+fm-mail: unreviewed send is closed; use alert <request.json> for mandatory independent review
+exit=1
+$ python3 /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.py send owner@example.invalid Bypass unreviewed body
+fm-mail: unreviewed send is closed; use fm-mail.sh alert
+exit=1
+--- caller-authored verdict / caller-chosen evidence
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/forged-verdict.json
+NO_MAIL: request keys are exactly id, task, decision, subject, body, analysis; the gate reads the evidence
+exit=1
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/own-sources.json
+NO_MAIL: request keys are exactly id, task, decision, subject, body, analysis; the gate reads the evidence
+exit=1
+--- critic resolved through PATH (relative name) with a forged claude first on PATH
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+NO_MAIL: critic must be an absolute path; PATH is never searched
+exit=1
+forged PATH critic ran: no
+--- critic process fails (/bin/false)
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+NO_MAIL: native critic failed or exceeded bound; repair the gate critic and resubmit
+exit=1
+--- self-authored approval without native session evidence
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+NO_MAIL: missing successful native session/model evidence; repair the gate critic
+exit=1
+--- shared .env (0644) holding the credential
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+NO_MAIL: chmod 600 $FM_HOME/.env; it holds the sending credential
+exit=1
+--- critic not configured
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+NO_MAIL: configure FM_CAPTAIN_ALERT_CLAUDE in $FM_HOME/.env
+exit=1
+600
+--- unreadable later steering record
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/records.json
+NO_MAIL: cannot read state/records.inbox/002.msg
+exit=1
+--- unreadable task record (.meta)
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/records.json
+NO_MAIL: cannot read state/records.meta
+exit=1
+--- task without canonical brief
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/ghost.json
+NO_MAIL: task ghost lacks its canonical brief record
+exit=1
+--- decision key that is not open
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/closed.json
+NO_MAIL: decision other is not an open blocked or needs-decision record of task publish; email only a currently open blocker
+exit=1
+--- SMTP capture log lines after all refusals: 0
+--- critic receipts created: 1
+--- inbox notes published for refusals:
+1792523719-thgghQ.note
+1792523720-dbTLYB.note
+1792523720-J6mzwv.note
+1792523720-v8qfcN.note
+1792523721-E9ICF0.note
+1792523721-L3QTJ5.note
+1792523721-M2DFjh.note
+1792523722-7trX6b.note
+1792523722-Rq0HB6.note
+1792523722-s50SnS.note
+1792523722-VdzCp6.note
+
+===== S2-native-self-resolvable  [2026-10-20T19:15:41Z] smtp-mode=ok
+--- native critic: q23
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
+NO_MAIL: critic citation is absent from the task records; resubmit for review
+exit=1
+elapsed=16s
+review.json:
+
+transport.json:
+{
+  "command": "/home/nikolayseliverstov/.local/share/claude/versions/2.1.304",
+  "executable_sha256": "ea0f135784631619a7a409d07322ecec964f9cc4fd377508ed1ba3f141f27912",
+  "exit_code": 0,
+  "stdout_sha256": "ce752aa3ba9794146ba7215f4b3b4193af88e3648cea8ad65cb99873131003bd",
+  "request_sha256": "7448d62abbc6801c92a91f27b0d775edf25a918075552ecddad8cfd32c829aea",
+  "session_id": "64e3643f-ada1-49a7-a1c7-575c64c9de6c",
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 1298,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 19556,
+      "webSearchRequests": 0,
+      "costUSD": 0.182416,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 248,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  }
+}
+--- native critic: nextstep
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/nextstep.json
+SELF_RESOLVE: Don't send the email. Steer the worker on task nextstep (generation s1.1.1) with `bin/fm-send.sh` and `--resolve-key default`, which closes the open blocker in the same step. Message: "The instructions already require covering --dry-run in bin/export.sh with a regression test, so no further approval is needed. Write the regression test now, make sure it passes, and continue through the selected delivery path." Then keep supervising as usual. Contact the captain only when the work is ready for review or merge.
+exit=1
+elapsed=14s
+review.json:
+{
+  "verdict": "SELF_RESOLVE",
+  "request_sha256": "00727fa5134cde2e165ae6fa9b1384330083eb19fb7924fc718055afc9fa3ab7",
+  "reason": "The captain doesn't need to decide anything here. The brief already asks for the regression test as part of the task, so the worker has the go-ahead it is waiting for. The supervisor's own analysis says so: its only alternative is \"Write the regression test as the brief requires.\" Under the operating rules, the captain's word is needed only for a review, approval, merge or design pick, and writing a test the brief requires is none of those. The proposed email to owner@example.invalid (\"may I write the regression test for --dry-run now?\") gets the situation wrong. It presents work that is already in scope as if it needed permission, so it should not be sent.",
+  "action": "Don't send the email. Steer the worker on task nextstep (generation s1.1.1) with `bin/fm-send.sh` and `--resolve-key default`, which closes the open blocker in the same step. Message: \"The instructions already require covering --dry-run in bin/export.sh with a regression test, so no further approval is needed. Write the regression test now, make sure it passes, and continue through the selected delivery path.\" Then keep supervising as usual. Contact the captain only when the work is ready for review or merge.",
+  "human_only": "",
+  "evidence": [
+    {
+      "source": "brief",
+      "quote": "Add a --dry-run flag to bin/export.sh and cover it with a regression test."
+    },
+    {
+      "source": "status",
+      "quote": "blocked: The flag is implemented; writing its regression test is next. Waiting for a go-ahead before writing the test."
+    },
+    {
+      "source": "authority",
+      "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+    },
+    {
+      "source": "authority",
+      "quote": "When a steer answers an open keyed decision or blocker, pass `fm-send`'s `--resolve-key` so the answer itself closes that decision record at answer time"
+    },
+    {
+      "source": "authority",
+      "quote": "Do not surface automatic fixes, retries, routine progress, or internal supervision mechanics."
+    }
+  ]
+}
+transport.json:
+{
+  "command": "/home/nikolayseliverstov/.local/share/claude/versions/2.1.304",
+  "executable_sha256": "ea0f135784631619a7a409d07322ecec964f9cc4fd377508ed1ba3f141f27912",
+  "exit_code": 0,
+  "stdout_sha256": "dbe5ec17b9234cb4d04795ff678755cfe91d1102d314e59e765f4c04de68c16e",
+  "request_sha256": "00727fa5134cde2e165ae6fa9b1384330083eb19fb7924fc718055afc9fa3ab7",
+  "session_id": "a2084577-9e86-4012-95f6-16710c0e76bf",
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 1259,
+      "cacheReadInputTokens": 1231,
+      "cacheCreationInputTokens": 18175,
+      "webSearchRequests": 0,
+      "costUSD": 0.1708342,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 431,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  }
+}
+--- replay unchanged q23 request (expect same verdict, no new native session)
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
+SELF_RESOLVE: Send no captain email. Through fm-send with --resolve-key default, steer the Q23 worker (spawn generation s1.1.1) to make the accepted fix on its isolated branch: correct the question-authority trigger in bin/fm-ask.sh and add its regression test. Because bin/ is shared tracked material, require the worker to load firstmate-coding-guidelines before editing. Ship it through this repo's selected delivery path and PR route, then continue with ordinary in-scope work without asking again. This grants no merge authority: merging the resulting PR still follows the project's configured merge posture and needs the captain's explicit approval unless yolo applies.
+exit=1
+elapsed=17s
+native session before=[64e3643f-ada1-49a7-a1c7-575c64c9de6c] after=[53817a82-674b-4e5e-ac41-5d46e136174f] same=NO
+--- SMTP capture log lines: 0
+--- newest inbox notes:
+--
+Blocker email q23: SELF_RESOLVE
+Send no captain email. Through fm-send with --resolve-key default, steer the Q23 worker (spawn generation s1.1.1) to make the accepted fix on its isolated branch: correct the question-authority trigger in bin/fm-ask.sh and add its regression test. Because bin/ is shared tracked material, require the worker to load firstmate-coding-guidelines before editing. Ship it through this repo's selected delivery path and PR route, then continue with ordinary in-scope work without asking again. This grants no merge authority: merging the resulting PR still follows the project's configured merge posture and needs the captain's explicit approval unless yolo applies.
+Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/q23/c99b69cad6151e7d3d09649a8c3c4b9c834723a36f8097a200c3079363433706/7448d62abbc6801c92a91f27b0d775edf25a918075552ecddad8cfd32c829aea/outcome.json
+--
+Blocker email nextstep: SELF_RESOLVE
+Don't send the email. Steer the worker on task nextstep (generation s1.1.1) with `bin/fm-send.sh` and `--resolve-key default`, which closes the open blocker in the same step. Message: "The instructions already require covering --dry-run in bin/export.sh with a regression test, so no further approval is needed. Write the regression test now, make sure it passes, and continue through the selected delivery path." Then keep supervising as usual. Contact the captain only when the work is ready for review or merge.
+Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/nextstep/440342d8b542ebb1f361c04835887ee1d5ec115ded886d3630bb1bfb659e2c6d/00727fa5134cde2e165ae6fa9b1384330083eb19fb7924fc718055afc9fa3ab7/outcome.json
+
+===== S3-native-needs-captain-concurrent-dedup  [2026-10-20T19:16:51Z] smtp-mode=ok
+--- replay unchanged q23 after its SELF_RESOLVE (expect replay, no new native session)
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
+SELF_RESOLVE: Send no captain email. Through fm-send with --resolve-key default, steer the Q23 worker (spawn generation s1.1.1) to m
+q23 native session before=[53817a82-674b-4e5e-ac41-5d46e136174f ] after=[53817a82-674b-4e5e-ac41-5d46e136174f ] same=yes
+--- two different caller ids for ONE open publish blocker, launched concurrently
+both finished in 21s
+SENT: this open decision was already mailed; deduplicated
+publish-a exit=0
+SENT: SMTP accepted the notification (inbox arrival unverified)
+publish-b exit=0
+SMTP messages captured: 1
+native critic sessions for publish: 1  [- 7dfc69d0-2d20-4999-93fa-cd9a9d472222 ]
+--- a third caller id, sequential replay
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
+SENT: this open decision was already mailed; deduplicated
+exit=0
+SMTP messages captured: 1  native sessions: 1
+--- receipts
+/tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/publish/fc0224e54e96b3cdb1dc0c09891003da2bedb3a8a7f9cfc7b23e62be3cbd9cf9/sent.json
+{
+  "id": "publish-b",
+  "binding": "db386a3ac9148a6917a10169572cf8554db3a3ca2642b5ff1f570e34f2f9f221",
+  "at": 1792523833
+}
+{
+  "verdict": "NEEDS_CAPTAIN",
+  "request_sha256": "db386a3ac9148a6917a10169572cf8554db3a3ca2642b5ff1f570e34f2f9f221",
+  "reason": "This needs the captain. The local draft, which is all the brief authorized, is finished. The only step left is publishing the notes to the public project site, and the brief says that step needs separate, explicit permission from the captain. The later steering message says the same thing. The status log shows nothing has been published and that no record grants permission. AGENTS.md says to ask for the captain's word when the next step needs approval, and says never to infer or widen an override. The supervisor can't grant this permission or work around it. Keeping the draft local is safe but does not answer whether to publish, and publishing without permission is forbidden. Being hard is not why this goes to the captain. The decision is reserved for a human. The email is accurate: it says the draft is complete and saved locally, asks only for permission to publish publicly, offers 'keep it local' as a real option rather than inventing a completion-versus-abandonment choice, and contains no secrets. The recipient owner@example.invalid is the bound delivery recipient.",
+  "action": "Send the proposed email as written to owner@example.invalid. Until the captain answers, keep the draft local and publish nothing. If the reply is 'publish', record it as the explicit grant and close the 'default' blocker with the answer. If the captain says to keep it local, close the blocker with the draft as the finished deliverable and leave it unpublished.",
+  "human_only": "Explicit captain permission to publish the completed v2 release-notes draft to the public project site, or a captain instruction to keep it local and unpublished.",
+  "evidence": [
+    {
+      "source": "brief",
+      "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+    },
+    {
+      "source": "steering",
+      "quote": "Do not publish anything publicly until the captain explicitly grants publication permission."
+    },
+    {
+      "source": "status",
+      "quote": "Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+    },
+    {
+      "source": "authority",
+      "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+    },
+    {
+      "source": "authority",
+      "quote": "Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority."
+    }
+  ]
+}
+--- SMTP capture log (local, never relayed)
+{"event": "connect", "mode": "ok", "at": 1792523833.267519}
+{"event": "auth", "user": "sender@example.invalid", "password_matches_expected": true, "mode": "ok"}
+{"event": "message", "envelope": {"rcpt": ["<owner@example.invalid>"], "from": "<sender@example.invalid>"}, "data": "From: sender@example.invalid\r\nTo: owner@example.invalid\r\nSubject: Permission needed: publish the v2 release notes\r\nDate: Tue, 20 Oct 2026 22:17:13 +0300\r\nContent-Type: text/plain; charset=\"utf-8\"\r\nContent-Transfer-Encoding: quoted-printable\r\nMIME-Version: 1.0\r\n\r\nCaptain, the v2 release-notes draft is complete and saved locally. Publishing=\r\n it to the public project site needs your explicit permission, which the brie=\r\nf withholds. Reply \"publish\" to grant it, or tell me to keep it local.\r\n", "at": 1792523833.352154}
+--- command-substitution markers from the metacharacter password: 0
+
+===== S4-occurrence-and-generation  [2026-10-20T19:17:31Z] smtp-mode=ok
+--- (i) the same open blocker restamped by the worker
+blocked [at=1792523900]: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published.
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
+SENT: this open decision was already mailed; deduplicated
+exit=0
+SMTP messages=1 native sessions=1
+--- (ii) closed, then reopened with byte-identical text
+resolved: captain asked to keep it local until the security review of the site finishes
+blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published.
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+SELF_RESOLVE: Do not send the email. Close the repeated blocker using the captain's recorded answer: keep the v2 release-notes draft local and change the open blocker into a declared wait for the site security review to finish. Before raising this again, check the task's actual current state with bin/fm-crew-state.sh. Ask the captain again only when there is evidence that the security review is complete. That new request must cite the earlier answer and the finished review.
+exit=1
+SMTP messages=1 native sessions=2
+--- (iii) same caller id, new task generation
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
+SELF_RESOLVE: Don't send the email. Keep the v2 release-notes draft local and publish nothing. Close the reopened 'default' blocker on task 'publish' and record the wait as a captain hold: bin/fm-captain-hold.sh hold publish --reason "Captain: keep the v2 release notes local until the site security review finishes; publishing still needs explicit captain permission". Check current state with bin/fm-crew-state.sh first. Escalate again only once there is evidence that the site security review has finished. Any later email must say the review is done and ask only for the explicit publish permission.
+exit=1
+SMTP messages=1 native sessions=3
+--- decision roots and their markers
+4c4e9fa4e5415390ecc8ac180db1d3cfbd21a0be68a2f59e108ec11c05e880c9: 
+
+b8212dc463f44ba6c6011d9111d58bd597125d3effe5aef7aae947c47c55cfa6: 
+
+fc0224e54e96b3cdb1dc0c09891003da2bedb3a8a7f9cfc7b23e62be3cbd9cf9: attempted.json sent.json 
+{"id":"publish-b","binding":"db386a3ac9148a6917a10169572cf8554db3a3ca2642b5ff1f570e34f2f9f221","at":1792523833}
+--- verdicts per binding
+4c4e9fa4e541 20a27b86b541 SELF_RESOLVE
+b8212dc463f4 8b05f8ae680b SELF_RESOLVE
+fc0224e54e96 080db6a85880 NO_MAIL
+fc0224e54e96 db386a3ac914 SENT
+--- SMTP messages (envelope, subject)
+['<owner@example.invalid>'] ['Subject: Permission needed: publish the v2 release notes']
+
+===== S5-presend-retry-and-no-resend  [2026-10-20T19:18:46Z] smtp-mode=ok
+--- (1) SMTP server rejects login (pre-send failure); connects so far=1
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-1.json
+NO_MAIL: SMTP connection or login failed before sending; repair the service or credentials and resubmit for a fresh review
+exit=1
+native session=[39b974ba-62e9-443b-9a8c-0fb40f58b65e ] attempted.json=0 connects=2 messages=1
+verdict: NEEDS_CAPTAIN
+--- (2) service repaired but drops the connection at DATA (attempted, delivery uncertain)
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-1.json
+NO_MAIL: SMTP failed; delivery unconfirmed, no automatic retry; verify the service before a new event
+exit=1
+native session=[4968dad4-3ee3-412b-86d3-5b30e99ad18e ] fresh_review=yes attempted.json=1 connects=3 messages=1
+--- (3) service fully healthy; another caller id for the same decision
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-2.json
+NO_MAIL: SMTP was already attempted for this open decision; delivery may be uncertain. Inspect its receipt before a new event.
+exit=1
+native session unchanged=yes new SMTP connections=0 messages=1
+/tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/login/9a65754d9fb5706a47dc33e60f36d3f534998e5ef0ebe007e0473dcdeb0acf00/attempted.json
+{
+  "id": "login-1",
+  "binding": "5c2f3b7a8ec92e85ce9887ef04cbbb6ed65a620575dacbfcc4c8c6a57ee09554",
+  "at": 1792523979
+}
+--- SMTP log for this step
+{"event": "connect", "mode": "auth-fail", "at": 1792523951.6478024}
+{"event": "auth", "user": "sender@example.invalid", "password_matches_expected": true, "mode": "auth-fail"}
+{"event": "connect", "mode": "data-fail", "at": 1792523979.3208916}
+{"event": "auth", "user": "sender@example.invalid", "password_matches_expected": true, "mode": "data-fail"}
+{"event": "data-dropped", "envelope": {"rcpt": ["<owner@example.invalid>"], "from": "<sender@example.invalid>"}}
+
+===== S6-records-change-during-review  [2026-10-20T19:19:48Z] smtp-mode=ok
+--- (1) captain steering lands while the native critic is reviewing
+review started (context frozen): /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/change/224cf3122ad0611ab8350a4056129ef9741b5478e8cb4a4f27f5b6d2179eaf42/79f79d5859d49d149c1aa657ef6c462352446fdbc67845988a1951762adb1cb1/context.json
+steering written at 19:19:48 while critic runs
+NO_MAIL: task records changed during review; resubmit for a fresh review
+exit=1
+critic verdict on the frozen records: NEEDS_CAPTAIN
+SMTP messages=1
+--- (2) resubmit: the critic now reads the new steering
+$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/change-1.json
+SELF_RESOLVE: Cancel the proposed email to owner@example.invalid. Have the worker for task 'change' (generation s1.1.1) process the unhandled steering message state/change.inbox/001.msg. It should then publish only the completed v2 release-notes draft in data/change/notes.md, and only to the public project site, as the captain authorized. Publish nothing else and nowhere else. After publishing, close the open blocker with key 'default', for example by passing --resolve-key default with fm-send or writing the worker's resolving status entry. Record the published outcome, including the public URL, and give the captain a one-line report of the result.
+exit=1
+SMTP messages=1
+native sessions for change: 2
+
+===== S7-drain-reviewed-email-hint  [2026-10-20T19:20:49Z] smtp-mode=ok
+--- (a) recipient configured in the 0600 .env; open blockers in the home
+drain exit=0
+1792523719	1	check	inbox:1792523719-thgghQ	check: captain inbox note 1792523719-thgghQ - Blocker email forged-verdict.json: NO_MAIL request keys are exactly id, task, decision, subject, bod
+1792523720	2	check	inbox:1792523720-J6mzwv	check: captain inbox note 1792523720-J6mzwv - Blocker email own-sources.json: NO_MAIL request keys are exactly id, task, decision, subject, body, 
+1792523720	3	check	inbox:1792523720-dbTLYB	check: captain inbox note 1792523720-dbTLYB - Blocker email publish-a.json: NO_MAIL critic must be an absolute path; PATH is never searched
+1792523720	4	check	inbox:1792523720-v8qfcN	check: captain inbox note 1792523720-v8qfcN - Blocker email publish-a: NO_MAIL native critic failed or exceeded bound; repair the gate critic and 
+1792523721	5	check	inbox:1792523721-M2DFjh	check: captain inbox note 1792523721-M2DFjh - Blocker email publish-a: NO_MAIL missing successful native session/model evidence; repair the gate c
+1792523721	6	check	inbox:1792523721-L3QTJ5	check: captain inbox note 1792523721-L3QTJ5 - Blocker email publish-a.json: NO_MAIL chmod 600 $FM_HOME/.env; it holds the sending credential
+1792523721	7	check	inbox:1792523721-E9ICF0	check: captain inbox note 1792523721-E9ICF0 - Blocker email publish-a.json: NO_MAIL configure FM_CAPTAIN_ALERT_CLAUDE in $FM_HOME/.env
+1792523722	8	check	inbox:1792523722-Rq0HB6	check: captain inbox note 1792523722-Rq0HB6 - Blocker email records.json: NO_MAIL cannot read state/records.inbox/002.msg
+1792523722	9	check	inbox:1792523722-VdzCp6	check: captain inbox note 1792523722-VdzCp6 - Blocker email records.json: NO_MAIL cannot read state/records.meta
+1792523722	10	check	inbox:1792523722-s50SnS	check: captain inbox note 1792523722-s50SnS - Blocker email ghost.json: NO_MAIL task ghost lacks its canonical brief record
+1792523722	11	check	inbox:1792523722-7trX6b	check: captain inbox note 1792523722-7trX6b - Blocker email closed.json: NO_MAIL decision other is not an open blocked or needs-decision record of
+1792523756	12	check	inbox:1792523756-M0phoY	check: captain inbox note 1792523756-M0phoY - Blocker email q23: NO_MAIL critic citation is absent from the task records; resubmit for review Rece
+1792523771	13	check	inbox:1792523771-kpV3yK	check: captain inbox note 1792523771-kpV3yK - Blocker email nextstep: SELF_RESOLVE Don't send the email. Steer the worker on task nextstep (genera
+1792523788	14	check	inbox:1792523788-L0t9iT	check: captain inbox note 1792523788-L0t9iT - Blocker email q23: SELF_RESOLVE Send no captain email. Through fm-send with --resolve-key default, s
+1792523874	15	check	inbox:1792523874-JTeLc7	check: captain inbox note 1792523874-JTeLc7 - Blocker email publish-a: SELF_RESOLVE Do not send the email. Close the repeated blocker using the ca
+1792523909	16	check	inbox:1792523909-NZldUy	check: captain inbox note 1792523909-NZldUy - Blocker email publish-c: SELF_RESOLVE Don't send the email. Keep the v2 release-notes draft local an
+1792523951	17	check	inbox:1792523951-qrlyW3	check: captain inbox note 1792523951-qrlyW3 - Blocker email login-1: NO_MAIL SMTP connection or login failed before sending; repair the service or
+1792523979	18	check	inbox:1792523979-tT7WYk	check: captain inbox note 1792523979-tT7WYk - Blocker email login-1: NO_MAIL SMTP failed; delivery unconfirmed, no automatic retry; verify the ser
+1792523980	19	check	inbox:1792523980-F4UfSq	check: captain inbox note 1792523980-F4UfSq - Blocker email login-2: NO_MAIL SMTP was already attempted for this open decision; delivery may be un
+1792524015	20	check	inbox:1792524015-4rnEJc	check: captain inbox note 1792524015-4rnEJc - Blocker email change-1: NO_MAIL task records changed during review; resubmit for a fresh review Rece
+1792524040	21	check	inbox:1792524039-XHFEfG	check: captain inbox note 1792524039-XHFEfG - Blocker email change-1: SELF_RESOLVE Cancel the proposed email to owner@example.invalid. Have the wo
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 21 --recovery-generation 498.1792523719.6kkuj1
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+change blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has  [truncated]
+login blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has b [truncated]
+nextstep blocked: The flag is implemented; writing its regression test is next. Waiting for a go-ahead before writing the test.
+publish blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has [truncated]
+q23 blocked: Unsure whether to apply the accepted Q23 trigger correction because it touches the question-authority path. An isolated editable branch is available; no external action is needed.
+records blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has [truncated]
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+OPEN DECISIONS: a blocker only the captain can clear goes to reviewed email: bin/fm-mail.sh alert <request.json> (format: bin/fm-captain-alert.py header)
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  6 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  After draining queued wakes, watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+--- (b) a later empty FM_CAPTAIN_ALERT_TO= assignment (fm-mail.sh keeps the first nonempty)
+drain exit=0
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+OPEN DECISIONS: a blocker only the captain can clear goes to reviewed email: bin/fm-mail.sh alert <request.json> (format: bin/fm-captain-alert.py header)
+--- (c) no recipient configured
+drain exit=0
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+restored .env mode 600
+
+===== S8-critic-isolation-and-secret-hygiene  [2026-10-20T19:21:13Z] smtp-mode=ok
+--- critic process environment, argv and stdin as seen by an executable probe in the critic slot
+NO_MAIL: native critic failed or exceeded bound; repair the gate critic and resubmit
+exit=1
+FM_* names in critic env: []
+PATH: /usr/local/bin:/usr/bin:/bin
+flags: ['--print', '--safe-mode', '--tools', '--strict-mcp-config', '--mcp-config', '--disable-slash-commands', '--no-session-persistence', '--output-format', '--json-schema', '--system-prompt']
+cwd: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/records/bdba841a3be9a6b0adf0765f643969c88635ea42b41088c4b96c64e48b692455/deef523710b230bafbd8e2aa23f49cb6d037b3674c31f1a4c6adf819a4395585/critic-njs0cn7v
+password in payload/env/argv: False False False
+--- dummy SMTP password literal anywhere in home state (receipts, inbox notes, wake queue) or transcript
+files containing it: 0
+receipt file modes:      57 600   dir modes:      25 700 

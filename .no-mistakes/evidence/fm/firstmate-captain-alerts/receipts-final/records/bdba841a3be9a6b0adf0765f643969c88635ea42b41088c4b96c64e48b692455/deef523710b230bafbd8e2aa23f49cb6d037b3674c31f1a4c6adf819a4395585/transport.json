@@ -1,0 +1,7 @@
+{
+  "command": "/tmp/claude-1000/fm-alert-tools.Wx1YnU/env-probe",
+  "executable_sha256": "027a75934be1e02c052593739f1454fcfb128cc7996a8b56cc1b500491deac23",
+  "exit_code": 3,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "request_sha256": "deef523710b230bafbd8e2aa23f49cb6d037b3674c31f1a4c6adf819a4395585"
+}

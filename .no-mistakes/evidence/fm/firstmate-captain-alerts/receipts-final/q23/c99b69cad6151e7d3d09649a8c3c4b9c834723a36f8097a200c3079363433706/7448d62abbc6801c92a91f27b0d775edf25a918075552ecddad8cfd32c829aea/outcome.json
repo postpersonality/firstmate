@@ -1,0 +1,5 @@
+{
+  "status": "SELF_RESOLVE",
+  "action": "Send no captain email. Through fm-send with --resolve-key default, steer the Q23 worker (spawn generation s1.1.1) to make the accepted fix on its isolated branch: correct the question-authority trigger in bin/fm-ask.sh and add its regression test. Because bin/ is shared tracked material, require the worker to load firstmate-coding-guidelines before editing. Ship it through this repo's selected delivery path and PR route, then continue with ordinary in-scope work without asking again. This grants no merge authority: merging the resulting PR still follows the project's configured merge posture and needs the captain's explicit approval unless yolo applies.",
+  "at": 1792523771
+}

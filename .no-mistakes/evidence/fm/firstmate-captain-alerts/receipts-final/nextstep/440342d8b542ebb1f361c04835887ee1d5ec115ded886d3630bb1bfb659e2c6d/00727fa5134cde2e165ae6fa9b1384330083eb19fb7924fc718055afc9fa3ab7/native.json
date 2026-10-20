@@ -1,0 +1,128 @@
+{
+  "duration_api_ms": 11946,
+  "stop_reason": "tool_use",
+  "session_id": "a2084577-9e86-4012-95f6-16710c0e76bf",
+  "total_cost_usd": 0.1708342,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 18175,
+    "cache_read_input_tokens": 1231,
+    "output_tokens": 1259,
+    "output_tokens_details": {
+      "thinking_tokens": 431
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18175,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 1259,
+        "cache_read_input_tokens": 1231,
+        "cache_creation_input_tokens": 18175,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 18175
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 1259,
+      "cacheReadInputTokens": 1231,
+      "cacheCreationInputTokens": 18175,
+      "webSearchRequests": 0,
+      "costUSD": 0.1708342,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 431,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 2,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "{\"verdict\":\"SELF_RESOLVE\",\"request_sha256\":\"00727fa5134cde2e165ae6fa9b1384330083eb19fb7924fc718055afc9fa3ab7\",\"reason\":\"The captain doesn't need to decide anything here. The brief already asks for the regression test as part of the task, so the worker has the go-ahead it is waiting for. The supervisor's own analysis says so: its only alternative is \\\"Write the regression test as the brief requires.\\\" Under the operating rules, the captain's word is needed only for a review, approval, merge or design pick, and writing a test the brief requires is none of those. The proposed email to owner@example.invalid (\\\"may I write the regression test for --dry-run now?\\\") gets the situation wrong. It presents work that is already in scope as if it needed permission, so it should not be sent.\",\"action\":\"Don't send the email. Steer the worker on task nextstep (generation s1.1.1) with `bin/fm-send.sh` and `--resolve-key default`, which closes the open blocker in the same step. Message: \\\"The instructions already require covering --dry-run in bin/export.sh with a regression test, so no further approval is needed. Write the regression test now, make sure it passes, and continue through the selected delivery path.\\\" Then keep supervising as usual. Contact the captain only when the work is ready for review or merge.\",\"human_only\":\"\",\"evidence\":[{\"source\":\"brief\",\"quote\":\"Add a --dry-run flag to bin/export.sh and cover it with a regression test.\"},{\"source\":\"status\",\"quote\":\"blocked: The flag is implemented; writing its regression test is next. Waiting for a go-ahead before writing the test.\"},{\"source\":\"authority\",\"quote\":\"Ask for the captain's word only when the next step requires a review, approval, merge, or design pick.\"},{\"source\":\"authority\",\"quote\":\"When a steer answers an open keyed decision or blocker, pass `fm-send`'s `--resolve-key` so the answer itself closes that decision record at answer time\"},{\"source\":\"authority\",\"quote\":\"Do not surface automatic fixes, retries, routine progress, or internal supervision mechanics.\"}]}",
+  "structured_output": {
+    "verdict": "SELF_RESOLVE",
+    "request_sha256": "00727fa5134cde2e165ae6fa9b1384330083eb19fb7924fc718055afc9fa3ab7",
+    "reason": "The captain doesn't need to decide anything here. The brief already asks for the regression test as part of the task, so the worker has the go-ahead it is waiting for. The supervisor's own analysis says so: its only alternative is \"Write the regression test as the brief requires.\" Under the operating rules, the captain's word is needed only for a review, approval, merge or design pick, and writing a test the brief requires is none of those. The proposed email to owner@example.invalid (\"may I write the regression test for --dry-run now?\") gets the situation wrong. It presents work that is already in scope as if it needed permission, so it should not be sent.",
+    "action": "Don't send the email. Steer the worker on task nextstep (generation s1.1.1) with `bin/fm-send.sh` and `--resolve-key default`, which closes the open blocker in the same step. Message: \"The instructions already require covering --dry-run in bin/export.sh with a regression test, so no further approval is needed. Write the regression test now, make sure it passes, and continue through the selected delivery path.\" Then keep supervising as usual. Contact the captain only when the work is ready for review or merge.",
+    "human_only": "",
+    "evidence": [
+      {
+        "source": "brief",
+        "quote": "Add a --dry-run flag to bin/export.sh and cover it with a regression test."
+      },
+      {
+        "source": "status",
+        "quote": "blocked: The flag is implemented; writing its regression test is next. Waiting for a go-ahead before writing the test."
+      },
+      {
+        "source": "authority",
+        "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+      },
+      {
+        "source": "authority",
+        "quote": "When a steer answers an open keyed decision or blocker, pass `fm-send`'s `--resolve-key` so the answer itself closes that decision record at answer time"
+      },
+      {
+        "source": "authority",
+        "quote": "Do not surface automatic fixes, retries, routine progress, or internal supervision mechanics."
+      }
+    ]
+  },
+  "ttft_ms": 5688,
+  "type": "result",
+  "duration_ms": 12227,
+  "uuid": "7e225f36-f2f8-4a32-afd9-be74389a683e",
+  "ttft_stream_ms": 1729,
+  "time_to_request_ms": 278,
+  "first_content_frame_ms": 1729,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

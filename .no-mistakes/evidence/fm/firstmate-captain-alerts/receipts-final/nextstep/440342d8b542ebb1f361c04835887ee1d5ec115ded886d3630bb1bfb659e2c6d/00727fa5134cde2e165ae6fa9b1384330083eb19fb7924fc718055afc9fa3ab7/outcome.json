@@ -1,0 +1,5 @@
+{
+  "status": "SELF_RESOLVE",
+  "action": "Don't send the email. Steer the worker on task nextstep (generation s1.1.1) with `bin/fm-send.sh` and `--resolve-key default`, which closes the open blocker in the same step. Message: \"The instructions already require covering --dry-run in bin/export.sh with a regression test, so no further approval is needed. Write the regression test now, make sure it passes, and continue through the selected delivery path.\" Then keep supervising as usual. Contact the captain only when the work is ready for review or merge.",
+  "at": 1792523757
+}

@@ -1,0 +1,5 @@
+{
+  "status": "NO_MAIL",
+  "action": "SMTP failed; delivery unconfirmed, no automatic retry; verify the service before a new event",
+  "at": 1792523953
+}

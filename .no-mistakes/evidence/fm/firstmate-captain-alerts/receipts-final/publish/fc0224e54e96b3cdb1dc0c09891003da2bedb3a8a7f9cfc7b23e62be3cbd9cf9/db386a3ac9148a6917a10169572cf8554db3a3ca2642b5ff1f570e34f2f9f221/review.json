@@ -1,0 +1,29 @@
+{
+  "verdict": "NEEDS_CAPTAIN",
+  "request_sha256": "db386a3ac9148a6917a10169572cf8554db3a3ca2642b5ff1f570e34f2f9f221",
+  "reason": "This needs the captain. The local draft, which is all the brief authorized, is finished. The only step left is publishing the notes to the public project site, and the brief says that step needs separate, explicit permission from the captain. The later steering message says the same thing. The status log shows nothing has been published and that no record grants permission. AGENTS.md says to ask for the captain's word when the next step needs approval, and says never to infer or widen an override. The supervisor can't grant this permission or work around it. Keeping the draft local is safe but does not answer whether to publish, and publishing without permission is forbidden. Being hard is not why this goes to the captain. The decision is reserved for a human. The email is accurate: it says the draft is complete and saved locally, asks only for permission to publish publicly, offers 'keep it local' as a real option rather than inventing a completion-versus-abandonment choice, and contains no secrets. The recipient owner@example.invalid is the bound delivery recipient.",
+  "action": "Send the proposed email as written to owner@example.invalid. Until the captain answers, keep the draft local and publish nothing. If the reply is 'publish', record it as the explicit grant and close the 'default' blocker with the answer. If the captain says to keep it local, close the blocker with the draft as the finished deliverable and leave it unpublished.",
+  "human_only": "Explicit captain permission to publish the completed v2 release-notes draft to the public project site, or a captain instruction to keep it local and unpublished.",
+  "evidence": [
+    {
+      "source": "brief",
+      "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+    },
+    {
+      "source": "steering",
+      "quote": "Do not publish anything publicly until the captain explicitly grants publication permission."
+    },
+    {
+      "source": "status",
+      "quote": "Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+    },
+    {
+      "source": "authority",
+      "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+    },
+    {
+      "source": "authority",
+      "quote": "Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority."
+    }
+  ]
+}

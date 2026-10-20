@@ -1,0 +1,132 @@
+{
+  "duration_api_ms": 32478,
+  "stop_reason": "tool_use",
+  "session_id": "0600c248-e563-47ef-81bd-454912a791cb",
+  "total_cost_usd": 0.21645019999999998,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 18642,
+    "cache_read_input_tokens": 1231,
+    "output_tokens": 3353,
+    "output_tokens_details": {
+      "thinking_tokens": 2367
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18642,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 3353,
+        "cache_read_input_tokens": 1231,
+        "cache_creation_input_tokens": 18642,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 18642
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 3353,
+      "cacheReadInputTokens": 1231,
+      "cacheCreationInputTokens": 18642,
+      "webSearchRequests": 0,
+      "costUSD": 0.21645019999999998,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 2367,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 2,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "{\"verdict\":\"SELF_RESOLVE\",\"request_sha256\":\"20a27b86b54152d9a198cfef6105655e6132ca92456a65486c4c834655f7d697\",\"reason\":\"Permission to publish publicly is a real human-only decision, but the captain has already answered it. The status log shows an earlier copy of this same blocker closed with \\\"resolved: captain asked to keep it local until the security review of the site finishes\\\". After that, the blocker was reopened with the exact same wording and nothing new. No source shows that the site security review has finished. The supervisor's analysis says it re-read the brief, the steering and the log and found that \\\"no record\\\" covers this, but it skipped the captain's recorded ruling. The proposed email has the same problem: it never mentions the captain's own instruction to wait for the security review, so it asks the captain a question they already answered and misstates the decision. The authority rules require checking current state before re-escalating an old blocker. Until the security review is shown to be finished, the next step is to follow the captain's instruction, which is already in scope: keep the draft local and wait. That needs no new captain input.\",\"action\":\"Don't send the email. Keep the v2 release-notes draft local and publish nothing. Close the reopened 'default' blocker on task 'publish' and record the wait as a captain hold: bin/fm-captain-hold.sh hold publish --reason \\\"Captain: keep the v2 release notes local until the site security review finishes; publishing still needs explicit captain permission\\\". Check current state with bin/fm-crew-state.sh first. Escalate again only once there is evidence that the site security review has finished. Any later email must say the review is done and ask only for the explicit publish permission.\",\"human_only\":\"\",\"evidence\":[{\"source\":\"status\",\"quote\":\"resolved: captain asked to keep it local until the security review of the site finishes\"},{\"source\":\"status\",\"quote\":\"blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published.\"},{\"source\":\"brief\",\"quote\":\"Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain.\"},{\"source\":\"steering\",\"quote\":\"Keep the draft local. Do not publish anything publicly until the captain explicitly grants publication permission.\"},{\"source\":\"authority\",\"quote\":\"use `bin/fm-crew-state.sh` when current state matters, especially before re-escalating an old decision, blocker, or pause.\"},{\"source\":\"authority\",\"quote\":\"A decision is simply a task held for the captain\"}]}",
+  "structured_output": {
+    "verdict": "SELF_RESOLVE",
+    "request_sha256": "20a27b86b54152d9a198cfef6105655e6132ca92456a65486c4c834655f7d697",
+    "reason": "Permission to publish publicly is a real human-only decision, but the captain has already answered it. The status log shows an earlier copy of this same blocker closed with \"resolved: captain asked to keep it local until the security review of the site finishes\". After that, the blocker was reopened with the exact same wording and nothing new. No source shows that the site security review has finished. The supervisor's analysis says it re-read the brief, the steering and the log and found that \"no record\" covers this, but it skipped the captain's recorded ruling. The proposed email has the same problem: it never mentions the captain's own instruction to wait for the security review, so it asks the captain a question they already answered and misstates the decision. The authority rules require checking current state before re-escalating an old blocker. Until the security review is shown to be finished, the next step is to follow the captain's instruction, which is already in scope: keep the draft local and wait. That needs no new captain input.",
+    "action": "Don't send the email. Keep the v2 release-notes draft local and publish nothing. Close the reopened 'default' blocker on task 'publish' and record the wait as a captain hold: bin/fm-captain-hold.sh hold publish --reason \"Captain: keep the v2 release notes local until the site security review finishes; publishing still needs explicit captain permission\". Check current state with bin/fm-crew-state.sh first. Escalate again only once there is evidence that the site security review has finished. Any later email must say the review is done and ask only for the explicit publish permission.",
+    "human_only": "",
+    "evidence": [
+      {
+        "source": "status",
+        "quote": "resolved: captain asked to keep it local until the security review of the site finishes"
+      },
+      {
+        "source": "status",
+        "quote": "blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+      },
+      {
+        "source": "brief",
+        "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+      },
+      {
+        "source": "steering",
+        "quote": "Keep the draft local. Do not publish anything publicly until the captain explicitly grants publication permission."
+      },
+      {
+        "source": "authority",
+        "quote": "use `bin/fm-crew-state.sh` when current state matters, especially before re-escalating an old decision, blocker, or pause."
+      },
+      {
+        "source": "authority",
+        "quote": "A decision is simply a task held for the captain"
+      }
+    ]
+  },
+  "ttft_ms": 25249,
+  "type": "result",
+  "duration_ms": 32667,
+  "uuid": "ac96a798-4149-4b4b-90de-88694594c057",
+  "ttft_stream_ms": 2487,
+  "time_to_request_ms": 186,
+  "first_content_frame_ms": 2487,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

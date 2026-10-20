@@ -1,0 +1,128 @@
+{
+  "duration_api_ms": 20921,
+  "stop_reason": "tool_use",
+  "session_id": "4968dad4-3ee3-412b-86d3-5b30e99ad18e",
+  "total_cost_usd": 0.05050260000000001,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 460,
+    "cache_read_input_tokens": 19273,
+    "output_tokens": 2148,
+    "output_tokens_details": {
+      "thinking_tokens": 1137
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 460,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2148,
+        "cache_read_input_tokens": 19273,
+        "cache_creation_input_tokens": 460,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 460
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 2148,
+      "cacheReadInputTokens": 19273,
+      "cacheCreationInputTokens": 460,
+      "webSearchRequests": 0,
+      "costUSD": 0.05050260000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 1137,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 2,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "{\"verdict\":\"NEEDS_CAPTAIN\",\"request_sha256\":\"5c2f3b7a8ec92e85ce9887ef04cbbb6ed65a620575dacbfcc4c8c6a57ee09554\",\"reason\":\"This needs the captain because only the captain can give the missing permission. All the sources agree. The brief only authorizes a local draft and says public publication needs separate, explicit captain permission. The steering message repeats this, and no later steering changes it. The last status entry says the draft is finished and saved locally, nothing has been published, and publishing is the only step left. The task binding shows the same open blocker (key \\\"default\\\", spawn_gen s1.1.1). Nothing in the authority rules lets the first mate grant permission for public, outward-facing release, and the rules say no override may be inferred. That rules out the self-resolution paths: publishing anyway is forbidden, and keeping the draft local doesn't answer whether to publish. This is a real permission decision, not a hard task or a made-up completion-versus-abandonment choice. The brief itself names this decision as the captain's. The proposed email is accurate, contains no secrets, goes to the owner address, and offers both \\\"publish\\\" and \\\"keep it local.\\\" One small wording issue: the email says \\\"the brief withholds,\\\" which is an internal term. \\\"Your original instructions don't grant it\\\" would be better. This doesn't change the decision.\",\"action\":\"Send the escalation to owner@example.invalid. If you can, change \\\"which the brief withholds\\\" to \\\"which your original instructions don't grant.\\\" Until the captain explicitly replies with permission to publish, keep the finished draft local and publish nothing. If the captain says \\\"publish,\\\" publish only these v2 release notes to the public project site, and close the \\\"default\\\" decision with the captain's answer. If the captain says \\\"keep it local,\\\" record that the task is complete with the draft kept local.\",\"human_only\":\"Explicit captain permission, yes or no, to publish the finished v2 release-notes draft on the public project site.\",\"evidence\":[{\"source\":\"brief\",\"quote\":\"Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain.\"},{\"source\":\"steering\",\"quote\":\"Do not publish anything publicly until the captain explicitly grants publication permission.\"},{\"source\":\"status\",\"quote\":\"Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published.\"},{\"source\":\"authority\",\"quote\":\"Ask for the captain's word only when the next step requires a review, approval, merge, or design pick.\"},{\"source\":\"authority\",\"quote\":\"Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority.\"}]}",
+  "structured_output": {
+    "verdict": "NEEDS_CAPTAIN",
+    "request_sha256": "5c2f3b7a8ec92e85ce9887ef04cbbb6ed65a620575dacbfcc4c8c6a57ee09554",
+    "reason": "This needs the captain because only the captain can give the missing permission. All the sources agree. The brief only authorizes a local draft and says public publication needs separate, explicit captain permission. The steering message repeats this, and no later steering changes it. The last status entry says the draft is finished and saved locally, nothing has been published, and publishing is the only step left. The task binding shows the same open blocker (key \"default\", spawn_gen s1.1.1). Nothing in the authority rules lets the first mate grant permission for public, outward-facing release, and the rules say no override may be inferred. That rules out the self-resolution paths: publishing anyway is forbidden, and keeping the draft local doesn't answer whether to publish. This is a real permission decision, not a hard task or a made-up completion-versus-abandonment choice. The brief itself names this decision as the captain's. The proposed email is accurate, contains no secrets, goes to the owner address, and offers both \"publish\" and \"keep it local.\" One small wording issue: the email says \"the brief withholds,\" which is an internal term. \"Your original instructions don't grant it\" would be better. This doesn't change the decision.",
+    "action": "Send the escalation to owner@example.invalid. If you can, change \"which the brief withholds\" to \"which your original instructions don't grant.\" Until the captain explicitly replies with permission to publish, keep the finished draft local and publish nothing. If the captain says \"publish,\" publish only these v2 release notes to the public project site, and close the \"default\" decision with the captain's answer. If the captain says \"keep it local,\" record that the task is complete with the draft kept local.",
+    "human_only": "Explicit captain permission, yes or no, to publish the finished v2 release-notes draft on the public project site.",
+    "evidence": [
+      {
+        "source": "brief",
+        "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+      },
+      {
+        "source": "steering",
+        "quote": "Do not publish anything publicly until the captain explicitly grants publication permission."
+      },
+      {
+        "source": "status",
+        "quote": "Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+      },
+      {
+        "source": "authority",
+        "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+      },
+      {
+        "source": "authority",
+        "quote": "Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority."
+      }
+    ]
+  },
+  "ttft_ms": 12589,
+  "type": "result",
+  "duration_ms": 21559,
+  "uuid": "20d8c0c0-2471-427e-949e-3de99b5ebc30",
+  "ttft_stream_ms": 2113,
+  "time_to_request_ms": 727,
+  "first_content_frame_ms": 2113,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

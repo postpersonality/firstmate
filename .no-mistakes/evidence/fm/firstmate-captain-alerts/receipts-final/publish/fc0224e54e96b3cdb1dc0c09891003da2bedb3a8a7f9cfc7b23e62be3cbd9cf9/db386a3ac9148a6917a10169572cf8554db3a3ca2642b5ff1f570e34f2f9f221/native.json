@@ -1,0 +1,128 @@
+{
+  "duration_api_ms": 18986,
+  "stop_reason": "tool_use",
+  "session_id": "7dfc69d0-2d20-4999-93fa-cd9a9d472222",
+  "total_cost_usd": 0.1886422,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 18501,
+    "cache_read_input_tokens": 1231,
+    "output_tokens": 2019,
+    "output_tokens_details": {
+      "thinking_tokens": 1082
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18501,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 2019,
+        "cache_read_input_tokens": 1231,
+        "cache_creation_input_tokens": 18501,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 18501
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 2019,
+      "cacheReadInputTokens": 1231,
+      "cacheCreationInputTokens": 18501,
+      "webSearchRequests": 0,
+      "costUSD": 0.1886422,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 1082,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 2,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "{\"verdict\":\"NEEDS_CAPTAIN\",\"request_sha256\":\"db386a3ac9148a6917a10169572cf8554db3a3ca2642b5ff1f570e34f2f9f221\",\"reason\":\"This needs the captain. The local draft, which is all the brief authorized, is finished. The only step left is publishing the notes to the public project site, and the brief says that step needs separate, explicit permission from the captain. The later steering message says the same thing. The status log shows nothing has been published and that no record grants permission. AGENTS.md says to ask for the captain's word when the next step needs approval, and says never to infer or widen an override. The supervisor can't grant this permission or work around it. Keeping the draft local is safe but does not answer whether to publish, and publishing without permission is forbidden. Being hard is not why this goes to the captain. The decision is reserved for a human. The email is accurate: it says the draft is complete and saved locally, asks only for permission to publish publicly, offers 'keep it local' as a real option rather than inventing a completion-versus-abandonment choice, and contains no secrets. The recipient owner@example.invalid is the bound delivery recipient.\",\"action\":\"Send the proposed email as written to owner@example.invalid. Until the captain answers, keep the draft local and publish nothing. If the reply is 'publish', record it as the explicit grant and close the 'default' blocker with the answer. If the captain says to keep it local, close the blocker with the draft as the finished deliverable and leave it unpublished.\",\"human_only\":\"Explicit captain permission to publish the completed v2 release-notes draft to the public project site, or a captain instruction to keep it local and unpublished.\",\"evidence\":[{\"source\":\"brief\",\"quote\":\"Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain.\"},{\"source\":\"steering\",\"quote\":\"Do not publish anything publicly until the captain explicitly grants publication permission.\"},{\"source\":\"status\",\"quote\":\"Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published.\"},{\"source\":\"authority\",\"quote\":\"Ask for the captain's word only when the next step requires a review, approval, merge, or design pick.\"},{\"source\":\"authority\",\"quote\":\"Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority.\"}]}",
+  "structured_output": {
+    "verdict": "NEEDS_CAPTAIN",
+    "request_sha256": "db386a3ac9148a6917a10169572cf8554db3a3ca2642b5ff1f570e34f2f9f221",
+    "reason": "This needs the captain. The local draft, which is all the brief authorized, is finished. The only step left is publishing the notes to the public project site, and the brief says that step needs separate, explicit permission from the captain. The later steering message says the same thing. The status log shows nothing has been published and that no record grants permission. AGENTS.md says to ask for the captain's word when the next step needs approval, and says never to infer or widen an override. The supervisor can't grant this permission or work around it. Keeping the draft local is safe but does not answer whether to publish, and publishing without permission is forbidden. Being hard is not why this goes to the captain. The decision is reserved for a human. The email is accurate: it says the draft is complete and saved locally, asks only for permission to publish publicly, offers 'keep it local' as a real option rather than inventing a completion-versus-abandonment choice, and contains no secrets. The recipient owner@example.invalid is the bound delivery recipient.",
+    "action": "Send the proposed email as written to owner@example.invalid. Until the captain answers, keep the draft local and publish nothing. If the reply is 'publish', record it as the explicit grant and close the 'default' blocker with the answer. If the captain says to keep it local, close the blocker with the draft as the finished deliverable and leave it unpublished.",
+    "human_only": "Explicit captain permission to publish the completed v2 release-notes draft to the public project site, or a captain instruction to keep it local and unpublished.",
+    "evidence": [
+      {
+        "source": "brief",
+        "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+      },
+      {
+        "source": "steering",
+        "quote": "Do not publish anything publicly until the captain explicitly grants publication permission."
+      },
+      {
+        "source": "status",
+        "quote": "Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+      },
+      {
+        "source": "authority",
+        "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+      },
+      {
+        "source": "authority",
+        "quote": "Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority."
+      }
+    ]
+  },
+  "ttft_ms": 11442,
+  "type": "result",
+  "duration_ms": 19333,
+  "uuid": "a0e32252-66ca-475d-9dab-f34bfadf09fd",
+  "ttft_stream_ms": 1758,
+  "time_to_request_ms": 341,
+  "first_content_frame_ms": 1758,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

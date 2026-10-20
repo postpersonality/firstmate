@@ -1,0 +1,4 @@
+2026-10-20T19:22:42Z
+$ FM_CAPTAIN_ALERT_LIVE=1 bash tests/fm-captain-alert-live.test.sh
+exit=1
+$$ in sandbox: 2; /proc/$$/comm: kthreadd

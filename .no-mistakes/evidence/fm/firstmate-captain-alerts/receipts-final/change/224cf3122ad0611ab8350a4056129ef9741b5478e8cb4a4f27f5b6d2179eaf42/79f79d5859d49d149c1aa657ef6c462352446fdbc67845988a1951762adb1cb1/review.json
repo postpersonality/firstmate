@@ -1,0 +1,29 @@
+{
+  "verdict": "NEEDS_CAPTAIN",
+  "request_sha256": "79f79d5859d49d149c1aa657ef6c462352446fdbc67845988a1951762adb1cb1",
+  "reason": "I checked the request from several angles, and every source agrees that only the captain can make this call.\n\n1. **The work is done and nothing is left to fix.** The brief only asked for the draft to be prepared locally. The status log says the draft is complete and saved locally, and that nothing has been published. That matches the open blocker in the latest task generation (s1.1.1, opened at status event 2).\n\n2. **Firstmate can't publish on its own authority.**\n   - The brief says publishing is not authorized and needs separate, explicit permission from the captain.\n   - The later steering message repeats this: nothing is published until the captain grants permission.\n   - The operating rules forbid inferring or widening a permission.\n   - No source contains such a permission, so no record or self-correction can produce it.\n\n3. **This is a permission gap, not a hard task.** Publishing to a public site is outward-facing and hard to undo. The rules send approvals like this to the captain.\n\n4. **Neither alternative removes the need to ask.** Keeping the draft local is already the safe default, but it can't answer whether to publish. Publishing anyway is forbidden.\n\n5. **The email is accurate.**\n   - It addresses the captain and says the draft is complete and local.\n   - It names the one decision needed (publish to the public site) and offers both answers: publish, or keep it local.\n   - It contains no secrets.\n   - It doesn't invent a choice between finishing and abandoning the work, since keeping the draft local is not abandonment.\n   - One small style point: the word \"brief\" is an internal term that the rules translate as \"instructions\". This doesn't change the accuracy of the decision being asked.",
+  "action": "Send the proposed email to owner@example.invalid, optionally changing \"which the brief withholds\" to \"which my instructions withhold\". Until the captain replies, keep the draft local and publish nothing.\n- **If the captain replies \"publish\":** pass the answer to the worker and close the open \"default\" decision with it.\n- **If the captain says to keep it local:** treat the work as complete with the draft local, and close the decision.",
+  "human_only": "The captain's explicit permission (or refusal) to publish the completed v2 release-notes draft to the public project site. The brief and the steering message both say this permission can only come from the captain.",
+  "evidence": [
+    {
+      "source": "brief",
+      "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+    },
+    {
+      "source": "steering",
+      "quote": "Do not publish anything publicly until the captain explicitly grants publication permission."
+    },
+    {
+      "source": "status",
+      "quote": "blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+    },
+    {
+      "source": "authority",
+      "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+    },
+    {
+      "source": "authority",
+      "quote": "Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority."
+    }
+  ]
+}

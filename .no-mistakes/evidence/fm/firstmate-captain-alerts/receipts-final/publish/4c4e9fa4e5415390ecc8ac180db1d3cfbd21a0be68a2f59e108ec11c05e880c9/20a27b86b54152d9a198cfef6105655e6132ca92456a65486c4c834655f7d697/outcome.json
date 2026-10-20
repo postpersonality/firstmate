@@ -1,0 +1,5 @@
+{
+  "status": "SELF_RESOLVE",
+  "action": "Don't send the email. Keep the v2 release-notes draft local and publish nothing. Close the reopened 'default' blocker on task 'publish' and record the wait as a captain hold: bin/fm-captain-hold.sh hold publish --reason \"Captain: keep the v2 release notes local until the site security review finishes; publishing still needs explicit captain permission\". Check current state with bin/fm-crew-state.sh first. Escalate again only once there is evidence that the site security review has finished. Any later email must say the review is done and ask only for the explicit publish permission.",
+  "at": 1792523875
+}

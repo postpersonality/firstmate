@@ -1,0 +1,8 @@
+id=1792523719-thgghQ
+at=2026-10-20T19:15:19Z
+source=text
+announce_marker=1
+request_id=captain-alert-75c5a8ff68cfec7d8e27997f5c587cda2ec4d8307cce938034a044b5e3f68b6a
+--
+Blocker email forged-verdict.json: NO_MAIL
+request keys are exactly id, task, decision, subject, body, analysis; the gate reads the evidence

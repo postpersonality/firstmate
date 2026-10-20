@@ -1,0 +1,33 @@
+{
+  "verdict": "SELF_RESOLVE",
+  "request_sha256": "20a27b86b54152d9a198cfef6105655e6132ca92456a65486c4c834655f7d697",
+  "reason": "Permission to publish publicly is a real human-only decision, but the captain has already answered it. The status log shows an earlier copy of this same blocker closed with \"resolved: captain asked to keep it local until the security review of the site finishes\". After that, the blocker was reopened with the exact same wording and nothing new. No source shows that the site security review has finished. The supervisor's analysis says it re-read the brief, the steering and the log and found that \"no record\" covers this, but it skipped the captain's recorded ruling. The proposed email has the same problem: it never mentions the captain's own instruction to wait for the security review, so it asks the captain a question they already answered and misstates the decision. The authority rules require checking current state before re-escalating an old blocker. Until the security review is shown to be finished, the next step is to follow the captain's instruction, which is already in scope: keep the draft local and wait. That needs no new captain input.",
+  "action": "Don't send the email. Keep the v2 release-notes draft local and publish nothing. Close the reopened 'default' blocker on task 'publish' and record the wait as a captain hold: bin/fm-captain-hold.sh hold publish --reason \"Captain: keep the v2 release notes local until the site security review finishes; publishing still needs explicit captain permission\". Check current state with bin/fm-crew-state.sh first. Escalate again only once there is evidence that the site security review has finished. Any later email must say the review is done and ask only for the explicit publish permission.",
+  "human_only": "",
+  "evidence": [
+    {
+      "source": "status",
+      "quote": "resolved: captain asked to keep it local until the security review of the site finishes"
+    },
+    {
+      "source": "status",
+      "quote": "blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+    },
+    {
+      "source": "brief",
+      "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+    },
+    {
+      "source": "steering",
+      "quote": "Keep the draft local. Do not publish anything publicly until the captain explicitly grants publication permission."
+    },
+    {
+      "source": "authority",
+      "quote": "use `bin/fm-crew-state.sh` when current state matters, especially before re-escalating an old decision, blocker, or pause."
+    },
+    {
+      "source": "authority",
+      "quote": "A decision is simply a task held for the captain"
+    }
+  ]
+}

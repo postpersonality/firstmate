@@ -1,0 +1,9 @@
+id=1792523788-L0t9iT
+at=2026-10-20T19:16:28Z
+source=text
+announce_marker=1
+request_id=captain-alert-45be2dd124d0d074bd6f0b0ea60327f6e54a714a6dfff69389656cf3afd34b02
+--
+Blocker email q23: SELF_RESOLVE
+Send no captain email. Through fm-send with --resolve-key default, steer the Q23 worker (spawn generation s1.1.1) to make the accepted fix on its isolated branch: correct the question-authority trigger in bin/fm-ask.sh and add its regression test. Because bin/ is shared tracked material, require the worker to load firstmate-coding-guidelines before editing. Ship it through this repo's selected delivery path and PR route, then continue with ordinary in-scope work without asking again. This grants no merge authority: merging the resulting PR still follows the project's configured merge posture and needs the captain's explicit approval unless yolo applies.
+Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/q23/c99b69cad6151e7d3d09649a8c3c4b9c834723a36f8097a200c3079363433706/7448d62abbc6801c92a91f27b0d775edf25a918075552ecddad8cfd32c829aea/outcome.json

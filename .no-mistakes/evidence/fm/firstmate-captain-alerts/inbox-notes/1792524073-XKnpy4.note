@@ -1,0 +1,9 @@
+id=1792524073-XKnpy4
+at=2026-10-20T19:21:13Z
+source=text
+announce_marker=1
+request_id=captain-alert-15435335041d22a4ad76505976aa4bc426b6b60377387273de5f72ec467e1e60
+--
+Blocker email records: NO_MAIL
+native critic failed or exceeded bound; repair the gate critic and resubmit
+Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/records/bdba841a3be9a6b0adf0765f643969c88635ea42b41088c4b96c64e48b692455/deef523710b230bafbd8e2aa23f49cb6d037b3674c31f1a4c6adf819a4395585/outcome.json

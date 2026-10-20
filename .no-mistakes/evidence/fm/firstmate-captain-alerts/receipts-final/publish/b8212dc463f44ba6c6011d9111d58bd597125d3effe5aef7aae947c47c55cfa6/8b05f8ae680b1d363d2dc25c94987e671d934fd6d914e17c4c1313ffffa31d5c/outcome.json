@@ -1,0 +1,5 @@
+{
+  "status": "SELF_RESOLVE",
+  "action": "Do not send the email. Close the repeated blocker using the captain's recorded answer: keep the v2 release-notes draft local and change the open blocker into a declared wait for the site security review to finish. Before raising this again, check the task's actual current state with bin/fm-crew-state.sh. Ask the captain again only when there is evidence that the security review is complete. That new request must cite the earlier answer and the finished review.",
+  "at": 1792523851
+}

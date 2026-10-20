@@ -1,0 +1,8 @@
+{"event": "connect", "mode": "ok", "at": 1792523833.267519}
+{"event": "auth", "user": "sender@example.invalid", "password_matches_expected": true, "mode": "ok"}
+{"event": "message", "envelope": {"rcpt": ["<owner@example.invalid>"], "from": "<sender@example.invalid>"}, "data": "From: sender@example.invalid\r\nTo: owner@example.invalid\r\nSubject: Permission needed: publish the v2 release notes\r\nDate: Tue, 20 Oct 2026 22:17:13 +0300\r\nContent-Type: text/plain; charset=\"utf-8\"\r\nContent-Transfer-Encoding: quoted-printable\r\nMIME-Version: 1.0\r\n\r\nCaptain, the v2 release-notes draft is complete and saved locally. Publishing=\r\n it to the public project site needs your explicit permission, which the brie=\r\nf withholds. Reply \"publish\" to grant it, or tell me to keep it local.\r\n", "at": 1792523833.352154}
+{"event": "connect", "mode": "auth-fail", "at": 1792523951.6478024}
+{"event": "auth", "user": "sender@example.invalid", "password_matches_expected": true, "mode": "auth-fail"}
+{"event": "connect", "mode": "data-fail", "at": 1792523979.3208916}
+{"event": "auth", "user": "sender@example.invalid", "password_matches_expected": true, "mode": "data-fail"}
+{"event": "data-dropped", "envelope": {"rcpt": ["<owner@example.invalid>"], "from": "<sender@example.invalid>"}}

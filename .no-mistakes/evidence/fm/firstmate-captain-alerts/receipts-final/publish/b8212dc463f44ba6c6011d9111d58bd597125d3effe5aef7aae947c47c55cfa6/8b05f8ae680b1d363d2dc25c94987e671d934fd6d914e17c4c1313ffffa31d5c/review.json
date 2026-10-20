@@ -1,0 +1,33 @@
+{
+  "verdict": "SELF_RESOLVE",
+  "request_sha256": "8b05f8ae680b1d363d2dc25c94987e671d934fd6d914e17c4c1313ffffa31d5c",
+  "reason": "The captain has already answered this question. The status log records that the captain asked to keep the draft local until the site's security review finishes. The newest blocked line repeats the earlier blocker word for word. Neither it nor any other source shows that the security review has finished. The supervisor's analysis and the proposed email both leave out that recorded answer. The email says only that \"the brief withholds\" permission and asks the captain to reply \"publish\". That misstates the situation: it re-asks a question the captain has already ruled on and omits the security-review condition the captain set. The ruling also matches the brief and the steering, which both say to keep the draft local. Nothing new here requires the captain. The right step is to follow the existing answer and wait, not to email. Publishing stays unauthorized, and this verdict does not grant it.",
+  "action": "Do not send the email. Close the repeated blocker using the captain's recorded answer: keep the v2 release-notes draft local and change the open blocker into a declared wait for the site security review to finish. Before raising this again, check the task's actual current state with bin/fm-crew-state.sh. Ask the captain again only when there is evidence that the security review is complete. That new request must cite the earlier answer and the finished review.",
+  "human_only": "",
+  "evidence": [
+    {
+      "source": "status",
+      "quote": "resolved: captain asked to keep it local until the security review of the site finishes"
+    },
+    {
+      "source": "status",
+      "quote": "blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+    },
+    {
+      "source": "brief",
+      "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+    },
+    {
+      "source": "steering",
+      "quote": "Keep the draft local. Do not publish anything publicly until the captain explicitly grants publication permission."
+    },
+    {
+      "source": "authority",
+      "quote": "A status line is a wake event, not current state; use `bin/fm-crew-state.sh` when current state matters, especially before re-escalating an old decision, blocker, or pause."
+    },
+    {
+      "source": "authority",
+      "quote": "`bin/fm-classify-lib.sh` owns the distinction between declared `paused:` waits and `blocked:` events needing firstmate action"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "command": "/home/nikolayseliverstov/.local/share/claude/versions/2.1.304",
+  "executable_sha256": "ea0f135784631619a7a409d07322ecec964f9cc4fd377508ed1ba3f141f27912",
+  "exit_code": 0,
+  "stdout_sha256": "e8c6c69547e13011358637f72e9ae31d7cf5904b1d705699e03c3a71588e26cb",
+  "request_sha256": "8b05f8ae680b1d363d2dc25c94987e671d934fd6d914e17c4c1313ffffa31d5c",
+  "session_id": "85c102fd-5ba8-4908-9799-29716f2590c2",
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 2257,
+      "cacheReadInputTokens": 1231,
+      "cacheCreationInputTokens": 18653,
+      "webSearchRequests": 0,
+      "costUSD": 0.1946182,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 1320,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  }
+}

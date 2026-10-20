@@ -1,0 +1,9 @@
+id=1792523980-F4UfSq
+at=2026-10-20T19:19:40Z
+source=text
+announce_marker=1
+request_id=captain-alert-1b6e2f3d12be243a5c3aed19fff4648e46c508b5ae53f3d3fa57f9a3f270af94
+--
+Blocker email login-2: NO_MAIL
+SMTP was already attempted for this open decision; delivery may be uncertain. Inspect its receipt before a new event.
+Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/login/9a65754d9fb5706a47dc33e60f36d3f534998e5ef0ebe007e0473dcdeb0acf00/attempted.json

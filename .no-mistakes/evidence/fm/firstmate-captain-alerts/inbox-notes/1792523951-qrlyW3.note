@@ -1,0 +1,9 @@
+id=1792523951-qrlyW3
+at=2026-10-20T19:19:11Z
+source=text
+announce_marker=1
+request_id=captain-alert-956d26969b973fe80e9898b8ed0ed1d0de89e9a85c7bb473a365d29abb115333
+--
+Blocker email login-1: NO_MAIL
+SMTP connection or login failed before sending; repair the service or credentials and resubmit for a fresh review
+Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/login/9a65754d9fb5706a47dc33e60f36d3f534998e5ef0ebe007e0473dcdeb0acf00/5c2f3b7a8ec92e85ce9887ef04cbbb6ed65a620575dacbfcc4c8c6a57ee09554/outcome.json

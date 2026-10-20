@@ -1,0 +1,29 @@
+{
+  "verdict": "NEEDS_CAPTAIN",
+  "request_sha256": "5c2f3b7a8ec92e85ce9887ef04cbbb6ed65a620575dacbfcc4c8c6a57ee09554",
+  "reason": "This needs the captain because only the captain can give the missing permission. All the sources agree. The brief only authorizes a local draft and says public publication needs separate, explicit captain permission. The steering message repeats this, and no later steering changes it. The last status entry says the draft is finished and saved locally, nothing has been published, and publishing is the only step left. The task binding shows the same open blocker (key \"default\", spawn_gen s1.1.1). Nothing in the authority rules lets the first mate grant permission for public, outward-facing release, and the rules say no override may be inferred. That rules out the self-resolution paths: publishing anyway is forbidden, and keeping the draft local doesn't answer whether to publish. This is a real permission decision, not a hard task or a made-up completion-versus-abandonment choice. The brief itself names this decision as the captain's. The proposed email is accurate, contains no secrets, goes to the owner address, and offers both \"publish\" and \"keep it local.\" One small wording issue: the email says \"the brief withholds,\" which is an internal term. \"Your original instructions don't grant it\" would be better. This doesn't change the decision.",
+  "action": "Send the escalation to owner@example.invalid. If you can, change \"which the brief withholds\" to \"which your original instructions don't grant.\" Until the captain explicitly replies with permission to publish, keep the finished draft local and publish nothing. If the captain says \"publish,\" publish only these v2 release notes to the public project site, and close the \"default\" decision with the captain's answer. If the captain says \"keep it local,\" record that the task is complete with the draft kept local.",
+  "human_only": "Explicit captain permission, yes or no, to publish the finished v2 release-notes draft on the public project site.",
+  "evidence": [
+    {
+      "source": "brief",
+      "quote": "Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain."
+    },
+    {
+      "source": "steering",
+      "quote": "Do not publish anything publicly until the captain explicitly grants publication permission."
+    },
+    {
+      "source": "status",
+      "quote": "Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published."
+    },
+    {
+      "source": "authority",
+      "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+    },
+    {
+      "source": "authority",
+      "quote": "Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority."
+    }
+  ]
+}

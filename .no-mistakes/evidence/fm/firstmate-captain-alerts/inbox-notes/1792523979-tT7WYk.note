@@ -1,0 +1,9 @@
+id=1792523979-tT7WYk
+at=2026-10-20T19:19:39Z
+source=text
+announce_marker=1
+request_id=captain-alert-72e71fd9cb8a719da90dc23d921ac6ffbe02ff2a5c7d860875a25fa44ac2e08b
+--
+Blocker email login-1: NO_MAIL
+SMTP failed; delivery unconfirmed, no automatic retry; verify the service before a new event
+Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/login/9a65754d9fb5706a47dc33e60f36d3f534998e5ef0ebe007e0473dcdeb0acf00/5c2f3b7a8ec92e85ce9887ef04cbbb6ed65a620575dacbfcc4c8c6a57ee09554/outcome.json

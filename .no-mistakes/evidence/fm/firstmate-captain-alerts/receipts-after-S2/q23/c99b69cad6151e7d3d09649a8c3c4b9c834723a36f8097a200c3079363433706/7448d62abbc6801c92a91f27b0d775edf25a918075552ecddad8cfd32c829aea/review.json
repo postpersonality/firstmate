@@ -1,0 +1,33 @@
+{
+  "verdict": "SELF_RESOLVE",
+  "request_sha256": "7448d62abbc6801c92a91f27b0d775edf25a918075552ecddad8cfd32c829aea",
+  "reason": "The captain doesn't need to decide anything here. The brief already names this exact correction and its regression test as accepted work and says to go ahead without asking again. A later steering message repeats that every accepted correction should go ahead and that the captain must not be asked to reconfirm accepted work. The status line says an isolated branch you can edit is available and nothing outside the task needs to happen. The supervisor's own analysis lists only the reason it feels blocked (\"changes the question-authority path\"), and lists applying the fix on the isolated branch as an option. Touching a sensitive code path is not a review, approval, merge or design pick. It is not destructive, cannot be undone only with difficulty, and is not security authority. Difficulty or unease does not make this a human-only decision. The proposed email asks the captain to reconfirm work that is already accepted, which the steering forbids. Its recipient (owner@example.invalid) should not be mailed.",
+  "action": "Send no captain email. Through fm-send with --resolve-key default, steer the Q23 worker (spawn generation s1.1.1) to make the accepted fix on its isolated branch: correct the question-authority trigger in bin/fm-ask.sh and add its regression test. Because bin/ is shared tracked material, require the worker to load firstmate-coding-guidelines before editing. Ship it through this repo's selected delivery path and PR route, then continue with ordinary in-scope work without asking again. This grants no merge authority: merging the resulting PR still follows the project's configured merge posture and needs the captain's explicit approval unless yolo applies.",
+  "human_only": "",
+  "evidence": [
+    {
+      "source": "brief",
+      "quote": "Correct the Q23 question-authority trigger in bin/fm-ask.sh and add its regression test; then proceed with ordinary in-scope work without asking again."
+    },
+    {
+      "source": "steering",
+      "quote": "Proceed with every already accepted in-scope correction; do not ask the captain to reconfirm accepted work."
+    },
+    {
+      "source": "status",
+      "quote": "An isolated editable branch is available; no external action is needed."
+    },
+    {
+      "source": "authority",
+      "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+    },
+    {
+      "source": "authority",
+      "quote": "When a steer answers an open keyed decision or blocker, pass `fm-send`'s `--resolve-key` so the answer itself closes that decision record at answer time"
+    },
+    {
+      "source": "authority",
+      "quote": "If a ship task touches firstmate's shared tracked material, explicitly require `firstmate-coding-guidelines` before editing."
+    }
+  ]
+}

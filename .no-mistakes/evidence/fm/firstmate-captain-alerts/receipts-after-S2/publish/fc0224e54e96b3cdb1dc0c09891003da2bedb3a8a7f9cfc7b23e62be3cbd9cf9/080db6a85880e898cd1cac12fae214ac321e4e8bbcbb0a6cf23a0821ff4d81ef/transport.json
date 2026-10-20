@@ -1,0 +1,7 @@
+{
+  "command": "/tmp/claude-1000/fm-alert-tools.Wx1YnU/forged-approver",
+  "executable_sha256": "e393932d00e0d282efd20c715e0ee5067557ebe9cf01a8b7aeca2de0e858b1a5",
+  "exit_code": 0,
+  "stdout_sha256": "d92bdaf43a017f406f61b76e78f3d1ca9caffc7b9bc714c3ddbf87f797fbbe4a",
+  "request_sha256": "080db6a85880e898cd1cac12fae214ac321e4e8bbcbb0a6cf23a0821ff4d81ef"
+}

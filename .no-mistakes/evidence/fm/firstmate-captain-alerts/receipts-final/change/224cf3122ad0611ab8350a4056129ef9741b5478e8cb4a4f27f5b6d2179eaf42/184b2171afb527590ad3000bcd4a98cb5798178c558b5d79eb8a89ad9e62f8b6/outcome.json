@@ -1,0 +1,5 @@
+{
+  "status": "SELF_RESOLVE",
+  "action": "Cancel the proposed email to owner@example.invalid. Have the worker for task 'change' (generation s1.1.1) process the unhandled steering message state/change.inbox/001.msg. It should then publish only the completed v2 release-notes draft in data/change/notes.md, and only to the public project site, as the captain authorized. Publish nothing else and nowhere else. After publishing, close the open blocker with key 'default', for example by passing --resolve-key default with fm-send or writing the worker's resolving status entry. Record the published outcome, including the public URL, and give the captain a one-line report of the result.",
+  "at": 1792524015
+}

@@ -1,0 +1,9 @@
+id=1792524039-XHFEfG
+at=2026-10-20T19:20:39Z
+source=text
+announce_marker=1
+request_id=captain-alert-8d5c95bd91d8a759a01ccf3821548e36391a2a6fc6b3a2861207f58165bba13e
+--
+Blocker email change-1: SELF_RESOLVE
+Cancel the proposed email to owner@example.invalid. Have the worker for task 'change' (generation s1.1.1) process the unhandled steering message state/change.inbox/001.msg. It should then publish only the completed v2 release-notes draft in data/change/notes.md, and only to the public project site, as the captain authorized. Publish nothing else and nowhere else. After publishing, close the open blocker with key 'default', for example by passing --resolve-key default with fm-send or writing the worker's resolving status entry. Record the published outcome, including the public URL, and give the captain a one-line report of the result.
+Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/change/224cf3122ad0611ab8350a4056129ef9741b5478e8cb4a4f27f5b6d2179eaf42/184b2171afb527590ad3000bcd4a98cb5798178c558b5d79eb8a89ad9e62f8b6/outcome.json

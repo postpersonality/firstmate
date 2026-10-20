@@ -1,0 +1,8 @@
+id=1792523720-J6mzwv
+at=2026-10-20T19:15:20Z
+source=text
+announce_marker=1
+request_id=captain-alert-ecdda9330bb7e3f4e1ea079ecdbecefe2f0a6c21c4e0e842fc2b5b5fb57b4b48
+--
+Blocker email own-sources.json: NO_MAIL
+request keys are exactly id, task, decision, subject, body, analysis; the gate reads the evidence
