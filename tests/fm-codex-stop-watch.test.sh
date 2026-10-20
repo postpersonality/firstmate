@@ -199,7 +199,7 @@ for attempt in 2 3; do
   status=0
   run_stop "$home" || status=$?
   expect_code 2 "$status" "unhandled identical wake attempt $attempt must fail closed"
-  assert_contains "$(cat "$home/err")" 'was not handled/acknowledged' 'unhandled duplicate wake lost its repair instruction'
+  assert_contains "$(cat "$home/err")" 'pending durable wake' 'unhandled duplicate wake lost its continuation'
 done
 assert_contains "$(cat "$home/state/.wake-queue")" 'worker.status' 'repeated delivery erased unhandled work'
 pass 'Codex API Stop: an unhandled pending wake stays durable and keeps blocking Stop'
