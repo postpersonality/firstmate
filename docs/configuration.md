@@ -967,6 +967,10 @@ The file must hold exactly one of `low`, `medium`, `high`, `xhigh`, `max`, or `u
 Any other content, or an unreadable or nonregular file, refuses every launch and names the file to fix.
 The file is read on every launch, so a change reaches the next worker or relaunch without a restart.
 
+The file existing is not enforcement on its own: a Firstmate checkout that predates the pin ignores it.
+Enforcement holds only once the implementation has landed on the default branch and the home's checkout has updated to that revision, for example through `/updatefirstmate`.
+Verify it in that home then: a launch naming a different `--effort` must refuse, and a launch naming none must print and record `effort=` with the pinned level.
+
 ### What a pinned launch does
 
 The pin covers ship, scout, and batch spawns, local and remote secondmate agents, and relaunches.
