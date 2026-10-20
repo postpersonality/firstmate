@@ -123,6 +123,8 @@
 #   The backend owns path identity, ambiguity refusal and serialized creation.
 #   A claimed parent must still pass launcher identity checks. Detached callers
 #   use the same project resolver. --secondmate keeps its own home container.
+#   Existing task metadata whose recorded endpoint, in any Space, is live,
+#   stale-agent, unknown, malformed or ambiguous refuses the launch first.
 #   New tasks never create presentation projections, regardless of the retained
 #   config/herdr-presentation-spaces setting. Existing projection journals and
 #   authoritative metadata retain their exact recovery path without migration.
@@ -3528,11 +3530,13 @@ herdr_projection_meta_field_exact() { # <meta> <key>
   grep "^${key}=" "$meta" 2>/dev/null | cut -d= -f2-
 }
 
-# A stale presentation journal never grants launch authority.
-# Under the session lock, authoritative metadata must identify one positively
-# dead or agent-free endpoint before token inspection may allow flat fallback.
-# Exact Herdr fields are retained for the narrower version 2 reclaim path.
-herdr_projection_existing_meta_allows_flat() { # <meta>
+# Existing task metadata is the duplicate-launch authority for every fresh
+# Herdr worker, wherever its recorded endpoint lives: it must identify one
+# positively dead or agent-free endpoint before a new tab may open. A stale
+# presentation journal never grants launch authority; on that path this runs
+# under the session lock before token inspection, and the exact Herdr fields
+# are retained for the narrower version 2 reclaim path.
+herdr_existing_meta_allows_launch() { # <meta>
   local meta=$1 old_backend old_target old_session old_pane old_state target_session target_pane
   HERDR_RECOVERY_BACKEND=""
   HERDR_RECOVERY_WORKSPACE_ID=""
@@ -3541,7 +3545,7 @@ herdr_projection_existing_meta_allows_flat() { # <meta>
   old_backend=$(fm_backend_of_meta "$meta")
   old_target=$(fm_backend_target_of_meta "$meta")
   [ -n "$old_target" ] || {
-    echo "error: existing metadata for $ID has no endpoint; refusing duplicate launch while its herdr presentation journal is quarantined" >&2
+    echo "error: existing metadata for $ID has no endpoint; refusing duplicate launch" >&2
     return 1
   }
   HERDR_RECOVERY_BACKEND=$old_backend
@@ -3779,7 +3783,7 @@ else
         }
       fi
       if [ -e "$STATE/$ID.meta" ] || [ -L "$STATE/$ID.meta" ]; then
-        herdr_projection_existing_meta_allows_flat "$STATE/$ID.meta" || exit 1
+        herdr_existing_meta_allows_launch "$STATE/$ID.meta" || exit 1
       fi
       fm_backend_herdr_projection_recovery_allows_flat \
         "$HERDR_SES" "$HERDR_PRESENTATION_JOURNAL" "$ID" || exit 1
@@ -3811,6 +3815,8 @@ else
       else
         spawn_herdr_presentation_order_lock_release
       fi
+    elif [ "$KIND" != secondmate ] && { [ -e "$STATE/$ID.meta" ] || [ -L "$STATE/$ID.meta" ]; }; then
+      herdr_existing_meta_allows_launch "$STATE/$ID.meta" || exit 1
     fi
     if [ "$HERDR_PROJECTED" -ne 1 ]; then
       HERDR_TAB_POLICY=preserve-existing
