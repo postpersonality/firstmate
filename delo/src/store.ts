@@ -365,7 +365,8 @@ export class Store {
     const record = ((await this.firstmate.snapshot('fm-fleet-snapshot.sh')).tasks ?? []).find((t: any) => t.id === taskId);
     const tasks = this.firstmate.list();
     const task = tasks.find(t => t.id === taskId);
-    const place = position(task, { ...record, delivery: await this.firstmate.delivery(record) }, new Map(tasks.map(t => [t.id, t])));
+    const [delivery, declaredWait] = task?.state === 'done' ? [] : await Promise.all([this.firstmate.delivery(record), this.firstmate.declaredWait(record)]);
+    const place = position(task, { ...record, delivery, declaredWait }, new Map(tasks.map(t => [t.id, t])));
     const current = `${task?.state === 'done' && record ? 'Сохранённый исполнитель · ' : ''}${workerState(record)}`;
     return { harness: field(record?.harness) ?? '', current, phase: place.phase, reason: place.reason, owner: place.owner, prUrl: field(record?.pr?.url) };
   }
@@ -382,7 +383,10 @@ export class Store {
       promise: Promise.all([this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh')]).then(async ([bearings, fleet]) => {
         const tasks = this.firstmate.list();
         const done = new Set(tasks.filter(t => t.state === 'done').map(t => t.id));
-        fleet = { ...fleet, tasks: await Promise.all((fleet.tasks ?? []).map(async (t: any) => ({ ...t, delivery: done.has(t.id) ? undefined : await this.firstmate.delivery(t) }))) };
+        fleet = { ...fleet, tasks: await Promise.all((fleet.tasks ?? []).map(async (t: any) => {
+          const [delivery, declaredWait] = done.has(t.id) ? [] : await Promise.all([this.firstmate.delivery(t), this.firstmate.declaredWait(t)]);
+          return { ...t, delivery, declaredWait };
+        })) };
         // A mutation during the read also invalidates requests already in flight.
         if (this.overviewRead !== read) return this.overview();
         const result = overview(bearings, fleet, this.firstmate.archive(), tasks, this.firstmate.receipts());

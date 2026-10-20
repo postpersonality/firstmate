@@ -11,7 +11,7 @@ import { firstmateHome } from './firstmate-home.ts';
 const record = (id: string, fields: Record<string, unknown> = {}): Record<string, unknown> => ({ id, title: id, state: 'queued', kind: 'ship', repo: null, priority: null, ...fields });
 const ids = (groups: { rows: { id: string }[] }[]) => groups.flatMap(g => g.rows.map(r => r.id));
 
-test('all established waits share one section; closed and unknown retained workers never imply work', () => {
+test('business work survives unknown runtime while actual waits and completion take precedence', () => {
   const records = [
     record('human', { hold_kind: 'captain', hold_reason: 'Выбрать вариант' }),
     record('coordinator', { state: 'in_flight' }), record('checks', { state: 'in_flight' }),
@@ -29,18 +29,21 @@ test('all established waits share one section; closed and unknown retained worke
     { id: 'unknown', current_state: { state: 'unknown' }, hints: { pending_decision: true, last_event_text: 'done: ready in branch fm/old' } },
   ];
   const view = overview({ decisions_open: [{ id: 'human' }, { id: 'closed' }], in_flight: tasks.map(t => ({ id: t.id })), gates: records.map(r => ({ id: r.id })), landed: [{ id: 'closed' }] }, { backlog: { records }, tasks });
-  assert.deepEqual(ids(view.waiting).sort(), ['checks', 'coordinator', 'dependency', 'held', 'human', 'ready']);
-  assert.deepEqual(ids(view.working), ['working']);
-  assert.deepEqual(ids(view.next).sort(), ['queued', 'unknown']);
+  assert.deepEqual(ids(view.waiting).sort(), ['coordinator', 'dependency', 'held', 'human', 'ready']);
+  assert.deepEqual(ids(view.working), ['checks', 'working', 'unknown']);
+  assert.deepEqual(ids(view.next), ['queued']);
   assert.deepEqual(ids(view.done), ['closed']);
   const rows = new Map(view.waiting.flatMap(g => g.rows).map(r => [r.id, r]));
   assert.equal(rows.get('human')?.owner, 'Капитан');
   assert.equal(rows.get('coordinator')?.owner, 'Firstmate');
   assert.equal(rows.get('held')?.owner, undefined, 'an external hold never invents a responsible person');
   assert.equal(rows.get('held')?.reason, 'Ждём поставщика');
-  assert.match(rows.get('checks')?.reason ?? '', /проверк/);
   assert.match(rows.get('ready')?.reason ?? '', /посадк/);
-  assert.match(view.next.flatMap(g => g.rows).find(r => r.id === 'unknown')?.current ?? '', /неизвестно/);
+  assert.match(view.working.flatMap(g => g.rows).find(r => r.id === 'unknown')?.current ?? '', /неизвестно/);
+  const queued = records.map(r => r.id === 'unknown' ? { ...r, state: 'queued' } : r);
+  assert.ok(ids(overview({}, { backlog: { records: queued }, tasks }).next).includes('unknown'), 'a live unknown endpoint alone does not prove business work');
+  const busyHeld = overview({}, { backlog: { records }, tasks: [{ id: 'held', current_state: { state: 'working' } }] });
+  assert.ok(ids(busyHeld.waiting).includes('held'), 'positive runtime activity cannot release an explicit business hold');
   const all = [...ids(view.waiting), ...ids(view.working), ...ids(view.next), ...ids(view.done)];
   assert.equal(new Set(all).size, all.length, 'a row has exactly one section despite overlapping Bearings lists');
   assert.deepEqual(rows.get('human')?.actions, ['release', 'later', 'close']);
@@ -58,8 +61,8 @@ test('a landed or resumed handoff stops awaiting landing and historical ready te
   ];
   const view = overview({}, { backlog: { records }, tasks });
   assert.deepEqual(ids(view.waiting), ['pending']);
-  assert.deepEqual(ids(view.working), ['resumed']);
-  assert.deepEqual(ids(view.next), ['landed', 'stale']);
+  assert.deepEqual(ids(view.working), ['landed', 'resumed', 'stale']);
+  assert.deepEqual(ids(view.next), []);
 });
 
 test('completed retained metadata without an open backlog obligation stays completed', () => {
@@ -78,7 +81,8 @@ test('canonical unresolved decisions and external waits survive unknown liveness
     { id: 'failed', current_state: { state: 'failed', detail: 'Шаг завершился с ошибкой' } },
   ];
   const view = overview({}, { backlog: { records }, tasks });
-  assert.deepEqual(ids(view.waiting), ['question', 'external', 'ci', 'failed']);
+  assert.deepEqual(ids(view.waiting), ['question', 'external', 'failed']);
+  assert.deepEqual(ids(view.working), ['ci']);
   assert.equal(view.waiting[0].rows[0].owner, 'Firstmate');
   assert.equal(view.waiting[0].rows[1].owner, undefined);
   assert.match(view.waiting[0].rows[1].reason ?? '', /Ждём загрузки данных/);
@@ -98,10 +102,10 @@ test('sections reconcile bearings with backlog and only proven work joins «В �
   const view = overview(bearings, fleet);
   assert.deepEqual(ids(view.waiting), ['ask']);
   assert.equal(view.waiting[0].rows[0].reason, 'Нужен выбор');
-  assert.deepEqual(ids(view.working), ['run']);
+  assert.deepEqual(ids(view.working), ['run', 'orphan']);
   assert.equal(view.working[0].rows[0].current, 'Работает');
-  assert.equal(view.next.flatMap(g => g.rows).find(r => r.id === 'orphan')?.noWorker, true);
-  assert.deepEqual(ids(view.next), ['next', 'orphan', '(main-inventory)']);
+  assert.equal(view.working.flatMap(g => g.rows).find(r => r.id === 'orphan')?.noWorker, true);
+  assert.deepEqual(ids(view.next), ['next', '(main-inventory)']);
   assert.equal(view.next.flatMap(g => g.rows).find(r => r.id === '(main-inventory)')?.task, false);
   assert.deepEqual(ids(view.done), ['old']);
   assert.deepEqual(view.focus.map(r => r.id), ['next'], 'a Done row never stays in focus');
@@ -208,7 +212,7 @@ test('rows expose full holds, unresolved dependencies, fleet PRs and honest work
   assert.equal(rows.find(r => r.id === 'orphan')?.current, 'Нет исполнителя');
   assert.equal(rows.find(r => r.id === 'check')?.prUrl, 'https://example.org/pull/2');
   const hinted = overview({ in_flight: [{ id: 'ask' }] }, { backlog: { records }, tasks: [{ id: 'ask', current_state: { state: 'unknown' }, hints: { pending_decision: true } }] });
-  assert.equal(hinted.next.flatMap(g => g.rows).find(r => r.id === 'ask')?.current, 'Состояние неизвестно', 'unknown is never upgraded using a hint');
+  assert.equal(hinted.working.flatMap(g => g.rows).find(r => r.id === 'ask')?.current, 'Состояние неизвестно', 'business work does not invent runtime activity from a hint');
 });
 
 test('overview cache expires and every accepted mutation invalidates it', async t => {
@@ -320,7 +324,7 @@ test('synthetic home receipts appear in overview once per read and handled never
     assert.equal(store.firstmate.show(flying.id).state, 'in_flight');
     store.firstmate.start(queued.id); store.firstmate.done(flying.id); now += 2001;
     view = await store.overview();
-    assert.deepEqual(view.next[0].rows[0].requests, [], 'actual dispatch replaces the start request');
+    assert.deepEqual(view.working.flatMap(g => g.rows).find(r => r.id === queued.id)?.requests, [], 'actual dispatch replaces the start request and establishes business work');
     assert.deepEqual(view.done[0].rows[0].requests, [], 'actual completion replaces stop/close requests');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

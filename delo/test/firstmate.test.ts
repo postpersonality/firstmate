@@ -85,3 +85,25 @@ test('local handoff evidence requires current ready declaration, clean named hea
     assert.equal(await fm.delivery(worker), undefined, 'a replacement generation cannot inherit the old handoff');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('unknown runtime preserves a current declared wait without reviving history or another generation', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-declared-wait-'));
+  const home = firstmateHome(root); const fm = new Firstmate(home);
+  mkdirSync(join(home, 'state'));
+  const meta = join(home, 'state', 'waiting.meta'), status = join(home, 'state', 'waiting.status');
+  const fields = `kind=scout\nspawn_gen=g1\nproject=${root}\nworktree=${root}\nbranch=fm/waiting\n`;
+  const worker = { id: 'waiting', kind: 'scout', spawn_gen: 'g1', project: root, branch: 'fm/waiting', current_state: { state: 'unknown' }, paths: { worktree: { path: root } } };
+  try {
+    writeFileSync(meta, fields);
+    writeFileSync(status, 'paused [at=1792510000]: Frozen checkpoint awaiting landing\n');
+    assert.deepEqual(await fm.declaredWait(worker), { state: 'paused', detail: 'Frozen checkpoint awaiting landing' });
+    assert.equal(await fm.declaredWait({ ...worker, current_state: { state: 'working', source: 'run-step' } }), undefined, 'authoritative running validation overrides old declarations');
+    writeFileSync(status, 'paused: old checkpoint\nresolved: resumed after landing\nworking: continuing\n');
+    assert.equal(await fm.declaredWait(worker), undefined, 'resolved wait cannot be revived');
+    writeFileSync(status, 'done: ready in branch fm/waiting\n');
+    assert.equal(await fm.declaredWait(worker), undefined, 'ready delivery requires its separate named-head gate');
+    writeFileSync(status, 'paused: old generation\n'); writeFileSync(meta, fields.replace('spawn_gen=g1', 'spawn_gen=g2'));
+    assert.equal(await fm.declaredWait(worker), undefined, 'a replacement generation cannot inherit a pause');
+    rmSync(meta); assert.equal(await fm.declaredWait(worker), undefined, 'missing evidence creates no wait');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

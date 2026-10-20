@@ -136,7 +136,9 @@ async function newAgent(c: ViewCase) {
   if (interactive) interactive.onchange = () => { if (interactive.checked) document.querySelector<HTMLSelectElement>('#dialog-body [name=harness]')!.value = 'codex'; };
 }
 const actionLabels: Record<string, string> = { start: 'Взять в работу', pause: 'Пауза', unhold: 'Снять паузу', close: 'Закрыть', decline: 'Отказ', answer: 'Ответить', release: 'Разрешить работу', later: 'Позже', reopen: 'Вернуть', stop: 'Запросить остановку' };
-const taskState = (g: { state?: Goal['state']; holdKind?: string; inFlight?: boolean; phase?: keyof typeof phaseLabels }) => g.state === 'done' ? 'Закрыта' : g.holdKind === 'captain' ? (g.inFlight ? 'В работе · ждёт ответа' : 'Ждёт решения') : g.state === 'paused' ? 'На паузе' : g.phase === 'waiting' ? 'Ждёт' : g.inFlight ? (g.phase === 'next' ? 'Передана Firstmate' : 'В работе') : g.state === 'active' ? 'В очереди' : '';
+const parked = (g: { state?: Goal['state']; holdKind?: string }) => g.state === 'paused' && g.holdKind === 'parked';
+const taskState = (g: { state?: Goal['state']; holdKind?: string; inFlight?: boolean; phase?: keyof typeof phaseLabels }) => g.state === 'done' ? 'Закрыта' : g.holdKind === 'captain' ? (g.inFlight ? 'В работе · ждёт ответа' : 'Ждёт решения') : parked(g) ? 'Припаркована' : g.state === 'paused' ? 'На паузе' : g.phase === 'waiting' ? 'Ждёт' : g.inFlight ? (g.phase === 'next' ? 'Передана Firstmate' : 'В работе') : g.state === 'active' ? 'В очереди' : '';
+const responsible = (g: { state?: Goal['state']; holdKind?: string; owner?: string }) => parked(g) ? '' : g.owner ? `Ответственный: ${g.owner}` : 'Ответственный неизвестен';
 const requestLabel = (r: TaskRequest) => r.action === 'start'
   ? r.state === 'pending' ? 'Запуск запрошен. Ждём принятия Firstmate.' : 'Запуск принят. Ждём начала работы.'
   : r.action === 'stop'
@@ -190,7 +192,7 @@ async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'
 const sections = [['waiting', 'Ждёт'], ['working', 'В работе'], ['next', 'Дальше'], ['done', 'Сделано']] as const;
 function row(r: Row, inFocus = false) {
   const marks = [r.kind ? badge(r.kind) : '', r.personal ? badge('личное') : '', r.pinned && !inFocus ? badge('В фокусе') : ''].join('');
-  const detail = [r.task ? r.id : undefined, taskState(r), r.current, r.reason, r.owner ? `Ответственный: ${r.owner}` : r.reason ? 'Ответственный неизвестен' : undefined].filter(Boolean).join(' · ');
+  const detail = [r.task ? r.id : undefined, taskState(r), r.current, r.reason, r.reason ? responsible(r) : undefined].filter(Boolean).join(' · ');
   const blockers = r.blockers ?? (r.blockedBy ? r.blockedBy.split(',').map(id => ({ id, title: id })) : []);
   const dependencies = blockers.length ? `<small>Ждёт: ${blockers.map(b => `<a href="#${encodeURIComponent(b.id)}">${esc(b.title)}</a>`).join(', ')}</small>` : '';
   const controls = blockers.length ? { ...r, actions: r.actions.filter(a => a !== 'start') } : r;
@@ -244,7 +246,8 @@ function renderGoal(g: ViewGoal) {
   current = g; document.title = `${g.title} — Дело`;
   const status = [taskState({ ...g, phase: g.worker?.phase }), g.inFlight || g.worker?.harness ? g.worker?.current : undefined].filter(Boolean).join(' · ');
   const reasons = [...new Set([g.reason, g.worker?.reason].filter(Boolean))];
-  const owner = reasons.length && !closed(g) ? `<p>${esc(g.worker?.owner ? `Ответственный: ${g.worker.owner}` : 'Ответственный неизвестен')}</p>` : '';
+  const who = responsible({ ...g, owner: g.worker?.owner });
+  const owner = reasons.length && !closed(g) && who ? `<p>${esc(who)}</p>` : '';
   const blockers = g.blockers?.length ? `<p>Ждёт: ${g.blockers.map(b => `<a href="#${encodeURIComponent(b.id)}">${esc(b.title)}</a>`).join(', ')}</p>` : '';
   const pr = g.worker?.prUrl || g.prUrl;
   const refs = [pr && /^https?:\/\//.test(pr) ? `<a href="${esc(pr)}" target="_blank" rel="noopener noreferrer">PR</a>` : '', g.report ? reportAnchor(g.id) : ''].filter(Boolean).join(' · ');
@@ -253,7 +256,7 @@ function renderGoal(g: ViewGoal) {
 
 const brief = (g: Goal) => `<div class="brief-box"><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl></div>`;
 const linkList = (refs: string[], report?: string) => refs.map(ref => report && ref === ownReport(report) ? reportAnchor(report) : /^https?:\/\//.test(ref) ? `<a href="${esc(ref)}" target="_blank" rel="noopener noreferrer">${esc(ref)}</a>` : esc(ref)).join(' · ');
-const caseTask = (t: CaseTask, live: boolean) => `<div class="row${live ? ' go' : ''}"><div class="row-content"><strong>${live ? `<a href="#${encodeURIComponent(t.id)}">${esc(t.title)}</a>` : esc(t.title)}</strong><small>${esc(t.id)} · ${esc(taskState(t))}${t.current ? ` · ${esc(t.current)}` : ''}${t.reason ? ` · ${esc(t.reason)} · ${esc(t.owner ? `Ответственный: ${t.owner}` : 'Ответственный неизвестен')}` : ''}${t.links.length ? ' · ' : ''}${linkList(t.links, t.report ? t.id : undefined)}</small>${reviewDetails(t)}</div>${live ? taskControls(t) : ''}</div>`;
+const caseTask = (t: CaseTask, live: boolean) => `<div class="row${live ? ' go' : ''}"><div class="row-content"><strong>${live ? `<a href="#${encodeURIComponent(t.id)}">${esc(t.title)}</a>` : esc(t.title)}</strong><small>${esc(t.id)} · ${esc(taskState(t))}${t.current ? ` · ${esc(t.current)}` : ''}${t.reason ? ` · ${esc(t.reason)}${responsible(t) ? ` · ${esc(responsible(t))}` : ''}` : ''}${t.links.length ? ' · ' : ''}${linkList(t.links, t.report ? t.id : undefined)}</small>${reviewDetails(t)}</div>${live ? taskControls(t) : ''}</div>`;
 function renderCase(c: ViewCase) {
   current = c; document.title = `${c.title} — Дело`;
   const open = !c.archived && c.state !== 'done';

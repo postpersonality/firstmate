@@ -13,14 +13,15 @@ import { run } from '../src/process.ts';
 const require = createRequire(import.meta.url);
 const { JSDOM } = require('jsdom') as any;
 
-test('public overview and case pages group all waits and keep closed retained workers completed', async t => {
+test('public overview, task and case pages separate ongoing work, actual waits and parked tasks', async t => {
   const root = mkdtempSync(join(tmpdir(), 'delo-waiting-ui-'));
   const store = new Store({ firstmateHome: firstmateHome(root) });
   const task = (id: string, extra: any = {}) => ({ id, title: id, kind: 'ship', repo: 'project', state: 'in_flight', body: 'Дело: case', ...extra });
   const tasks = [task('case', { kind: 'program', body: '' }),
     task('human', { hold_kind: 'captain', hold_reason: 'Выбрать вариант' }), task('coordinator'), task('ci'),
     task('dependency', { state: 'queued', blocked_by: 'busy' }), task('held', { state: 'queued', held: 'yes', hold_kind: 'parked', hold_reason: 'Ждём поставщика' }),
-    task('ready'), task('busy'), task('closed', { state: 'done' }), task('unknown', { kind: 'scout' })];
+    task('ready'), task('busy'), task('closed', { state: 'done' }), task('unknown', { kind: 'scout' }),
+    task('idle', { state: 'queued' }), task('quota'), task('declared-pause')];
   const fleet = { backlog: { records: tasks.map(t => ({ ...t, body_lines: t.body.split('\n') })) }, tasks: [
     { id: 'coordinator', current_state: { state: 'needs-decision', detail: 'Нужен разбор' } },
     { id: 'ci', current_state: { state: 'working', source: 'run-step', detail: 'ci running' } },
@@ -28,10 +29,15 @@ test('public overview and case pages group all waits and keep closed retained wo
     { id: 'busy', current_state: { state: 'working' } },
     { id: 'closed', current_state: { state: 'unknown' } },
     { id: 'unknown', current_state: { state: 'unknown' }, hints: { pending_decision: true, last_event_text: 'done: ready' } },
+    { id: 'idle', current_state: { state: 'unknown' }, endpoint: { exists: true } },
+    { id: 'quota', current_state: { state: 'blocked', detail: 'usage limit reached' } },
+    { id: 'declared-pause', current_state: { state: 'unknown' } },
   ] };
   const bearings = { generated: '2026-10-20T16:00:00Z', decisions_open: [{ id: 'human' }], in_flight: fleet.tasks.map(t => ({ id: t.id })), gates: [{ id: 'dependency' }, { id: 'held' }] };
   t.mock.method(store.firstmate, 'snapshot', async (script: string) => script === 'fm-bearings-snapshot.sh' ? bearings : fleet);
   t.mock.method(store.firstmate, 'delivery', async (worker: any) => worker?.id === 'ready' ? { state: 'pending', head: 'a'.repeat(40) } : undefined);
+  // This is the canonical declaration adapter, not the historical last_event_text hint.
+  t.mock.method(store.firstmate, 'declaredWait', async (worker: any) => worker?.id === 'declared-pause' ? { state: 'paused', detail: 'Frozen checkpoint awaiting landing' } : undefined);
   t.mock.method(store.firstmate, 'list', () => tasks);
   t.mock.method(store.firstmate, 'archive', () => []);
   t.mock.method(store.firstmate, 'receipts', () => ({ pending: [], handled: [] }));
@@ -46,15 +52,17 @@ test('public overview and case pages group all waits and keep closed retained wo
   try {
     window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
     await until(() => document.querySelector('#overview-waiting'));
-    assert.match(document.querySelector('#overview-waiting h2')!.textContent!, /^Ждёт 6$/);
-    assert.deepEqual(rowIds('waiting'), ['ci', 'coordinator', 'dependency', 'held', 'human', 'ready']);
-    assert.deepEqual(rowIds('working'), ['busy']); assert.deepEqual(rowIds('done'), ['closed']); assert.deepEqual(rowIds('next'), ['unknown']);
+    assert.match(document.querySelector('#overview-waiting h2')!.textContent!, /^Ждёт 7$/);
+    assert.deepEqual(rowIds('waiting'), ['coordinator', 'declared-pause', 'dependency', 'held', 'human', 'quota', 'ready']);
+    assert.deepEqual(rowIds('working'), ['busy', 'ci', 'unknown']); assert.deepEqual(rowIds('done'), ['closed']); assert.deepEqual(rowIds('next'), ['idle']);
     assert.match(document.querySelector('#overview-waiting')!.textContent!, /Ответственный: Firstmate/);
-    assert.match(document.querySelector('a[href="#held"]')!.closest('.row')!.textContent!, /Ждём поставщика.*Ответственный неизвестен/);
+    const parked = document.querySelector('a[href="#held"]')!.closest('.row')!;
+    assert.match(parked.textContent!, /Припаркована.*Ждём поставщика/);
+    assert.doesNotMatch(parked.textContent!, /Ответственный неизвестен/);
     assert.ok(document.querySelector('#overview-waiting [data-task-action="answer"]'), 'human answers remain available');
     assert.ok(document.querySelector('#overview-waiting [data-task-action="unhold"]'), 'held tasks can resume');
     assert.ok(document.querySelector('#overview-done [data-task-action="reopen"]'), 'closed tasks can return');
-    assert.match(document.querySelector('a[href="#case:case"]')!.closest('.row')!.textContent!, /в работе 1 · ждёт 6 · дальше 1 · сделано 1/);
+    assert.match(document.querySelector('a[href="#case:case"]')!.closest('.row')!.textContent!, /в работе 3 · ждёт 7 · дальше 1 · сделано 1/);
     const kind = document.getElementById('kind') as HTMLSelectElement;
     kind.value = 'scout'; kind.dispatchEvent(new window.Event('change'));
     assert.deepEqual(rowIds('waiting'), []);
@@ -63,13 +71,32 @@ test('public overview and case pages group all waits and keep closed retained wo
     (document.querySelector('#overview-waiting a[href="#coordinator"]') as HTMLAnchorElement).click();
     await until(() => document.querySelector('main h1')?.textContent === 'coordinator');
     assert.match(document.querySelector('.page-heading')!.textContent!, /Нужен разбор/);
+    window.location.hash = 'unknown';
+    await until(() => document.querySelector('main h1')?.textContent === 'unknown');
+    assert.match(document.querySelector('.page-heading')!.textContent!, /В работе.*Состояние неизвестно/);
+    window.location.hash = 'ci';
+    await until(() => document.querySelector('main h1')?.textContent === 'ci');
+    assert.match(document.querySelector('.page-heading')!.textContent!, /В работе.*Идёт проверка/);
+    assert.doesNotMatch(document.querySelector('.page-heading')!.textContent!, /Ожидает завершения проверки/);
+    window.location.hash = 'declared-pause';
+    await until(() => document.querySelector('main h1')?.textContent === 'declared-pause');
+    assert.match(document.querySelector('.page-heading')!.textContent!, /Ждёт.*Frozen checkpoint/);
+    window.location.hash = 'held';
+    await until(() => document.querySelector('main h1')?.textContent === 'held');
+    assert.match(document.querySelector('.page-heading')!.textContent!, /Припаркована.*Ждём поставщика/);
+    assert.doesNotMatch(document.querySelector('.page-heading')!.textContent!, /Ответственный неизвестен/);
+    assert.deepEqual(tasks.find(t => t.id === 'held')?.hold_reason, 'Ждём поставщика', 'display preserves the authoritative reason');
     const response = await handle(new Request('http://localhost:4317/api/cases/case'));
     assert.equal(response.status, 200);
     const c = await response.json();
-    assert.deepEqual(c.tasks.filter((t: any) => t.phase === 'waiting').map((t: any) => t.id).sort(), ['ci', 'coordinator', 'dependency', 'held', 'human', 'ready']);
+    assert.deepEqual(c.tasks.filter((t: any) => t.phase === 'waiting').map((t: any) => t.id).sort(), ['coordinator', 'declared-pause', 'dependency', 'held', 'human', 'quota', 'ready']);
+    assert.deepEqual(c.tasks.filter((t: any) => t.phase === 'working').map((t: any) => t.id).sort(), ['busy', 'ci', 'unknown']);
     window.location.hash = 'case:case';
     await until(() => document.querySelector('[data-action="agent-case"]'));
     assert.match(document.querySelector('main')!.textContent!, /ждёт.*Нужен разбор/);
+    const parkedCase = document.querySelector('a[href="#held"]')!.closest('.row')!;
+    assert.match(parkedCase.textContent!, /Припаркована.*Ждём поставщика/);
+    assert.doesNotMatch(parkedCase.textContent!, /Ответственный неизвестен/);
   } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -176,7 +203,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.ok(taskButtons().every(b => !b.disabled), 'failure restores the buttons for retry');
     taskButtons().find(b => b.dataset.taskAction === 'pause')!.click();
     await until(() => taskButtons().some(b => !b.disabled && b.dataset.taskAction === 'unhold'));
-    assert.match(focus()?.textContent ?? '', /На паузе/);
+    assert.match(focus()?.textContent ?? '', /Припаркована/);
     const confirm = () => (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     for (const paused of [true, false]) {
       if (!paused) {

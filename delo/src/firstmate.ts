@@ -30,6 +30,37 @@ export class Firstmate {
 
   async snapshot(script: 'fm-bearings-snapshot.sh' | 'fm-fleet-snapshot.sh') { return JSON.parse(await runAsync(join(this.home, 'bin', script), ['--json'], this.home, 45000, this.env())); }
 
+  // Native runtime can be unknown while the current generation has explicitly declared a wait.
+  async declaredWait(worker: any): Promise<{ state: string; detail: string } | undefined> {
+    if (worker?.current_state?.state !== 'unknown' || !['ship', 'scout'].includes(worker.kind) || !worker.spawn_gen || !/^[\p{L}\p{N}][\p{L}\p{N}_.-]{0,120}$/u.test(worker.id ?? '')) return;
+    try {
+      const result = await runAsync('bash', ['-c', `
+set -e
+. "$1/fm-classify-lib.sh"
+meta="$2/$3.meta"
+log="$2/$3.status"
+matches() {
+  [ "$(sed -n 's/^spawn_gen=//p' "$meta")" = "$4" ] &&
+  [ "$(sed -n 's/^kind=//p' "$meta")" = "$5" ] &&
+  [ "$(sed -n 's/^worktree=//p' "$meta")" = "$6" ] &&
+  [ "$(sed -n 's/^project=//p' "$meta")" = "$7" ] &&
+  [ "$(sed -n 's/^branch=//p' "$meta")" = "$8" ]
+}
+matches "$@" || exit 0
+line=$(status_current_line "$log" "$5")
+verb=$(status_line_verb "$line")
+case "$verb" in paused|blocked|needs-decision) ;; *) exit 0 ;; esac
+[ "$(status_current_line "$log" "$5")" = "$line" ] || exit 0
+matches "$@" || exit 0
+printf '%s\\n' "$verb"
+status_line_note "$line"
+`, 'delo-declared-wait', join(this.home, 'bin'), join(this.home, 'state'), worker.id, worker.spawn_gen, worker.kind, worker.paths?.worktree?.path ?? '', worker.project ?? '', worker.branch ?? ''], this.home, 10000, this.env());
+      if (!result) return;
+      const [state, ...detail] = result.split('\n');
+      if (['paused', 'blocked', 'needs-decision'].includes(state)) return { state, detail: detail.join('\n') };
+    } catch { /* Missing or changing declaration evidence cannot establish a wait. */ }
+  }
+
   // A ready handoff is separate from runtime liveness; reuse the status fold and named-head owner.
   async delivery(worker: any): Promise<{ state: 'pending' | 'landed'; head: string } | undefined> {
     if (worker?.kind !== 'ship' || worker.mode !== 'local-only' || !['unknown', 'done'].includes(worker.current_state?.state) || !worker.branch || !worker.spawn_gen || !/^[\p{L}\p{N}][\p{L}\p{N}_.-]{0,120}$/u.test(worker.id ?? '')) return;

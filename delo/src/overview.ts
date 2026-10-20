@@ -54,7 +54,7 @@ export function workerState(worker: any): string {
   return ({ parked: 'Исполнитель на паузе', paused: 'Исполнитель на паузе', blocked: 'Работа заблокирована', done: 'Работа исполнителя завершена', failed: 'Работа завершилась с ошибкой' } as Record<string, string>)[state.state] ?? 'Состояние неизвестно';
 }
 
-// Unknown state and historical wake events cannot establish either work or a wait.
+// Business progress is independent of native runtime; explicit waits and completion win.
 export function position(task: any, worker: any, records: Map<string, any>): { phase: Phase; reason?: string; owner?: string } {
   if (task?.state === 'done') return { phase: 'done' };
   const reason = value(task?.hold_reason);
@@ -64,8 +64,9 @@ export function position(task: any, worker: any, records: Map<string, any>): { p
   if (task?.held === true || task?.held === 'yes' || task?.held === undefined && reason && task?.hold_kind) {
     return { phase: 'waiting', reason: [reason ?? 'Задача отложена', value(task.hold_until) ? `До ${task.hold_until}` : undefined].filter(Boolean).join(' · ') };
   }
-  const state = worker?.current_state?.state;
-  const detail = value(worker?.current_state?.detail);
+  const current = worker?.current_state?.state === 'unknown' && worker?.declaredWait ? worker.declaredWait : worker?.current_state;
+  const state = current?.state;
+  const detail = value(current?.detail);
   if (['unknown', 'done'].includes(state) && worker?.delivery?.state === 'pending') return { phase: 'waiting', reason: 'Результат готов, ожидает локальной посадки', owner: 'Firstmate' };
   const decision = state === 'unknown' ? worker?.hints?.open_decisions?.[0] : undefined;
   if (decision) return { phase: 'waiting', reason: value(decision.summary) ?? 'Ожидает разрешения открытого вопроса', owner: decision.verb === 'needs-decision' ? 'Firstmate' : undefined };
@@ -76,8 +77,7 @@ export function position(task: any, worker: any, records: Map<string, any>): { p
   if (state === 'done') return { phase: 'waiting', reason: worker.pr?.url ? 'Результат готов, ожидает ревью или слияния' : 'Результат готов, ожидает разбора и завершения задачи', owner: 'Firstmate' };
   if (state === 'failed') return { phase: 'waiting', reason: `Нужен разбор ошибки исполнителя${detail ? `: ${detail}` : ''}`, owner: 'Firstmate' };
   if (['parked', 'paused', 'blocked'].includes(state)) return { phase: 'waiting', reason: `Исполнитель ожидает продолжения${detail ? `: ${detail}` : ''}` };
-  if (state === 'working' && workerState(worker) === 'Идёт проверка') return { phase: 'waiting', reason: 'Ожидает завершения проверки' };
-  return { phase: state === 'working' ? 'working' : 'next' };
+  return { phase: task?.state === 'in_flight' || state === 'working' ? 'working' : 'next' };
 }
 
 export function groupByRepo(rows: Row[]): Group[] {
