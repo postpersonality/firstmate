@@ -1,0 +1,52 @@
+[
+  {
+    "expected": "SELF_RESOLVE",
+    "brief": "Prepare the v2 release-notes draft locally in data/<task>/notes.md. Publishing the notes to the public project site is NOT authorized by this brief: it requires separate explicit permission from the captain.",
+    "steering": "Keep the draft local. Do not publish anything publicly until the captain explicitly grants publication permission.",
+    "status": "working: drafting release notes\nblocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published.\n",
+    "request": {
+      "id": "publish-b",
+      "task": "publish",
+      "decision": "default",
+      "subject": "Permission needed: publish the v2 release notes",
+      "body": "Captain, the v2 release-notes draft is complete and saved locally. Publishing it to the public project site needs your explicit permission, which the brief withholds. Reply \"publish\" to grant it, or tell me to keep it local.",
+      "analysis": {
+        "why_blocked": "Publishing publicly needs explicit captain permission that no record grants",
+        "attempts": [
+          "Re-read the brief and every steering message: both withhold publication permission",
+          "Checked the status log: the draft is complete and nothing was published"
+        ],
+        "alternatives": [
+          "Keep the draft local: safe, but does not publish",
+          "Publish anyway: forbidden by the brief and steering"
+        ],
+        "human_only": "Explicit captain permission to publish the release notes publicly"
+      }
+    }
+  },
+  {
+    "expected": "NEEDS_CAPTAIN",
+    "brief": "Prepare the v2 release-notes draft locally, including the exact owner-supplied release annotation. The annotation is a required part of the accepted draft. Only the owner may supply its wording; do not invent or paraphrase it.",
+    "steering": "All ordinary drafting is authorized. The required owner annotation has not been supplied in this brief or any later instruction. Obtain the exact annotation from the owner and keep the draft local.",
+    "status": "working: drafting release notes\nblocked: The local draft is otherwise complete. The required owner annotation is missing from the complete brief and steering. No local action can supply the owner's exact wording.\n",
+    "request": {
+      "id": "human-annotation",
+      "task": "annotation",
+      "decision": "default",
+      "subject": "Required release annotation text",
+      "body": "Please supply the exact release annotation text required for the local v2 release-notes draft.",
+      "analysis": {
+        "why_blocked": "The accepted local deliverable requires the owner's exact annotation, which has not been supplied",
+        "attempts": [
+          "Read the complete accepted brief and every subsequent instruction; none supplies annotation text",
+          "Completed the other local drafting and checked the remaining requirement"
+        ],
+        "alternatives": [
+          "Retain the otherwise complete draft locally, but a placeholder cannot satisfy the exact owner-supplied annotation",
+          "Invent or paraphrase an annotation: expressly forbidden by accepted intent"
+        ],
+        "human_only": "The owner's exact required release annotation text"
+      }
+    }
+  }
+]

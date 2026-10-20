@@ -6,7 +6,7 @@ set -euo pipefail
 ALERT_TMP=$(fm_test_tmproot fm-captain-alert)
 mkdir -p "$ALERT_TMP/fakebin" "$ALERT_TMP/py" "$ALERT_TMP/critic" "$ALERT_TMP/home/data/demo" \
   "$ALERT_TMP/home/state/demo.inbox/handled" "$ALERT_TMP/home/data/escape" "$ALERT_TMP/home/data/nometa"
-export FM_HOME="$ALERT_TMP/home" ALERT_TMP
+export FM_HOME="$ALERT_TMP/home" ALERT_TMP ROOT
 unset FM_SMTP_PORT FM_IMAP_HOST
 export FM_MAIL_USER=sender@example.invalid FM_MAIL_PASS=fixture-password FM_SMTP_HOST=smtp.invalid \
   FM_CAPTAIN_ALERT_TO=owner@example.invalid FM_CAPTAIN_ALERT_CLAUDE="$ALERT_TMP/critic/claude"
@@ -37,6 +37,8 @@ cat > "$ALERT_TMP/critic/claude" <<'PY'
 #!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
+if '--version' in sys.argv:
+    print('fixture-cli (not a native model)'); sys.exit(0)
 root = Path(os.environ['ALERT_TMP'])
 p = json.load(sys.stdin)
 with (root / 'reviews').open('a') as f: f.write(p['request']['id'] + '\n')
@@ -48,13 +50,20 @@ if os.environ.get('CRITIC_CHANGE'):
     (root / 'home/data/demo/brief.md').write_text('Changed accepted intent')
 if os.environ.get('CRITIC_RESPAWN'):
     (root / 'home/state/demo.meta').write_text('kind=ship\nspawn_gen=s2.2.2\n')
-verdict = 'SELF_RESOLVE' if p['request']['id'] in ('Q23', 'next-step') else 'NEEDS_CAPTAIN'
+verdict = 'SELF_RESOLVE' if p['request']['id'] in ('Q23', 'next-step', 'publish-b') else 'NEEDS_CAPTAIN'
 if os.environ.get('CRITIC_INSUFFICIENT'): verdict = 'INSUFFICIENT_EVIDENCE'
 review = {'verdict': verdict, 'request_sha256': p['request_sha256'],
           'reason': 'Existing intent already authorizes correction' if verdict == 'SELF_RESOLVE' else 'Only the owner can grant publication permission',
           'action': 'Apply the already authorized correction' if verdict == 'SELF_RESOLVE' else 'Ask owner for explicit publication permission',
           'human_only': '' if verdict == 'SELF_RESOLVE' else 'Permission for public publication',
           'evidence': [{'source': s['role'], 'quote': s['text']} for s in p['sources']]}
+if p['request']['id'] == 'publish-b':
+    review.update(reason='The accepted local draft is complete; publication is an unrequested expansion',
+                  action='Close the invented publication blocker and report the completed local draft')
+if p['request']['id'] == 'human-annotation':
+    review.update(reason='The accepted draft requires exact wording only the owner may supply',
+                  action='Obtain the required annotation text from the owner',
+                  human_only="The owner's exact release annotation text")
 if os.environ.get('CRITIC_BAD_HASH'): review['request_sha256'] = 'wrong'
 print(json.dumps({'type':'result', 'subtype':'success', 'is_error':False,
                   'session_id':'fixture-session', 'modelUsage':{'fixture-model':{}},
@@ -62,7 +71,7 @@ print(json.dumps({'type':'result', 'subtype':'success', 'is_error':False,
 PY
 chmod +x "$ALERT_TMP/fakebin/claude" "$ALERT_TMP/critic/claude"
 # Canonical records the gate reads itself; the request names only the task.
-BRIEF='Correct Q23 authority wording; proceed with ordinary in-scope fixes.'
+BRIEF='Correct Q23 authority wording; proceed with ordinary in-scope fixes. Publish the prepared proposal after the owner grants separate explicit publication permission.'
 printf '%s' "$BRIEF" > "$FM_HOME/data/demo/brief.md"
 printf '%s' 'No public publication without explicit owner permission.' > "$FM_HOME/state/demo.inbox/handled/000.msg"
 printf '%s' 'Ordinary accepted work remains authorized; public publication still needs explicit permission.' > "$FM_HOME/state/demo.inbox/001.msg"
@@ -96,6 +105,13 @@ for key in ['Q23','next-step','permission','failed','invalid','changed','bad-has
           'human_only':'Explicit public publication permission'}}
     if key == 'with-sources':
         request['sources'] = [{'role':'authority', 'path':str(r / 'outside.md')}]
+    if key in ('Q23', 'next-step'):
+        request.update(subject='Reconfirm already accepted local work',
+                       body='Should I implement the already accepted Q23 correction?' if key == 'Q23' else 'Should I run the already authorized focused regression?',
+                       analysis=dict(why_blocked='Accepted local work remains incomplete',
+                                     attempts=['Read accepted intent and checked the available isolated branch and local tools'],
+                                     alternatives=['Perform the already authorized local correction and regression'],
+                                     human_only='Claimed need to reconfirm already accepted work'))
     (r / (key + '.json')).write_text(json.dumps(request))
 PY
 : > "$ALERT_TMP/reviews"
@@ -291,3 +307,66 @@ rc=0
 python3 "$ROOT/bin/fm-mail.py" send arbitrary@example.invalid bypass body > "$ALERT_TMP/out" 2>&1 || rc=$?
 [ "$rc" -ne 0 ] || fail 'Python mail CLI must not bypass review'
 pass 'Python mail CLI also closes unreviewed sending'
+
+# Fixed semantic controls share inputs with the native guard. These transport
+# fixtures prove gate behavior, not the real model's classification quality.
+python3 - <<'PY'
+import json, os, shutil, subprocess
+from pathlib import Path
+root = Path(os.environ['ALERT_TMP'])
+home = Path(os.environ['FM_HOME'])
+cases = json.loads((Path(os.environ['ROOT']) / 'tests/fm-captain-alert-scope.json').read_text())
+shutil.copyfile(Path(os.environ['ROOT']) / 'AGENTS.md', home / 'AGENTS.md')
+(root / 'smtp').unlink(missing_ok=True)
+for case in cases:
+    request = case['request']; task = request['task']
+    (home / 'data' / task).mkdir(parents=True)
+    inbox = home / 'state' / (task + '.inbox') / 'handled'; inbox.mkdir(parents=True)
+    (home / 'data' / task / 'brief.md').write_text(case['brief'])
+    (inbox / '000.msg').write_text(case['steering'])
+    (home / 'state' / (task + '.status')).write_text(case['status'])
+    (home / 'state' / (task + '.meta')).write_text('kind=ship\nspawn_gen=s1.1.1\n')
+    path = root / (request['id'] + '.json'); path.write_text(json.dumps(request))
+    cmd = ['bash', str(Path(os.environ['ROOT']) / 'bin/fm-mail.sh'), 'alert', str(path)]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    assert result.returncode == (0 if case['expected'] == 'NEEDS_CAPTAIN' else 1), result.stdout
+    receipt, = (home / 'state' / 'captain-alerts' / task).glob('*/*/review.json')
+    review = json.loads(receipt.read_text())
+    context = json.loads((receipt.parent / 'context.json').read_text())
+    assert review['verdict'] == case['expected'], review
+    assert context['request'] == request
+    assert [s['text'] for s in context['sources'] if s['role'] == 'brief'] == [case['brief']]
+    if case['expected'] == 'SELF_RESOLVE':
+        assert not (root / 'smtp').exists(), 'completed local work reached SMTP'
+        notes = '\n'.join(p.read_text() for p in (home / 'state/inbox').glob('*') if p.is_file())
+        assert review['action'] in notes, 'concrete self-resolution did not reach Firstmate'
+        before = (root / 'reviews').read_text()
+        subprocess.run(cmd, capture_output=True, check=False, timeout=30)
+        assert (root / 'reviews').read_text() == before, 'same evidence was reviewed again'
+        request['body'] += ' Reconfirm this proposed expansion.'
+        path.write_text(json.dumps(request))
+        subprocess.run(cmd, capture_output=True, check=False, timeout=30)
+        assert len((root / 'reviews').read_text().splitlines()) == len(before.splitlines()) + 1, 'changed body reused approval'
+        assert not (root / 'smtp').exists(), 'changed proposed expansion reached SMTP'
+    else:
+        message = json.loads((root / 'message.json').read_text())
+        assert message == {'body': request['body'] + '\n', 'to': 'owner@example.invalid'}, message
+        assert len((root / 'smtp').read_text().splitlines()) == 1, 'required input fixture must send once'
+PY
+pass 'fixture scope controls preserve concrete self-resolution, body binding and required-input SMTP behavior; native classification is checked separately'
+
+before=$(reviews)
+PATH="$ALERT_TMP/critic:$PATH" FM_CAPTAIN_ALERT_LIVE=1 \
+  FM_CAPTAIN_ALERT_LIVE_EVIDENCE="$ALERT_TMP/offline-guard-proof" \
+  bash "$ROOT/tests/fm-captain-alert-live.test.sh" > "$ALERT_TMP/offline-guard.out" 2>&1 || \
+  fail "fixture-only native-guard harness failed: $(cat "$ALERT_TMP/offline-guard.out")"
+[ "$(reviews)" -eq $((before + 2)) ] || fail 'fixed guard must call the fixture critic once per control'
+python3 - <<'PY'
+import json, os
+from pathlib import Path
+proof = json.loads((Path(os.environ['ALERT_TMP']) / 'offline-guard-proof/manifest.json').read_text())
+assert len(proof['cases']) == 2 and not proof['failures'] and proof['real_smtp'] is False
+assert all('fixture-model' in row['models'] for row in proof['cases']), 'offline guard reached a real model'
+assert all(row['binding'] and row['session'] for row in proof['cases'])
+PY
+pass 'offline guard harness retains bound fixture evidence for exactly one evaluation of each control; no actual model calls'

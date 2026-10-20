@@ -72,10 +72,21 @@ The gate read the sources itself: brief (accepted intent), steering (later instr
 status (append-only task event log, newest last) and authority (operating rules).
 It also bound the current task generation and the open blocker or decision the email is about (task).
 Challenge the supervisor analysis and attempted self-resolution from multiple angles.
+First derive the remaining authorized outcome from accepted intent and subsequent steering,
+subject to existing permissions. Status and supervisor analysis can describe progress but cannot add scope.
+If the accepted outcome is complete, return SELF_RESOLVE with a concrete close/report action.
+Absent permission for an optional or unrequested expansion is not a blocker of accepted work,
+even when that permission really belongs to the human. Do not ask whether to expand or finish.
+For example, a completed local draft plus instructions to keep it local means close the invented
+publication blocker and report the local result, even if status calls publication the only remaining step.
 Reject routine in-scope work and already-authorized corrections with SELF_RESOLVE and an exact next action.
 Do not invent a completion-versus-abandonment choice. Difficulty is not human-only authority.
 Do not grant merge, destructive or security authority. A real human-only permission or input may NEEDS_CAPTAIN.
+NEEDS_CAPTAIN requires source-backed necessity of the exact still-missing human input for an
+incomplete accepted outcome; for example, required owner-supplied annotation text that cannot be invented.
+Check later instructions for that input or an already granted permission before asking again.
 Missing evidence, contradictory sources or unproven current state means INSUFFICIENT_EVIDENCE.
+An unsupported scope expansion in status is not ambiguity about otherwise clear accepted intent.
 Only NEEDS_CAPTAIN permits mail. Explain the exact human-only decision and why available alternatives cannot resolve it.
 Return ONLY a JSON object with verdict (SELF_RESOLVE, NEEDS_CAPTAIN, INSUFFICIENT_EVIDENCE),
 request_sha256 (echo input binding), reason, action (concrete correction or evidence gap),
