@@ -48,5 +48,50 @@
         "human_only": "The owner's exact required release annotation text"
       }
     }
+  },
+  {
+    "expected": "SELF_RESOLVE",
+    "brief": "Correct the Q23 question-authority trigger in bin/fm-ask.sh and add its regression test; then proceed with ordinary in-scope work without asking again.",
+    "steering": "Proceed with every already accepted in-scope correction; do not ask the captain to reconfirm accepted work.",
+    "status": "blocked: Unsure whether to apply the accepted Q23 trigger correction because it touches the question-authority path. An isolated editable branch is available; no external action is needed.\n",
+    "request": {
+      "id": "q23",
+      "task": "q23",
+      "decision": "default",
+      "subject": "Confirm Q23 correction",
+      "body": "Captain, should I apply the Q23 question-authority correction described in the brief?",
+      "analysis": {
+        "why_blocked": "The correction changes the question-authority path",
+        "attempts": [
+          "Read the brief; it names exactly this correction"
+        ],
+        "alternatives": [
+          "Apply the correction on the isolated branch with its regression test"
+        ],
+        "human_only": "Confirmation to apply the correction"
+      }
+    }
+  },
+  {
+    "expected": "SELF_RESOLVE",
+    "brief": "Add a --dry-run flag to bin/export.sh and cover it with a regression test.",
+    "status": "working: implemented --dry-run\nblocked: The flag is implemented; writing its regression test is next. Waiting for a go-ahead before writing the test.\n",
+    "request": {
+      "id": "nextstep",
+      "task": "nextstep",
+      "decision": "default",
+      "subject": "Go-ahead for the next step",
+      "body": "Captain, may I write the regression test for --dry-run now?",
+      "analysis": {
+        "why_blocked": "Waiting for a go-ahead before the next step",
+        "attempts": [
+          "Implemented the flag as briefed"
+        ],
+        "alternatives": [
+          "Write the regression test as the brief requires"
+        ],
+        "human_only": "Go-ahead to write the test"
+      }
+    }
   }
 ]

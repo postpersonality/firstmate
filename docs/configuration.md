@@ -1552,7 +1552,7 @@ This password-based sender requires a Gmail app password, which requires 2-Step 
 OAuth is not implemented by this sender.
 If the account cannot create an app password, resolve that account constraint before activation.
 Never use a synthetic case to test live SMTP; the first real send must be a configured, independently approved blocker event.
-`tests/fm-captain-alert.test.sh` tests the deterministic gate with fixture transports, while `FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh` empirically tests native classification with SMTP forbidden.
+`tests/fm-captain-alert.test.sh` tests the deterministic gate with fixture transports, while `FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh` empirically tests native classification with real SMTP replaced by a local capture, which only the required-input control may reach, with the bound body and recipient.
 
 `FM_IMAP_PORT` (default 993), `FM_SMTP_PORT` (default 465), `FM_MAIL_TIMEOUT` (default 20 seconds), and `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200) are optional.
 The per-poll wake cap bounds the wakes of one `poll` run; header fetches scan a larger bounded window of new unseen uids plus already-surfaced retry-set uids, so a flood or large backlog still makes bounded progress every poll, keeping the durable wake queue bounded without ever dropping mail.

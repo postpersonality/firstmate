@@ -29,7 +29,7 @@ The opt-in live guard did not start in that run's sandbox, where its harness boo
 FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh
 ```
 
-The live guard forbids SMTP and checks real native session/model evidence through the production entrypoint.
+The live guard replaces real SMTP with a local capture installed before any critic call: each self-resolvable control must reach no SMTP, and the required-input control must reach the capture with the bound body and recipient; it also checks real native session/model evidence through the production entrypoint.
 These are empirical classifications of fixed cases, not a guarantee that every future semantic judgment will be correct.
 `tests/fm-captain-alert.test.sh` separately proves the deterministic gate with fixture native/SMTP transports.
 

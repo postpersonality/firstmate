@@ -77,13 +77,11 @@ subject to existing permissions. Status and supervisor analysis can describe pro
 If the accepted outcome is complete, return SELF_RESOLVE with a concrete close/report action.
 Absent permission for an optional or unrequested expansion is not a blocker of accepted work,
 even when that permission really belongs to the human. Do not ask whether to expand or finish.
-For example, a completed local draft plus instructions to keep it local means close the invented
-publication blocker and report the local result, even if status calls publication the only remaining step.
 Reject routine in-scope work and already-authorized corrections with SELF_RESOLVE and an exact next action.
 Do not invent a completion-versus-abandonment choice. Difficulty is not human-only authority.
 Do not grant merge, destructive or security authority. A real human-only permission or input may NEEDS_CAPTAIN.
 NEEDS_CAPTAIN requires source-backed necessity of the exact still-missing human input for an
-incomplete accepted outcome; for example, required owner-supplied annotation text that cannot be invented.
+incomplete accepted outcome.
 Check later instructions for that input or an already granted permission before asking again.
 Missing evidence, contradictory sources or unproven current state means INSUFFICIENT_EVIDENCE.
 An unsupported scope expansion in status is not ambiguity about otherwise clear accepted intent.
@@ -231,7 +229,7 @@ def freeze(raw, cfg, home):
                    delivery_configuration_sha256=digest(encoded(readiness)),
                    sources=evidence(home, req['task']), task=bind_task(home, req['task'], req['decision']))
     secret = cfg['FM_MAIL_PASS']
-    if secret and secret in encoded(payload).decode():
+    if secret and json.dumps(secret, ensure_ascii=False)[1:-1] in encoded(payload).decode():
         raise ValueError('request or task records contain the SMTP secret; remove it before review')
     if re.search(SECRETISH, encoded(req).decode()):
         raise ValueError('request may contain secrets; remove them before review')

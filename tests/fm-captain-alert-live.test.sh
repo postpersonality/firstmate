@@ -18,7 +18,7 @@ import shutil
 import subprocess
 
 root = Path(os.environ['LIVE_ALERT_TMP'])
-# Install SMTP capture before either real critic call; no network is possible.
+# Install SMTP capture before any real critic call; no network is possible.
 stub = root / 'py'; stub.mkdir()
 (stub / 'smtplib.py').write_text('''import json, os
 from pathlib import Path
@@ -58,7 +58,8 @@ for case in cases:
     (home / 'data' / task).mkdir(parents=True)
     inbox = home / 'state' / (task + '.inbox') / 'handled'; inbox.mkdir(parents=True)
     (home / 'data' / task / 'brief.md').write_text(case['brief'])
-    (inbox / '000.msg').write_text(case['steering'])
+    if 'steering' in case:
+        (inbox / '000.msg').write_text(case['steering'])
     (home / 'state' / (task + '.status')).write_text(case['status'])
     (home / 'state' / (task + '.meta')).write_text('kind=ship\nspawn_gen=s1.1.1\n')
     request = root / (key + '.json'); request.write_text(json.dumps(req))
@@ -72,6 +73,10 @@ for case in cases:
         saved.mkdir()
     (saved / 'stdout.txt').write_bytes(proc.stdout)
     (saved / 'stderr.txt').write_bytes(proc.stderr)
+    # Each control keeps its own capture, so no later control inherits a message.
+    capture = saved / 'smtp.jsonl'
+    if (root / 'smtp.jsonl').exists():
+        shutil.move(str(root / 'smtp.jsonl'), str(capture))
     review_paths = list(receipts.glob('*/*/review.json'))
     review = json.loads(review_paths[0].read_text()) if len(review_paths) == 1 else {}
     transport_paths = list(receipts.glob('*/*/transport.json'))
@@ -88,11 +93,10 @@ for case in cases:
             not row['binding'] or row['binding'] != context.get('request_sha256') or
             row['binding'] != review.get('request_sha256')):
         failures.append(key + ': missing/failed/mismatched native evidence or classification')
-    capture = root / 'smtp.jsonl'
     messages = [json.loads(line) for line in capture.read_text().splitlines()] if capture.exists() else []
     if case['expected'] == 'SELF_RESOLVE':
         if proc.returncode != 1 or messages or list(receipts.glob('*/sent.json')):
-            failures.append(key + ': completed local scope was not rejected before SMTP')
+            failures.append(key + ': self-resolvable control was not rejected before SMTP')
     elif proc.returncode != 0 or messages != [{'to': 'owner@example.invalid', 'body': req['body'] + '\n'}]:
         failures.append(key + ': required human input did not reach fixture SMTP with the bound body/recipient')
     print('critic ' + key + ': ' + str(row['verdict']) + '; session=' + str(row['session']) + '; models=' + ','.join(row['models'] or {}), flush=True)

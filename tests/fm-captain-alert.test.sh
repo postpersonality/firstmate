@@ -50,7 +50,7 @@ if os.environ.get('CRITIC_CHANGE'):
     (root / 'home/data/demo/brief.md').write_text('Changed accepted intent')
 if os.environ.get('CRITIC_RESPAWN'):
     (root / 'home/state/demo.meta').write_text('kind=ship\nspawn_gen=s2.2.2\n')
-verdict = 'SELF_RESOLVE' if p['request']['id'] in ('Q23', 'next-step', 'publish-b') else 'NEEDS_CAPTAIN'
+verdict = 'SELF_RESOLVE' if p['request']['id'] in ('Q23', 'next-step', 'publish-b', 'q23', 'nextstep') else 'NEEDS_CAPTAIN'
 if os.environ.get('CRITIC_INSUFFICIENT'): verdict = 'INSUFFICIENT_EVIDENCE'
 review = {'verdict': verdict, 'request_sha256': p['request_sha256'],
           'reason': 'Existing intent already authorizes correction' if verdict == 'SELF_RESOLVE' else 'Only the owner can grant publication permission',
@@ -93,7 +93,8 @@ from pathlib import Path
 r = Path(os.environ['ALERT_TMP'])
 for key in ['Q23','next-step','permission','failed','invalid','changed','bad-hash','smtp-fail','insufficient',
             'recipient-change','ghost','escape','with-sources','nopass','relative','shared-env',
-            'reworked-a','reworked-b','respawn','unreadable','nometa','login-fail','permission-twin','smtp-fail-twin']:
+            'reworked-a','reworked-b','respawn','unreadable','nometa','login-fail','permission-twin','smtp-fail-twin',
+            'escaped-secret']:
     task = {'ghost':'ghost', 'escape':'escape', 'reworked-a':'reworked', 'nometa':'nometa'}.get(key, 'demo')
     decision = {'reworked-b':'stale', 'failed':'retry', 'recipient-change':'recipient', 'smtp-fail':'attempt',
                 'smtp-fail-twin':'attempt', 'login-fail':'login'}.get(key, 'default')
@@ -103,6 +104,8 @@ for key in ['Q23','next-step','permission','failed','invalid','changed','bad-has
           'why_blocked':'Publication needs human consent', 'attempts':['Verified consent is absent'],
           'alternatives':['Keep local work ready; publication cannot proceed'],
           'human_only':'Explicit public publication permission'}}
+    if key == 'escaped-secret':
+        request['body'] = 'Sign in with fixture\\pass"word to publish.'
     if key == 'with-sources':
         request['sources'] = [{'role':'authority', 'path':str(r / 'outside.md')}]
     if key in ('Q23', 'next-step'):
@@ -149,11 +152,12 @@ before=$(reviews)
 CRITIC_INSUFFICIENT=1 reject nopass
 [ "$(reviews)" -gt "$before" ] || fail 'a repaired configuration gap was not reviewed fresh'
 FM_CAPTAIN_ALERT_CLAUDE=claude reject_unreviewed relative 'PATH is never searched'
+FM_MAIL_PASS='fixture\pass"word' reject_unreviewed escaped-secret 'contain the SMTP secret'
 printf '# unrelated\n' > "$FM_HOME/.env"
 chmod 640 "$FM_HOME/.env"
 reject_unreviewed shared-env 'chmod 600'
 rm "$FM_HOME/.env"
-pass 'configuration gaps are named before any critic call and retry fresh once repaired'
+pass 'configuration gaps and an SMTP secret with JSON-escaped characters are named before any critic call; gaps retry fresh once repaired'
 
 reject_unreviewed ghost 'lacks its canonical brief record'
 reject_unreviewed escape 'inside the Firstmate home'
@@ -317,13 +321,14 @@ root = Path(os.environ['ALERT_TMP'])
 home = Path(os.environ['FM_HOME'])
 cases = json.loads((Path(os.environ['ROOT']) / 'tests/fm-captain-alert-scope.json').read_text())
 shutil.copyfile(Path(os.environ['ROOT']) / 'AGENTS.md', home / 'AGENTS.md')
-(root / 'smtp').unlink(missing_ok=True)
 for case in cases:
+    (root / 'smtp').unlink(missing_ok=True)
     request = case['request']; task = request['task']
     (home / 'data' / task).mkdir(parents=True)
     inbox = home / 'state' / (task + '.inbox') / 'handled'; inbox.mkdir(parents=True)
     (home / 'data' / task / 'brief.md').write_text(case['brief'])
-    (inbox / '000.msg').write_text(case['steering'])
+    if 'steering' in case:
+        (inbox / '000.msg').write_text(case['steering'])
     (home / 'state' / (task + '.status')).write_text(case['status'])
     (home / 'state' / (task + '.meta')).write_text('kind=ship\nspawn_gen=s1.1.1\n')
     path = root / (request['id'] + '.json'); path.write_text(json.dumps(request))
@@ -360,13 +365,15 @@ PATH="$ALERT_TMP/critic:$PATH" FM_CAPTAIN_ALERT_LIVE=1 \
   FM_CAPTAIN_ALERT_LIVE_EVIDENCE="$ALERT_TMP/offline-guard-proof" \
   bash "$ROOT/tests/fm-captain-alert-live.test.sh" > "$ALERT_TMP/offline-guard.out" 2>&1 || \
   fail "fixture-only native-guard harness failed: $(cat "$ALERT_TMP/offline-guard.out")"
-[ "$(reviews)" -eq $((before + 2)) ] || fail 'fixed guard must call the fixture critic once per control'
+[ "$(reviews)" -eq $((before + 4)) ] || fail 'fixed guard must call the fixture critic once per control'
 python3 - <<'PY'
 import json, os
 from pathlib import Path
-proof = json.loads((Path(os.environ['ALERT_TMP']) / 'offline-guard-proof/manifest.json').read_text())
-assert len(proof['cases']) == 2 and not proof['failures'] and proof['real_smtp'] is False
+evidence = Path(os.environ['ALERT_TMP']) / 'offline-guard-proof'
+proof = json.loads((evidence / 'manifest.json').read_text())
+assert len(proof['cases']) == 4 and not proof['failures'] and proof['real_smtp'] is False
 assert all('fixture-model' in row['models'] for row in proof['cases']), 'offline guard reached a real model'
 assert all(row['binding'] and row['session'] for row in proof['cases'])
+assert [row['id'] for row in proof['cases'] if (evidence / row['id'] / 'smtp.jsonl').exists()] == ['human-annotation'], 'SMTP capture is not retained per control'
 PY
 pass 'offline guard harness retains bound fixture evidence for exactly one evaluation of each control; no actual model calls'
