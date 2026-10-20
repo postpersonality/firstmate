@@ -19,6 +19,12 @@ export const linkEntries = (links: unknown): unknown[] => Array.isArray(links) ?
 export const hasReport = (task: { id: string; links?: unknown }) => linkEntries(task.links).includes(`report:${reportPath(task.id)}`);
 export const pinned = (record: any) => String(record?.priority) === '0' && record?.state !== 'done';
 
+// Shared by overview rows and task cards; completed dependencies no longer hold the task.
+export function taskBlockers(task: any, records: Map<string, any>) {
+  const ids: string[] = task.unresolved_blocker_ids ?? task.blocked_by_ids ?? value(task.blocked_by)?.split(',') ?? [];
+  return ids.map(id => id.trim()).filter(id => id && id !== 'none' && records.get(id)?.state !== 'done').map(id => ({ id, title: value(records.get(id)?.title) ?? id }));
+}
+
 // Uses reconciled current state, never historical status events or unknown-state hints.
 export function workerState(worker: any): string {
   if (!worker) return 'Нет исполнителя';
@@ -47,13 +53,12 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
     const r = records.get(id);
     const task = native.get(id) ?? r;
     const worker = workers.get(id);
-    const blockerIds: string[] = r?.unresolved_blocker_ids ?? (r?.blocked_by_ids ?? value(extra.blockedBy ?? r?.blocked_by)?.split(',') ?? []).map((id: string) => id.trim()).filter((id: string) => id && records.get(id)?.state !== 'done') ?? [];
     return {
       ...extra, id, title: value(r?.title) ?? value(title) ?? id, kind: value(r?.kind) ?? extra.kind, repo: value(r?.repo) ?? extra.repo,
       pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(worker?.pr?.url) ?? value(r?.pr_url), reportPath: value(r?.report_path),
       actions: r ? actions(task) : [], state: !r ? undefined : task.state === 'done' ? 'done' : task.held === true || task.held === 'yes' ? 'paused' : 'active',
       reason: value(r?.hold_reason) ?? extra.reason,
-      blockers: blockerIds.map(id => ({ id, title: value(records.get(id)?.title) ?? id })),
+      blockers: taskBlockers({ ...r, blocked_by: extra.blockedBy ?? r?.blocked_by }, records),
       current: worker || task?.state === 'in_flight' ? workerState(worker) : extra.current,
       holdKind: value(task?.hold_kind), inFlight: task?.state === 'in_flight',
     };

@@ -46,5 +46,6 @@ export function phase(task: { state: string; hold_kind?: string }): Phase {
 // A card is one Firstmate row; links are the row's own pr/report/doc links.
 export type Goal = {
   id: string; title: string; state: z.infer<typeof state>; body: string; kind?: string; repo?: string; personal: boolean; actions: Action[];
+  managedBrief?: boolean; prUrl?: string; reason?: string; blockers?: { id: string; title: string }[];
   why: string; doneWhen: string; context: string; constraints: string[]; holdKind?: string; inFlight?: boolean; links: string[]; report: boolean; folder: string; harness: string;
 };

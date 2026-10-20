@@ -70,7 +70,7 @@ test('a task opens its own report read-only with its absolute path, and nothing 
       assert.deepEqual(reportLinks().sort(), ['#report:missing', '#report:own', '#report:shipped'], 'only rows with their own report link get «Отчёт», «Сделано» included');
 
       window.location.hash = 'own'; await until(() => document.querySelector('main h1')?.textContent === title('own'));
-      assert.deepEqual(reportLinks(), ['#report:own'], 'the task page «Ссылки» opens the report');
+      assert.deepEqual(reportLinks(), ['#report:own', '#report:own'], 'the task heading and «Ссылки» open the report');
       window.location.hash = 'other'; await until(() => document.querySelector('main h1')?.textContent === title('other'));
       assert.deepEqual(reportLinks(), [], 'a link to another task report stays plain text');
 

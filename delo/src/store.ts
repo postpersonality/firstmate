@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, phase, id } from './model.ts';
 import type { Goal, Action } from './model.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
-import { type Overview, overview, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
+import { type Overview, overview, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
 
 const sections = ['Обложка', 'Зачем', 'Критерий готовности', 'Контекст', 'Ограничения'];
 
@@ -198,9 +198,11 @@ export class Store {
     task = this.whole(task);
     const body = task.body || '';
     const managed = managedBody(body);
+    const dependencies = task.blocked_by && task.blocked_by !== 'none' || task.blocked_by_ids?.length || task.unresolved_blocker_ids?.length;
+    const records = new Map((dependencies ? this.firstmate.list() : []).map(t => [t.id, t]));
     return {
       id: task.id, title: task.title, state: task.state === 'done' ? 'done' : held(task) ? 'paused' : 'active',
-      body, kind: field(task.kind), repo: field(task.repo), personal: isPersonal(body), actions: actions(task),
+      body, managedBrief: managed, prUrl: field(task.pr_url) ?? linkEntries(task.links).find((ref): ref is string => typeof ref === 'string' && ref.startsWith('pr:'))?.slice(3), reason: field(task.hold_reason), blockers: taskBlockers(task, records), kind: field(task.kind), repo: field(task.repo), personal: isPersonal(body), actions: actions(task),
       holdKind: field(task.hold_kind), inFlight: task.state === 'in_flight',
       why: managed ? section(body, 'Зачем') : '', doneWhen: managed ? section(body, 'Критерий готовности') : '', context: managed ? section(body, 'Контекст') : body,
       constraints: managed ? section(body, 'Ограничения').split('\n').filter(s => s.startsWith('- ')).map(s => s.slice(2)) : [],
@@ -301,7 +303,8 @@ export class Store {
   // The executor actually running a task, from the fleet snapshot's worker record.
   async worker(taskId: string) {
     const record = ((await this.firstmate.snapshot('fm-fleet-snapshot.sh')).tasks ?? []).find((t: any) => t.id === taskId);
-    return record ? { harness: field(record.harness) ?? '' } : undefined;
+    const current = workerState(record);
+    return { harness: field(record?.harness) ?? '', current, reason: ['Вопрос исполнителя', 'Работа заблокирована', 'Исполнитель на паузе', 'Работа завершилась с ошибкой'].includes(current) ? field(record?.current_state?.detail) : undefined, prUrl: field(record?.pr?.url) };
   }
 
   // Suggestions for the folder field: every folder an open backlog task names.

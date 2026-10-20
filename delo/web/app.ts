@@ -1,6 +1,6 @@
 import type { Goal } from '../src/model.ts';
 import type { Overview, Row, CaseRow } from '../src/overview.ts';
-type ViewGoal = Goal & { inbox?: { requests: { requestId: string; at: string; state: string; acknowledged: boolean; reply: unknown }[]; ready?: any }; worker?: { harness: string } };
+type ViewGoal = Goal & { inbox?: { requests: { requestId: string; at: string; state: string; acknowledged: boolean; reply: unknown }[]; ready?: any }; worker?: { harness: string; current?: string; reason?: string; prUrl?: string } };
 type CaseTask = Pick<Goal, 'id' | 'title' | 'state' | 'actions' | 'holdKind' | 'inFlight' | 'links' | 'report'> & { phase: keyof typeof phaseLabels };
 type ViewCase = Goal & { archived: boolean; sources: string[]; tasks: CaseTask[]; earlier: CaseTask[] };
 const phaseLabels = { working: 'в работе', waiting: 'ждёт меня', next: 'дальше', done: 'сделано' };
@@ -172,7 +172,12 @@ function executor(g: ViewGoal) {
 }
 function renderGoal(g: ViewGoal) {
   current = g; document.title = `${g.title} — Дело`;
-  renderMain(`<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(g.id)} · ${esc(taskState(g))}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p class="muted">${esc(g.why || 'Зачем нужна цель, пока не записано')}</p>${executor(g)}${requests(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${taskControls(g)}</div></div><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section><section class="section"><div class="section-heading"><h2>Бриф</h2></div><details class="brief-box"><summary>Зачем, критерий готовности и контекст</summary><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl>${closed(g) ? '<p class="disabled-note">Бриф заморожен после закрытия цели.</p>' : ''}</details></section>`);
+  const status = [taskState(g), g.inFlight || g.worker?.harness ? g.worker?.current : undefined].filter(Boolean).join(' · ');
+  const reasons = [...new Set([g.reason, g.worker?.reason].filter(Boolean))];
+  const blockers = g.blockers?.length ? `<p>Ждёт: ${g.blockers.map(b => `<a href="#${encodeURIComponent(b.id)}">${esc(b.title)}</a>`).join(', ')}</p>` : '';
+  const pr = g.worker?.prUrl || g.prUrl;
+  const refs = [pr && /^https?:\/\//.test(pr) ? `<a href="${esc(pr)}" target="_blank" rel="noopener noreferrer">PR</a>` : '', g.report ? reportAnchor(g.id) : ''].filter(Boolean).join(' · ');
+  renderMain(`<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(g.id)} · ${esc(taskState(g))}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p>${esc(status)}</p>${reasons.map(reason => `<p class="prose">${esc(reason)}</p>`).join('')}${blockers}${refs ? `<p>${refs}</p>` : ''}${g.why ? `<p class="prose">${esc(g.why)}</p>` : ''}${executor(g)}${requests(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${taskControls(g)}</div></div><section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section><section class="section"><div class="section-heading"><h2>Бриф</h2></div>${g.managedBrief ? `<details class="brief-box"><summary>Зачем, критерий готовности и контекст</summary><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl>${closed(g) ? '<p class="disabled-note">Бриф заморожен после закрытия цели.</p>' : ''}</details>` : `<div class="brief-box prose">${esc(g.body)}</div>`}</section>`);
 }
 
 const brief = (g: Goal) => `<div class="brief-box"><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl></div>`;
@@ -207,7 +212,7 @@ async function goalAction(action: string) {
   if (action !== 'edit') return;
   // A дело's brief has no folder: only its tasks are duties.
   const folder = g.kind === 'program' ? '' : folderField(await api<string[]>('/api/folders'), g.folder);
-  modal('Править дело', `${field('title', 'Название', g.title, false, true)}${field('body', 'Описание', g.body.split('\n').filter(l => l !== personalLine && !(folder && l.startsWith(folderLine))).join('\n'), true)}${folder}${personalBox(g.personal)}`, async f => { await api(base, { title: f.get('title'), body: f.get('body'), personal: f.has('personal'), folder: f.get('folder') ?? undefined }, 'PATCH'); refresh(); });
+  modal(g.kind === 'program' ? 'Править дело' : 'Править задачу', `${field('title', 'Название', g.title, false, true)}${field('body', 'Описание', g.body.split('\n').filter(l => l !== personalLine && !(folder && l.startsWith(folderLine))).join('\n'), true)}${folder}${personalBox(g.personal)}`, async f => { await api(base, { title: f.get('title'), body: f.get('body'), personal: f.has('personal'), folder: f.get('folder') ?? undefined }, 'PATCH'); refresh(); });
 }
 
 async function caseAction(c: ViewCase, action: string) {

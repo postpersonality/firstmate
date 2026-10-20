@@ -8,6 +8,7 @@ export type FirstmateState = 'queued' | 'in_flight' | 'done';
 export type FirstmateTask = {
   id: string; title: string; state: FirstmateState; body: string;
   kind?: string; repo?: string; created?: string; closed?: string;
+  pr_url?: string; blocked_by?: string; blocked_by_ids?: string[]; unresolved_blocker_ids?: string[];
   held?: string | boolean; hold_reason?: string; hold_kind?: string; hold_until?: string; links?: unknown;
 };
 

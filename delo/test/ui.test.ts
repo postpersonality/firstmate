@@ -339,7 +339,7 @@ test('overview rows explain dependencies and holds, link fleet PRs, and hide blo
 test('a deep link renders its card before overview and unchanged refresh preserves DOM and focus', async () => {
   const root = mkdtempSync(join(tmpdir(), 'delo-refresh-ui-'));
   const store = new Store({ firstmateHome: firstmateHome(root) });
-  const goal = store.create({ title: 'Карточка без ожидания' });
+  const goal = store.create({ title: 'Карточка без ожидания', body: '## Зачем\nПричина\n## Критерий готовности\nГотово\n## Контекст\nКонтекст\n## Ограничения\n- Сохранить' });
   const handle = router(store);
   const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: `http://localhost:4317/#${goal.id}`, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
@@ -395,4 +395,65 @@ test('a deep link renders its card before overview and unchanged refresh preserv
     releaseCard(); await new Promise(resolve => setTimeout(resolve, 40));
     assert.equal(window.document.getElementById('kind'), filter, 'a late card response cannot replace the overview after navigating back');
   } finally { release(); releaseCard(); window.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('task cards expose full status, blockers, PR/report and native prose while preserving managed briefs and edit bodies', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-ui-card-'));
+  const store = new Store({ firstmateHome: firstmateHome(root) });
+  const blocker = store.create({ title: 'Согласовать условия' });
+  const body = 'Обычный текст задачи\n\n## Свой раздел\nПроверить <условия> и сохранить весь текст.';
+  const goal = store.create({ title: 'Карточка с причиной', body, blockedBy: blocker.id });
+  const reason = 'Нужны полные условия согласования. '.repeat(20).trim();
+  store.firstmate.hold(goal.id, reason);
+  const env = { ...process.env, FM_HOME: store.firstmate.home };
+  run(join(store.firstmate.home, 'bin', 'fm-tasks-axi.sh'), ['update', goal.id, '--report', `data/${goal.id}/report.md`], store.firstmate.home, 45000, env);
+  const title = store.get(goal.id).title;
+  const managed = store.create({ title: 'Управляемый бриф', body: '## Зачем\nПричина\n## Критерий готовности\nГотово\n## Контекст\nКонтекст\n## Ограничения\n- Не терять' });
+  // Reconciled fleet fields are synthetic; every backlog operation uses the scratch home.
+  let worker: any = { id: goal.id, harness: 'codex', current_state: { state: 'working', source: 'run-step', detail: 'validating (running) · run: 123' }, pr: { url: 'https://example.org/pull/6' } };
+  store.firstmate.snapshot = async script => script === 'fm-fleet-snapshot.sh' ? { tasks: [worker], backlog: { records: store.firstmate.list() } } : { generated: '2026-10-20T12:00:00Z' };
+  const handle = router(store);
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: `http://localhost:4317/#${goal.id}`, runScripts: 'outside-only' });
+  const { window } = dom; const document = window.document;
+  window.setInterval = (() => 0) as typeof window.setInterval;
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  (window as any).fetch = async (input: string, init: RequestInit = {}) => handle(new Request(new URL(String(input), window.location.href), init));
+  const until = async (check: () => unknown) => { for (let i = 0; i < 200 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 25)); assert.ok(check()); };
+  const submit = () => document.getElementById('dialog-form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    await until(() => document.querySelector('main h1')?.textContent === title);
+    const heading = () => document.querySelector('.page-heading')!;
+    assert.ok(heading().textContent?.includes(reason), 'full pause reason is visible below the title');
+    assert.equal(heading().querySelector(`a[href="#${blocker.id}"]`)?.textContent, blocker.title);
+    assert.equal(heading().querySelector('a[href="https://example.org/pull/6"]')?.textContent, 'PR');
+    assert.equal(heading().querySelector(`a[href="#report:${goal.id}"]`)?.textContent, 'Отчёт');
+    assert.equal(document.querySelector('.brief-box')?.textContent, body);
+    assert.equal(document.querySelector('.brief-box')?.closest('details'), null, 'native prose is immediately open');
+    assert.doesNotMatch(document.querySelector('main')!.textContent!, /пока не записано/);
+    assert.equal(document.querySelector('.brief-box условия'), null, 'native prose is escaped');
+    (document.querySelector('[data-action="edit"]') as HTMLButtonElement).click();
+    await until(() => document.querySelector('#dialog-body [name=body]'));
+    assert.equal(document.getElementById('dialog-title')?.textContent, 'Править задачу');
+    assert.equal((document.querySelector('[name=body]') as HTMLTextAreaElement).value, body);
+    submit(); await until(() => !(document.getElementById('dialog') as HTMLDialogElement).open);
+    assert.equal(store.firstmate.show(goal.id).body, body, 'saving an unchanged form preserves the raw body');
+
+    store.firstmate.unhold(goal.id); store.firstmate.start(goal.id);
+    worker = { ...worker, current_state: { state: 'needs-decision', detail: 'Какой из вариантов выбрать?\nA: сохранить\nB: заменить' } };
+    window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+    await until(() => heading().textContent?.includes('Вопрос исполнителя'));
+    assert.ok(heading().textContent?.includes(worker.current_state.detail), 'the full worker question is open');
+    assert.equal(store.firstmate.show(goal.id).body, body, 'read-only status rendering preserves the backlog body');
+
+    store.firstmate.snapshot = async script => script === 'fm-fleet-snapshot.sh' ? { tasks: [{ id: goal.id, current_state: { state: 'working', source: 'run-step' } }], backlog: { records: [] } } : { generated: '2026-10-20T12:00:00Z' };
+    window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+    await until(() => heading().textContent?.includes('Идёт проверка'));
+    window.location.hash = managed.id;
+    await until(() => document.querySelector('main h1')?.textContent === managed.title);
+    assert.deepEqual([...document.querySelectorAll('details dd')].map(e => e.textContent), ['Причина', 'Готово', 'Контекст', 'Не терять']);
+    assert.equal(store.get(managed.id).managedBrief, true);
+    assert.equal(store.get(goal.id).managedBrief, false);
+  } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
 });
