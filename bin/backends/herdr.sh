@@ -1643,12 +1643,13 @@ fm_backend_herdr_project_path_is_home() {  # <path>
 }
 
 # Repository identity selects the project independently of the caller's UI.
-# Native worktree fields take precedence over pane creation cwd. Home and mixed
-# legacy containers stay in place but cannot become a new project's Space.
-# Disposable projections are excluded only through this home's exact records.
+# Native worktree fields take precedence over pane shell cwd. Home, mixed
+# and legacy projection containers are passed over without mutation. Exact own
+# worker bindings distinguish reported home cwd from management evidence.
 fm_backend_herdr_project_workspace_ensure() {  # <session> <project>
-  local session=$1 project=$2 identity label workspaces panes rows ws paths path key
-  local matches='' unknown='' known matched foreign home count out state journal meta id own_home legacy='' candidate
+  local session=$1 project=$2 identity label workspaces panes rows ws paths kind path key
+  local matches='' unknown='' known matched foreign home count out state meta id own_home candidate
+  local bound='[]' tab pane
   FM_BACKEND_HERDR_WS_ID=
   FM_BACKEND_HERDR_WS_SEEDED_TAB_ID=
   identity=$(fm_treehouse_project_identity "$project") || {
@@ -1670,42 +1671,43 @@ fm_backend_herdr_project_workspace_ensure() {  # <session> <project>
   printf '%s' "$panes" | jq -e '(.result.panes | type) == "array"' >/dev/null || return 1
   state=${FM_STATE_OVERRIDE:-$FM_HOME/state}
   own_home=$(fm_backend_herdr_projection_home_identity "$FM_HOME") || return 1
-  for journal in "$state"/*"$FM_BACKEND_HERDR_PRESENTATION_JOURNAL_SUFFIX"; do
-    id=$(basename "$journal" "$FM_BACKEND_HERDR_PRESENTATION_JOURNAL_SUFFIX")
-    fm_backend_herdr_projection_journal_snapshot "$journal" "$id" || continue
-    [ "$FM_BACKEND_HERDR_JOURNAL_VERSION" = 2 ] &&
-      [ "$FM_BACKEND_HERDR_JOURNAL_HOME" = "$own_home" ] &&
-      [ "$FM_BACKEND_HERDR_JOURNAL_SESSION" = "$session" ] || continue
-    meta="$state/$id.meta"
-    fm_backend_herdr_owned_task_binding "$meta" "$session" "$FM_BACKEND_HERDR_JOURNAL_WORKSPACE_ID" \
-      "fm-$id" "$FM_BACKEND_HERDR_JOURNAL_TAB_ID" "$FM_BACKEND_HERDR_JOURNAL_PANE_ID" || continue
-    if printf '%s\n%s' "$workspaces" "$panes" | jq -se \
-      --arg ws "$FM_BACKEND_HERDR_JOURNAL_WORKSPACE_ID" \
-      --arg tab "$FM_BACKEND_HERDR_JOURNAL_TAB_ID" --arg pane "$FM_BACKEND_HERDR_JOURNAL_PANE_ID" \
-      --arg label "$FM_BACKEND_HERDR_JOURNAL_WORKSPACE_LABEL" --arg suffix " · p:$FM_BACKEND_HERDR_JOURNAL_PROJECTION_ID" '
-        ([.[0].result.workspaces[] | select(.workspace_id == $ws and .label == $label)] | length) == 1
-        and ([.[0].result.workspaces[] | select((.label // "") | endswith($suffix))] | length) == 1
-        and ([.[1].result.panes[] | select(.workspace_id == $ws and .tab_id == $tab and .pane_id == $pane)] | length) == 1
-      ' >/dev/null; then
-      legacy="${legacy}${FM_BACKEND_HERDR_JOURNAL_WORKSPACE_ID}"$'\n'
-    fi
+  # Only exact own records distinguish worker home cwd from management evidence.
+  for meta in "$state"/*.meta; do
+    [ -f "$meta" ] && [ ! -L "$meta" ] || continue
+    id=$(basename "$meta" .meta)
+    ws=$(fm_backend_herdr_projection_journal_field "$meta" herdr_workspace_id) || continue
+    tab=$(fm_backend_herdr_projection_journal_field "$meta" herdr_tab_id) || continue
+    pane=$(fm_backend_herdr_projection_journal_field "$meta" herdr_pane_id) || continue
+    if [ -z "$ws" ] || [ -z "$tab" ] || [ -z "$pane" ]; then continue; fi
+    fm_backend_herdr_owned_task_binding "$meta" "$session" "$ws" "fm-$id" "$tab" "$pane" || continue
+    bound=$(jq -cn --argjson bound "$bound" --arg ws "$ws" --arg tab "$tab" --arg pane "$pane" \
+      '$bound + [{workspace_id:$ws, tab_id:$tab, pane_id:$pane}]') || return 1
   done
   while IFS= read -r ws; do
     [ -n "$ws" ] || continue
-    case $'\n'"$legacy" in *$'\n'"$ws"$'\n'*) continue ;; esac
-    paths=$(printf '%s\n%s' "$workspaces" "$panes" | jq -sr --arg ws "$ws" '
-      ([.[0].result.workspaces[] | select(.workspace_id == $ws)
-        | .worktree.repo_root, .worktree.checkout_path]
-       | map(select(type == "string" and length > 0))) as $native
+    # This label excludes a disposable container; it grants no ownership or
+    # mutation authority. Exact legacy recovery retains its own guards.
+    if printf '%s' "$workspaces" | jq -e --arg ws "$ws" '
+      .result.workspaces[] | select(.workspace_id == $ws)
+      | (.label // "") | test("^(\\[[1-9]\\] )?(└ .+|firstmate/.+|2ndmate-[^/]+/.+) · p:[A-Za-z0-9_-]{22}$")
+    ' >/dev/null; then continue; fi
+    paths=$(printf '%s\n%s' "$workspaces" "$panes" | jq -sr --arg ws "$ws" --argjson bound "$bound" '
+      [.[0].result.workspaces[] | select(.workspace_id == $ws)
+        | .worktree.repo_root, .worktree.checkout_path
+        | select(type == "string" and length > 0) | ["path", .]] as $native
       | (if ($native | length) > 0 then $native
-         else [.[1].result.panes[] | select(.workspace_id == $ws) | .cwd]
+         else [.[1].result.panes[] | select(.workspace_id == $ws)
+           | [(if {workspace_id, tab_id, pane_id} | IN($bound[]) then "worker" else "path" end), .cwd]]
          end)
-      | map(select(type == "string" and length > 0)) | unique[]
+      | map(select((.[1] | type) == "string" and (.[1] | length) > 0)) | unique[] | join("\t")
     ') || return 1
     known=0; matched=0; foreign=0; home=0
-    while IFS= read -r path; do
+    while IFS=$'\t' read -r kind path; do
       [ -n "$path" ] || continue
-      if fm_backend_herdr_project_path_is_home "$path"; then home=1; continue; fi
+      if fm_backend_herdr_project_path_is_home "$path" &&
+        { [ "$kind" != worker ] || [ "$(cd "$path" 2>/dev/null && pwd -P)" != "$own_home" ]; }; then
+        home=1; continue
+      fi
       key=$(fm_treehouse_project_identity "$path" 2>/dev/null) || continue
       known=1
       if [ "$key" = "$identity" ]; then matched=1; else foreign=1; fi
@@ -1715,15 +1717,6 @@ EOF
     [ "$home" = 0 ] || continue
     if [ "$matched" = 1 ]; then
       [ "$foreign" = 0 ] || continue
-      # A projection-shaped label cannot supply the missing ownership record.
-      # Preserve an unverified legacy candidate as concrete ambiguity.
-      if printf '%s' "$workspaces" | jq -e --arg ws "$ws" '
-        .result.workspaces[] | select(.workspace_id == $ws)
-        | (.label // "") | test("^(└ .+|firstmate/.+|2ndmate-[^/]+/.+) · p:[A-Za-z0-9_-]{22}$")
-      ' >/dev/null; then
-        unknown="${unknown}${ws}"$'\n'
-        continue
-      fi
       matches="${matches}${ws}"$'\n'
     elif [ "$known" = 0 ] && printf '%s' "$workspaces" | jq -e --arg ws "$ws" --arg want "$label" '
       .result.workspaces[] | select(.workspace_id == $ws)

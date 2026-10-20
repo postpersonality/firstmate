@@ -43,14 +43,25 @@ pass 'source checkout and same-origin clone share project identity'
 firstmate="$TMP_ROOT/firstmate"; make_project "$firstmate"
 git -C "$FM_HOME" init -q -b main
 git -C "$FM_HOME" remote add origin "$firstmate.origin.git"
+git -C "$FM_HOME" -c user.name=Tests -c user.email=tests@example.invalid commit -q --allow-empty -m initial
+git clone -q "$firstmate.origin.git" "$FM_HOME/projects/firstmate"
 main=$(lab workspace create --cwd "$FM_HOME" --label 'operator desk' --no-focus)
 main_ws=$(printf '%s' "$main" | jq -r '.result.workspace.workspace_id')
 main_tab=$(printf '%s' "$main" | jq -r '.result.tab.tab_id')
 main_pane=$(printf '%s' "$main" | jq -r '.result.root_pane.pane_id')
 before_count=$(lab workspace list | jq '.result.workspaces | length')
+spawn_in_pane "$main_pane" home-a "$FM_HOME" || fail 'home project spawn failed'
+core_ws=$(field home-a herdr_workspace_id)
+[ "$core_ws" != "$main_ws" ] || fail 'home worker entered management Space'
+[ "$(field home-a herdr_tab_id)" != "$main_tab" ] || fail 'home worker replaced management tab'
+[ "$(cat "$TMP_ROOT/$(basename "$(field home-a worktree)").source")" = "$FM_HOME" ] || fail 'home project allocation source checkout changed'
+spawn_in_pane "$main_pane" home-b "$FM_HOME" || fail 'repeat home project spawn failed'
+[ "$(field home-b herdr_workspace_id)" = "$core_ws" ] || fail 'repeat home worker duplicated the project Space'
+[ "$(field home-b herdr_tab_id)" != "$(field home-a herdr_tab_id)" ] || fail 'repeat home workers share a tab'
+spawn_in_pane "$main_pane" home-copy "$FM_HOME/projects/firstmate" || fail 'project copy spawn failed'
+[ "$(field home-copy herdr_workspace_id)" = "$core_ws" ] || fail 'project copy did not reuse home worker Space'
 spawn_in_pane "$main_pane" core "$firstmate" || fail 'Firstmate project spawn failed'
-core_ws=$(field core herdr_workspace_id)
-[ "$core_ws" != "$main_ws" ] || fail 'Firstmate worker entered management Space'
+[ "$(field core herdr_workspace_id)" = "$core_ws" ] || fail 'Firstmate source did not reuse project Space'
 [ "$(lab workspace list | jq '.result.workspaces | length')" = "$((before_count + 1))" ] || fail 'absent Firstmate project Space was not created once'
 [ "$(field core herdr_tab_id)" != "$main_tab" ] || fail 'Firstmate worker replaced orchestration tab'
 spawn core-detached "$firstmate" || fail 'detached Firstmate spawn failed'
@@ -58,7 +69,7 @@ spawn core-detached "$firstmate" || fail 'detached Firstmate spawn failed'
 [ "$(field core-detached herdr_tab_id)" != "$(field core herdr_tab_id)" ] || fail 'Firstmate workers shared a tab'
 lab pane get "$main_pane" >/dev/null || fail 'Firstmate orchestration pane was closed'
 lab pane get "$(field core herdr_pane_id)" >/dev/null || fail 'detached spawn replaced existing Firstmate worker'
-pass 'same-origin management Space stays separate; pane-bound creation and detached project reuse get their own worker tabs'
+pass 'repeat home, projects/firstmate copy and source spawns share one project Space with separate tabs; management and source checkout are preserved'
 # Simultaneous public backend calls in separate homes share the session lock.
 project_c="$TMP_ROOT/gamma"; make_project "$project_c"
 mkdir -p "$TMP_ROOT/home-two/state"

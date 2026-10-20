@@ -125,9 +125,12 @@ No additional project registry or global Herdr setting is introduced.
 
 Operating-home paths, including same-origin secondmate homes identified by the existing home marker, are excluded from project candidates.
 This keeps Firstmate workers out of the main management Space while giving each worker its own project tab.
+A pane bound by this home's exact task metadata is worker evidence even when its reported `cwd` equals this home.
+Unbound home panes, including the primary and secondmate, still exclude their Space; native worktree path evidence retains precedence.
 When an operating source home is passed as the project, creation uses its distinct same-origin copy at the ordinary `projects/<name>` location; if that copy is unavailable, placement reports the concrete missing identity instead of creating an indistinguishable home Space.
 Mixed old home containers are passed over without moving or draining their workers.
-A disposable legacy Space is excluded through this home's matching task metadata, version 2 journal and live IDs; an unverified projection-shaped candidate remains explicit ambiguity.
+Projection-shaped legacy Spaces, including numbered labels, are passed over regardless of journal ownership or version.
+Placement never selects, adopts, moves, renames or closes them and leaves their journals unchanged; the exact recovery paths below retain their ownership guards.
 
 Multiple remaining project Spaces or a same-name Space with no usable path identity refuse with concrete candidate IDs.
 The conservative same-name check also recognizes the automatic-rename plugin's documented `[1-9] ` jump-key prefix, including a stale index; it grants no adoption authority.
@@ -711,7 +714,7 @@ Tests use thin compatibility wrappers in `tests/herdr-test-safety.sh` and never 
 
 - Legacy cleanup workspace moves require protocol 16 and Python; the existing cleanup guards decide whether a fallback is safe.
 - Mutable labels can collide; they are never placement or destructive authority.
-- A project with multiple matching Spaces or unknown same-name candidates refuses new placement until its identity is unambiguous.
+- A project with multiple remaining matching Spaces or unknown same-name candidates refuses new placement until its identity is unambiguous.
 - Ghost and placeholder recognition uses ANSI de-emphasis when available; an unstyled glyph row carrying trailing non-idle text fails safely to `unknown`.
 - Only tmux and Herdr can host the away-mode supervisor terminal.
 
