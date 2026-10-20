@@ -138,6 +138,11 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.equal(mutations, beforeView, 'opening confirmation does not close the task');
     assert.equal(store.firstmate.show(obsolete).state, 'queued');
     assert.equal(window.document.getElementById('dialog-submit')?.textContent, 'Закрыть как неактуальную');
+    const dismiss = window.document.getElementById('dialog-close') as HTMLButtonElement;
+    assert.equal(dismiss.textContent, '×', 'the modal uses an icon to dismiss, distinct from closing the task');
+    assert.equal(dismiss.getAttribute('aria-label'), 'Закрыть диалог');
+    assert.equal(dismiss.type, 'button', 'dismiss never submits the confirmation');
+    assert.equal((window.document.getElementById('dialog-submit') as HTMLButtonElement).disabled, false, 'confirmation is enabled before submission');
     window.document.getElementById('dialog-close')!.click();
     assert.equal(store.firstmate.show(obsolete).state, 'queued', 'cancelling confirmation preserves the hold');
     window.location.hash = '';
