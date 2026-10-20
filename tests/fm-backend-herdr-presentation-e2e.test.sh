@@ -1307,8 +1307,9 @@ pass "real Herdr lab: secondmate restart binding and reclaim stay isolated to th
 
 # Two homes recovering concurrently serialize on the named session lock and
 # each replace only their own exact husk. Serializing is the documented
-# --herdr-resume-lock-wait opt-in; without it the bounded attempt refuses
-# whenever one recovery outlasts its window, as the lock-refuse case asserts.
+# --herdr-resume-lock-wait is the opt-in serialization contract; without it,
+# the default bounded attempt refuses contention when one recovery outlasts
+# its window, as the lock-refuse case below asserts.
 PRIMARY_WAVE_ID=resume-wave-primary
 BRAVO_WAVE_ID=resume-wave-bravo
 mkdir -p "$HOME_DIR/data/$PRIMARY_WAVE_ID" "$SECOND_HOME_B/data/$BRAVO_WAVE_ID"
