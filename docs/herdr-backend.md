@@ -147,6 +147,7 @@ A detached caller with no pane claim uses the same project resolver without borr
 ### Recovery and existing tasks
 
 Existing task operations use their recorded endpoint IDs and do not move live workers into project Spaces.
+A fresh crewmate or scout spawn whose task metadata already records an endpoint, in any Space, refuses while that endpoint is live, stale-agent, unknown, malformed or ambiguous, before it creates a tab or rewrites the record.
 Recovery lists only this home's recorded, live-confirmed endpoints, including when another home has workers in the same Space.
 A same-label tab in a project Space can be replaced only when this home's exact task metadata binds its session, workspace, tab and pane, and the existing liveness classifier proves it dead or agent-free.
 A same-name label, matching cwd, another home's record or a symlinked record does not authorize replacement.

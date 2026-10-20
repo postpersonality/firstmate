@@ -34,6 +34,27 @@ spawn detached "$project_a" || fail 'own restored husk recovery failed'
 if lab pane get "$old_detached" >/dev/null 2>&1; then fail 'own old husk survived replacement'; fi
 lab pane get "$(field reuse herdr_pane_id)" >/dev/null || fail 'own recovery closed another worker'
 pass 'public spawn replaces only its own exactly recorded shell husk'
+# A recorded live endpoint in another Space refuses before a second worker or record.
+spawn elsewhere "$project_b" || fail 'other-Space setup spawn failed'
+[ "$(field elsewhere herdr_workspace_id)" = "$parent_ws" ] || fail 'setup worker did not land in the other Space'
+live_pane=$(field elsewhere herdr_pane_id)
+lab pane run "$live_pane" 'sleep 600' >/dev/null || fail 'could not start a foreground process in the recorded pane'
+lab pane report-agent "$live_pane" --source fm-launcher-e2e --agent fm-launcher-live-agent --state idle >/dev/null \
+  || fail 'could not register a live agent on the recorded pane'
+for ((i=0; i<50; i++)); do
+  state=$(bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state "$2" "$3"' _ "$ROOT" "$HERDR_LAB_SESSION" "$live_pane")
+  [ "$state" != live ] || break
+  sleep 0.1
+done
+[ "$state" = live ] || fail "recorded pane did not read live (got $state)"
+cp "$FM_HOME/state/elsewhere.meta" "$TMP_ROOT/elsewhere.meta.before"
+alpha_tabs=$(lab tab list --workspace "$existing_ws" | jq -c '[.result.tabs[].tab_id]')
+if spawn elsewhere "$project_a" 2>/dev/null; then fail 'fresh spawn launched a second worker beside a live recorded endpoint'; fi
+case "$(cat "$TMP_ROOT/elsewhere.err")" in *"existing herdr endpoint for elsewhere is live; refusing duplicate launch"*) ;; *) fail 'live recorded endpoint refusal diagnostic missing' ;; esac
+cmp -s "$FM_HOME/state/elsewhere.meta" "$TMP_ROOT/elsewhere.meta.before" || fail 'refused spawn rewrote the task record'
+[ "$(lab tab list --workspace "$existing_ws" | jq -c '[.result.tabs[].tab_id]')" = "$alpha_tabs" ] || fail 'refused spawn opened a tab in the project Space'
+lab pane get "$live_pane" >/dev/null || fail 'refused spawn closed the live recorded endpoint'
+pass 'live endpoint recorded in another Space refuses fresh spawn before any tab or record change'
 # A source checkout and clone resolve through the established origin identity.
 git clone -q "$project_a.origin.git" "$TMP_ROOT/alpha-clone"
 raw=$(container "$TMP_ROOT/alpha-clone") || fail 'same-origin lookup failed'
