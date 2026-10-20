@@ -44,6 +44,8 @@ EOF
 # The remote-route cases drive the real remote job worker, which outlives the
 # command that staged its job. Stop it before the shared fixture cleanup runs,
 # and keep that cleanup (tests/lib.sh owns it) rather than replacing the trap.
+# kill only signals: wait for the worker to exit, or its shutdown writes under
+# remote-jobs race rm -rf ("Directory not empty").
 pf_test_cleanup() {
   local pid_file="${REMOTE_FIXTURE_JOBS:-$TMP_ROOT/remote-jobs}/worker.pid" pid stop_rc=0
   if [ -n "$PF_TEST_LOCK_HOLDER" ]; then
