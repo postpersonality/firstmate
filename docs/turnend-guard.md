@@ -313,6 +313,7 @@ Successful bounded parks may continue even when another Stop hook set `stop_hook
 That flag describes a previous hook continuation, not a delivered fleet wake or an explicit captain stop.
 Once the lock records this thread and supervision work is pending, Stop fails closed: session-lock verification failure, checkpoint-lock contention, checkpoint failure and an identical wake left unhandled each return another continuation, and unhandled rows remain durable.
 A Stop from a thread the lock does not record is never blocked.
+The recorded thread attached to another app-server is not blocked either while the app-server holding the lock is live: it is read-only, so it gets a notice and starts no checkpoint.
 Native interruption cancels the synchronous return owner; an empty fleet or held/parked backlog alone starts no supervision work.
 The existing away daemon remains a legitimate alternate owner.
 
@@ -320,10 +321,20 @@ The existing away daemon remains a legitimate alternate owner.
 `bin/fm-lock.sh` remains its sole writer.
 Stop only revalidates the thread already recorded there; a free or legacy PID-only lock is bound only by an explicit owner claim through `bin/fm-lock.sh` or native SessionStart.
 A different recorded thread cannot acquire or park that home merely because it shares the daemon PID.
+A legacy PID-only lock held by this app-server names no thread, so its Stops keep the one-block guard bounded by `stop_hook_active`, and the block tells the primary thread to bind.
+A thread resumed in that app-server is nudged to run `bin/fm-session-start.sh` until the sidecar records it.
+
+To upgrade a primary that took the helm before thread binding:
+
+1. In the primary thread, run `bin/fm-lock.sh` once. It prints `lock acquired: harness pid <pid>` and records that thread.
+2. Confirm that `state/.lock-session` names the primary thread. A thread whose lock line or sidecar names another live owner is refused and stays read-only.
+3. Later Stops of that thread run `bin/fm-codex-stop-watch.sh` and fail closed as described above.
+
+Native SessionStart `startup`, `clear` and `compact` bind the same way through `bin/fm-session-start.sh`.
 The native Linux tool sandbox confirms that same sidecar through its runtime-supplied agreeing vendor ids; it preserves the host PID and cannot reclaim another recorded thread from inside its PID namespace.
 
 The guarantee requires the enabled, trusted project Stop hook to execute in a live native runtime with that event identity and verifiable app-server ancestry.
-It does not cover a disabled/untrusted or timed-out hook, native interruption, runtime termination, a lock not yet claimed for this thread, or a client whose native event and ancestry cannot establish that identity.
+It does not cover a disabled/untrusted or timed-out hook, native interruption, runtime termination, a lock not yet claimed for this thread, a duplicate attachment while the lock's app-server is live, or a client whose native event and ancestry cannot establish that identity.
 The global semantic Stop checker, native goals and domain completion/decision authority remain separate owners.
 [`verification/supervision.md`](verification/supervision.md) owns native evidence; `tests/fm-codex-stop-watch.test.sh` covers portable behavior and the opt-in native API guard exercises actual continuations and worker steering.
 
