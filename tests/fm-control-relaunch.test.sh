@@ -862,6 +862,42 @@ test_exclude_tools_refusals_happen_before_the_agent_stops() {
   pass "fm-control relaunch: exclusion-list refusals happen before the running agent stops"
 }
 
+test_effort_pin_binds_a_relaunch_before_the_agent_stops() {
+  local dir out rc id=rl-effort-pin flags args
+  dir=$(new_case effort-pin "$id")
+  add_ship_task "$dir" "$id" claude
+  sed 's/^effort=default$/effort=medium/' "$dir/home/state/$id.meta" > "$dir/home/state/$id.meta.tmp"
+  mv "$dir/home/state/$id.meta.tmp" "$dir/home/state/$id.meta"
+  mkdir -p "$dir/home/config"
+  cp "$dir/home/state/$id.meta" "$dir/meta.before"
+  for args in '--effort medium' '--effort high' '--harness grok' malformed; do
+    printf 'xhigh\n' > "$dir/home/config/crew-effort"
+    flags=$args
+    if [ "$args" = malformed ]; then
+      printf 'extreme\n' > "$dir/home/config/crew-effort"
+      flags=
+    fi
+    # shellcheck disable=SC2086 # $flags deliberately splits into flag and value.
+    out=$(run_control "$dir" "$id" relaunch $flags --note "pinned"); rc=$?
+    expect_code 1 "$rc" "a pinned relaunch with '$args' must refuse"$'\n'"$out"
+    case "$args" in
+    --effort*) assert_contains "$out" "config/crew-effort pins worker effort to xhigh, but this launch requests ${args#--effort }" "the '$args' refusal must name the pin" ;;
+    --harness*) assert_contains "$out" "the grok runtime has no verified native setting for it" "the grok refusal must name the runtime" ;;
+    *) assert_contains "$out" "config/crew-effort must hold exactly one of" "the malformed pin refusal must name the file" ;;
+    esac
+    [ "$(cat "$dir/fake/command")" = claude ] || fail "a refused '$args' relaunch stopped the running agent"
+    [ ! -s "$dir/fake/literal" ] || fail "a refused '$args' relaunch sent lifecycle input"
+    cmp -s "$dir/meta.before" "$dir/home/state/$id.meta" || fail "a refused '$args' relaunch changed the task record"
+  done
+
+  printf 'xhigh\n' > "$dir/home/config/crew-effort"
+  out=$(run_control "$dir" "$id" relaunch --effort default --note "pinned default"); rc=$?
+  expect_code 0 "$rc" "a pinned relaunch with --effort default should succeed"$'\n'"$out"
+  [ "$(meta_field "$dir" "$id" effort)" = xhigh ] || fail "the pin did not replace the recorded medium effort"
+  assert_contains "$(cat "$dir/fake/literal")" "--effort 'xhigh'" "the relaunched claude did not carry the pinned xhigh"
+  pass "fm-control relaunch: the worker effort pin replaces the recorded effort and refuses before the agent stops"
+}
+
 test_explicit_model_wins_over_the_recorded_one() {
   local dir out rc
   dir=$(new_case explicit rl7)
@@ -2507,6 +2543,7 @@ test_signed_out_worker_account_pin_refuses_before_stop
 test_worker_account_pin_follows_the_relaunch
 test_pi_exclude_tools_follow_the_relaunch
 test_exclude_tools_refusals_happen_before_the_agent_stops
+test_effort_pin_binds_a_relaunch_before_the_agent_stops
 test_explicit_model_wins_over_the_recorded_one
 test_relaunch_onto_an_unverified_harness_is_refused
 test_prior_harness_turnend_registry_entry_is_cleared

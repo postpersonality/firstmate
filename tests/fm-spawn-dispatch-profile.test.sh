@@ -2185,6 +2185,273 @@ test_non_claude_harness_ignores_claude_permission_mode() {
   pass "config/claude-permission-mode changes claude launches only"
 }
 
+pin_worker_effort() {  # <home> <content>
+  printf '%s\n' "$2" > "$1/config/crew-effort"
+}
+
+# Wrap the fake tmux and treehouse so a refused spawn can prove it opened no
+# endpoint and allocated no local copy.
+log_endpoint_calls() {  # <fakebin> <log>
+  local fakebin=$1 log=$2 tool
+  : > "$log"
+  for tool in tmux treehouse; do
+    mv "$fakebin/$tool" "$fakebin/$tool.real"
+    cat > "$fakebin/$tool" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "$tool \$*" >> '$log'
+exec '$fakebin/$tool.real' "\$@"
+SH
+    chmod +x "$fakebin/$tool"
+  done
+}
+
+assert_no_endpoint_calls() {  # <log> <what>
+  ! grep -Eq '^tmux .*(new-window|new-session|send-keys)|^treehouse ' "$1" \
+    || fail "$2 touched an endpoint or local copy:"$'\n'"$(cat "$1")"
+}
+
+# Refusal shape shared by the pin tests: no launch, no task record, no endpoint.
+assert_refused_before_launch() {  # <id> <what>
+  [ ! -s "$LAUNCH_LOG" ] || fail "$2 still launched: $(cat "$LAUNCH_LOG")"
+  assert_absent "$HOME_DIR/state/$1.meta" "$2 still wrote a task record"
+  assert_no_endpoint_calls "$CASE_DIR/endpoint.log" "$2"
+}
+
+test_effort_pin_resolves_an_omitted_effort() {
+  local rec id out status
+  id="effort-pin-claude-z40"
+  rec=$(make_spawn_case effort-pin-claude claude "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "a pinned claude spawn without an effort should succeed"$'\n'"$out"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" claude default xhigh
+  assert_contains "$(cat "$LAUNCH_LOG")" "$CLAUDE_CONTROL_CHANNEL_FLAG --effort 'xhigh'" \
+    "an omitted effort did not launch claude on the pinned xhigh"
+  grep -Eq '^tmux .*(new-window|new-session)' "$CASE_DIR/endpoint.log" \
+    || fail "the endpoint log missed a successful launch, so its refusal checks would prove nothing"
+
+  id="effort-pin-codex-z41"
+  rec=$(make_spawn_case effort-pin-codex codex "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness codex --model gpt-5)
+  status=$?
+  expect_code 0 "$status" "a pinned codex spawn without an effort should succeed"$'\n'"$out"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" codex gpt-5 xhigh
+  assert_contains "$(cat "$LAUNCH_LOG")" "codex --model 'gpt-5' -c 'model_reasoning_effort=\"xhigh\"'" \
+    "an omitted effort did not launch codex on the pinned xhigh"
+
+  id="effort-pin-scout-z42"
+  rec=$(make_spawn_case effort-pin-scout pi "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout --harness pi --effort xhigh)
+  status=$?
+  expect_code 0 "$status" "a pinned scout requesting the pinned effort should succeed"$'\n'"$out"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" pi default xhigh
+  assert_contains "$(cat "$LAUNCH_LOG")" "--thinking 'xhigh'" "the pinned scout did not launch Pi on xhigh"
+
+  id="effort-pin-opencode-z43"
+  rec=$(make_spawn_case effort-pin-opencode opencode "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model openai/gpt-5.6-sol)
+  status=$?
+  expect_code 0 "$status" "a pinned opencode spawn on an openai model should succeed"$'\n'"$out"
+  assert_contains "$(cat "$LAUNCH_LOG")" '"variant":"xhigh"' "the pinned opencode launch did not carry the xhigh variant"
+  pass "the worker effort pin launches an omitted effort on the pinned level"
+}
+
+test_effort_pin_refuses_a_different_effort_before_any_launch() {
+  local rec id out status effort
+  for effort in medium high; do
+    id="effort-pin-$effort-z44"
+    rec=$(make_spawn_case "effort-pin-$effort" claude "$id")
+    read_case_record "$rec"
+    pin_worker_effort "$HOME_DIR" xhigh
+    log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet --effort "$effort")
+    status=$?
+    expect_code 1 "$status" "a pinned spawn requesting $effort must refuse"
+    assert_contains "$out" "config/crew-effort pins worker effort to xhigh, but this launch requests $effort" \
+      "the $effort refusal must name the pin and the request"
+    assert_refused_before_launch "$id" "a refused $effort spawn"
+  done
+  pass "the worker effort pin refuses a different effort before any endpoint, local copy, or record"
+}
+
+test_effort_pin_refuses_a_runtime_that_cannot_carry_it() {
+  local rec id out status
+  id="effort-pin-grok-z45"
+  rec=$(make_spawn_case effort-pin-grok grok "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model grok-4)
+  status=$?
+  expect_code 1 "$status" "grok cannot carry xhigh, so a pinned grok spawn must refuse"
+  assert_contains "$out" "the grok runtime with model grok-4 has no verified native setting for it" \
+    "the grok refusal must name the runtime"
+  assert_refused_before_launch "$id" "a refused grok spawn"
+
+  id="effort-pin-opencode-anthropic-z46"
+  rec=$(make_spawn_case effort-pin-opencode-anthropic opencode "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model anthropic/claude-sonnet-4-5)
+  status=$?
+  expect_code 1 "$status" "an anthropic model exposes no xhigh variant, so the pinned opencode spawn must refuse"
+  assert_contains "$out" "the opencode runtime with model anthropic/claude-sonnet-4-5 has no verified native setting for it" \
+    "the opencode refusal must name the runtime and model"
+  assert_refused_before_launch "$id" "a refused opencode spawn"
+
+  id="effort-pin-raw-z47"
+  rec=$(make_spawn_case effort-pin-raw claude "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "claude --effort xhigh")
+  status=$?
+  expect_code 1 "$status" "a raw launch command must refuse under the pin"
+  assert_contains "$out" "a raw launch command cannot be verified to carry it" "the raw-launch refusal must say why"
+  assert_refused_before_launch "$id" "a refused raw launch"
+  pass "the worker effort pin refuses a runtime, model, or raw command that cannot carry it"
+}
+
+test_effort_pin_malformed_file_refuses_and_removal_restores_choice() {
+  local rec id out status bad n=0
+  id="effort-pin-malformed-z48"
+  rec=$(make_spawn_case effort-pin-malformed claude "$id")
+  read_case_record "$rec"
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  for bad in 'xhigh high' extreme XHIGH ''; do
+    n=$((n + 1))
+    pin_worker_effort "$HOME_DIR" "$bad"
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+    status=$?
+    expect_code 1 "$status" "malformed pin '$bad' must refuse"
+    assert_contains "$out" "config/crew-effort must hold exactly one of low, medium, high, xhigh, max, ultra (got '$bad')" \
+      "the refusal must quote the malformed pin '$bad'"
+    assert_refused_before_launch "$id" "malformed pin $n"
+  done
+  rm "$HOME_DIR/config/crew-effort"
+  mkdir "$HOME_DIR/config/crew-effort"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 1 "$status" "a directory in place of the pin must refuse"
+  assert_contains "$out" "config/crew-effort must be a readable regular file" "the refusal must say the pin is not a file"
+  assert_refused_before_launch "$id" "a directory pin"
+  rmdir "$HOME_DIR/config/crew-effort"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet --effort medium)
+  status=$?
+  expect_code 0 "$status" "without the pin an explicit medium effort should launch as before"$'\n'"$out"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" claude sonnet medium
+  assert_contains "$(cat "$LAUNCH_LOG")" "--model 'sonnet' --effort 'medium'" "the unpinned launch did not keep its requested effort"
+  pass "a malformed worker effort pin refuses, and removing it restores the requested effort"
+}
+
+test_effort_pin_binds_every_batch_pair() {
+  local rec id1 id2 out status
+  id1="effort-pin-batch-a-z49"
+  id2="effort-pin-batch-b-z50"
+  rec=$(make_spawn_case effort-pin-batch codex "$id1" "$id2")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id1=$PROJ_DIR" "$id2=$PROJ_DIR" --harness codex --model gpt-5 --effort medium)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a pinned batch requesting medium must not report success"
+  assert_refused_before_launch "$id1" "the first refused batch pair"
+  assert_refused_before_launch "$id2" "the second refused batch pair"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id1=$PROJ_DIR" "$id2=$PROJ_DIR" --harness codex --model gpt-5)
+  status=$?
+  expect_code 0 "$status" "a pinned batch without an effort should succeed"$'\n'"$out"
+  assert_meta_profile "$HOME_DIR/state/$id1.meta" codex gpt-5 xhigh
+  assert_meta_profile "$HOME_DIR/state/$id2.meta" codex gpt-5 xhigh
+  pass "the worker effort pin binds every pair of a batch spawn"
+}
+
+test_effort_pin_binds_secondmates_and_their_crews() {
+  local rec sm_rec sm_id crew_id crew2_id sm out status
+  sm_id="effort-pin-sm-z51"
+  crew_id="effort-pin-sm-crew-z52"
+  crew2_id="effort-pin-sm-crew-medium-z53"
+  rec=$(make_spawn_case effort-pin-primary claude "$sm_id")
+  sm_rec=$(make_spawn_case effort-pin-sm claude "$crew_id" "$crew2_id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  sm="${sm_rec#*|}"
+  sm="${sm%%|*}"
+  make_seeded_secondmate_home "$sm" "$sm_id"
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+
+  printf '%s\n' 'claude sonnet medium' > "$HOME_DIR/config/secondmate-harness"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$sm_id" "$sm" --secondmate)
+  status=$?
+  expect_code 1 "$status" "a configured medium secondmate effort must refuse under the pin"
+  assert_contains "$out" "config/crew-effort pins worker effort to xhigh, but this launch requests medium" \
+    "the secondmate refusal must name the pin and the configured effort"
+  assert_refused_before_launch "$sm_id" "a refused secondmate"
+
+  printf '%s\n' 'claude sonnet' > "$HOME_DIR/config/secondmate-harness"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$sm_id" "$sm" --secondmate)
+  status=$?
+  expect_code 0 "$status" "a pinned secondmate without an effort should succeed"$'\n'"$out"
+  assert_contains "$(cat "$LAUNCH_LOG")" "--model 'sonnet' --effort 'xhigh'" "the secondmate did not launch on the pinned xhigh"
+  [ "$(cat "$sm/config/crew-effort" 2>/dev/null)" = xhigh ] || fail "the secondmate home did not inherit config/crew-effort"
+
+  read_case_record "$sm_rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$crew_id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "the secondmate's own crew spawn should succeed"$'\n'"$out"
+  assert_meta_profile "$HOME_DIR/state/$crew_id.meta" claude default xhigh
+  assert_contains "$(cat "$LAUNCH_LOG")" "--effort 'xhigh'" "the secondmate's crew did not launch on the inherited pin"
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$crew2_id" "$PROJ_DIR" --model sonnet --effort medium)
+  status=$?
+  expect_code 1 "$status" "the secondmate's crew must refuse a medium effort under the inherited pin"
+  assert_refused_before_launch "$crew2_id" "a refused secondmate crew spawn"
+  pass "the worker effort pin binds a secondmate and, through inheritance, its own crew"
+}
+
+test_effort_pin_refuses_a_remote_secondmate_before_the_host() {
+  local rec id out status
+  id="effort-pin-remote-z54"
+  rec=$(make_spawn_case effort-pin-remote claude "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  printf -- '- %s - Remote delivery (host: remote-mac; root: /srv/fm; home: /srv/fm-home; scope: remote; projects: alpha; added 2026-08-01)\n' \
+    "$id" > "$HOME_DIR/data/secondmates.md"
+  : > "$CASE_DIR/ssh.log"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> %q\nexit 99\n' "$CASE_DIR/ssh.log" > "$FAKEBIN_DIR/fake-ssh"
+  chmod +x "$FAKEBIN_DIR/fake-ssh"
+
+  printf '%s\n' 'claude default medium' > "$HOME_DIR/config/secondmate-harness"
+  out=$(FM_SSH_BIN="$FAKEBIN_DIR/fake-ssh" run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --secondmate)
+  status=$?
+  expect_code 1 "$status" "a configured medium remote secondmate effort must refuse under the pin"
+  assert_contains "$out" "config/crew-effort pins worker effort to xhigh, but this launch requests medium" \
+    "the remote refusal must name the pin and the configured effort"
+  out=$(FM_SSH_BIN="$FAKEBIN_DIR/fake-ssh" run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --secondmate --harness grok)
+  status=$?
+  expect_code 1 "$status" "a remote secondmate on a runtime without xhigh must refuse under the pin"
+  assert_contains "$out" "the grok runtime has no verified native setting for it" "the remote refusal must name the runtime"
+  [ ! -s "$CASE_DIR/ssh.log" ] || fail "a refused remote secondmate spawn reached the host: $(cat "$CASE_DIR/ssh.log")"
+  assert_absent "$HOME_DIR/state/$id.meta" "a refused remote secondmate spawn wrote a task record"
+  rm "$HOME_DIR/config/crew-effort"
+  FM_SSH_BIN="$FAKEBIN_DIR/fake-ssh" run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --secondmate >/dev/null
+  [ -s "$CASE_DIR/ssh.log" ] || fail "without the pin this spawn never reached the host, so its refusal checks would prove nothing"
+  pass "the worker effort pin refuses a remote secondmate before reaching its host"
+}
+
 test_worker_launch_delivers_role_scope
 test_no_profile_keeps_claude_profile_defaults
 test_claude_launch_brief_publishes_record_doorbell
@@ -2256,5 +2523,12 @@ test_keep_ai_trailers_omits_attribution_settings_and_strip_hooks
 test_keep_ai_trailers_reaches_secondmate_crew_launches
 test_claude_secondmate_launch_carries_the_attribution_policy
 test_active_dispatch_profile_does_not_block_secondmate_launch
+test_effort_pin_resolves_an_omitted_effort
+test_effort_pin_refuses_a_different_effort_before_any_launch
+test_effort_pin_refuses_a_runtime_that_cannot_carry_it
+test_effort_pin_malformed_file_refuses_and_removal_restores_choice
+test_effort_pin_binds_every_batch_pair
+test_effort_pin_binds_secondmates_and_their_crews
+test_effort_pin_refuses_a_remote_secondmate_before_the_host
 
 echo "# all fm-spawn-dispatch-profile tests passed"

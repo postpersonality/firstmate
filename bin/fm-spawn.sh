@@ -360,6 +360,10 @@
 #   docs/configuration.md "Worker tool exclusions" owns config/crew-exclude-tools
 #   and its operator contract. Resolve it with bin/fm-exclude-tools-lib.sh
 #   before provisioning; __PIEXCLUDE__ below owns the Pi launch substitution.
+# Worker effort pin:
+#   docs/configuration.md "Worker effort pin" owns config/crew-effort and its
+#   operator contract. bin/fm-worker-effort-lib.sh owns the pin check and the
+#   native effort flags; it runs before provisioning.
 # Worker account pin (config/claude-account, config/pi-account):
 #   Opt-in. With no file, a Claude or Pi launch is unchanged: Claude still
 #   receives this process's own CLAUDE_CONFIG_DIR when it is set, and Pi the
@@ -683,6 +687,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-project-capacity-lib.sh"
 # shellcheck source=bin/fm-worker-account-lib.sh
 . "$SCRIPT_DIR/fm-worker-account-lib.sh"
+# shellcheck source=bin/fm-worker-effort-lib.sh
+. "$SCRIPT_DIR/fm-worker-effort-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -1052,6 +1058,12 @@ spawn_remote_secondmate() {
     return 1
     ;;
   esac
+  effort=$(fm_worker_effort_apply "$CONFIG" "$effort" "$harness" "$model" 0) || {
+    fm_lock_release "$registry_lock" || true
+    fm_lock_release "$SPAWN_TASK_LOCK" || true
+    return 1
+  }
+  [ -n "$effort" ] || effort=-
   if [ "$effort" = ultra ] && ! "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$harness" "$model" "$effort"; then
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -2479,6 +2491,7 @@ if [ "$KIND" = secondmate ] && [ -z "$ARG3" ]; then
     fi
   fi
 fi
+EFFORT=$(fm_worker_effort_apply "$CONFIG" "$EFFORT" "$HARNESS" "$MODEL" "$RAW_LAUNCH") || exit 1
 # Ultra is an explicit native capability, never a Pi thinking-level alias.
 # Validate the fully resolved profile before worktree or endpoint provisioning.
 if [ "$EFFORT" = ultra ]; then
@@ -2682,116 +2695,6 @@ model_flag_for_harness() {
   esac
 }
 
-effort_flag_for_harness() {
-  local harness=$1 effort=$2 model=${3:-}
-  [ -n "$effort" ] && [ "$effort" != default ] || return 0
-  case "$harness" in
-  claude)
-    case "$effort" in
-    low | medium | high | xhigh | max) printf -- '--effort %s ' "$(shell_quote "$effort")" ;;
-    esac
-    ;;
-  codex)
-    # The installed codex config schema uses model_reasoning_effort. The
-    # installed model catalog supports max for gpt-5.6-luna; keep that level
-    # scoped to the model whose catalog entry advertises it.
-    case "$effort" in
-    low | medium | high | xhigh) printf -- '-c %s ' "$(shell_quote "model_reasoning_effort=\"$effort\"")" ;;
-    max)
-      [ "$model" = gpt-5.6-luna ] || return 0
-      printf -- '-c %s ' "$(shell_quote 'model_reasoning_effort="max"')"
-      ;;
-    esac
-    ;;
-  grok)
-    # grok exposes both --effort and --reasoning-effort; firstmate's profile
-    # axis is the reasoning knob. As of grok 0.2.99, --reasoning-effort accepts
-    # only low|medium|high and rejects both xhigh and max, so omit those rather
-    # than passing a known-bad value.
-    case "$effort" in
-    low | medium | high) printf -- '--reasoning-effort %s ' "$(shell_quote "$effort")" ;;
-    esac
-    ;;
-  agy)
-    # agy 1.2.0 --effort accepts exactly low|medium|high, so xhigh and max are
-    # omitted rather than passed as known-bad values (record-and-omit).
-    case "$effort" in
-    low | medium | high) printf -- '--effort %s ' "$(shell_quote "$effort")" ;;
-    esac
-    ;;
-  pi | pi-signed)
-    # Pi 0.80.6 accepts the full shared effort vocabulary, including max, through
-    # its --thinking flag.
-    case "$effort" in
-    ultra)
-      "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$harness" "$model" "$effort" || return 1
-      printf -- '--codex-effort %s ' "$(shell_quote ultra)"
-      ;;
-    low | medium | high | xhigh | max) printf -- '--thinking %s ' "$(shell_quote "$effort")" ;;
-    esac
-    ;;
-  omp)
-    # omp 18.1.11 --thinking accepts off|minimal|low|medium|high|xhigh|max|auto,
-    # a superset of the shared vocabulary, so every level maps straight across.
-    case "$effort" in
-    low | medium | high | xhigh | max) printf -- '--thinking %s ' "$(shell_quote "$effort")" ;;
-    esac
-    ;;
-  opencode)
-    # opencode's interactive `opencode --prompt` launch has no effort flag
-    # (`opencode run --variant` is a different, non-interactive mode). Its
-    # config schema (opencode 1.18.32, `opencode debug config` / config.json)
-    # carries per-model reasoning effort as agent.<name>.variant, "Default model
-    # variant for this agent (applies only when using the agent's configured
-    # model)", so the effort rides the OPENCODE_CONFIG_CONTENT JSON the launch
-    # already writes: the default build agent is pinned to the resolved model
-    # and the effort named as its variant, which OpenCode resolves against that
-    # model's own variant list. Those lists are per-provider (anthropic/* expose
-    # high|max, openai/* expose low|medium|high|xhigh), so emit the variant only
-    # when the resolved model's provider is known to expose that effort; any
-    # other provider, or an effort outside its family's list, keeps the
-    # permission-only launch and omits the variant (record-and-omit, as codex
-    # and grok do). Without a resolved model the variant has nothing to key to
-    # and is likewise omitted. The fragment lands inside the launch's
-    # single-quoted assignment, so a literal quote in the model id must close and
-    # reopen that quoting.
-    [ -n "$model" ] && [ "$model" != default ] || return 0
-    case "${model%%/*}:$effort" in
-    anthropic:high | anthropic:max) ;;
-    openai:low | openai:medium | openai:high | openai:xhigh) ;;
-    *) return 0 ;;
-    esac
-    local model_json
-    model_json=$(json_escape "$model")
-    model_json=${model_json//\'/\'\\\'\'}
-    printf ',"agent":{"build":{"model":"%s","variant":"%s"}}' "$model_json" "$effort"
-    ;;
-  muse)
-    # muse 0.1.0-R708.1 --reasoning-effort accepts none|minimal|low|medium|
-    # high|xhigh|ultra and defaults to high, so low..xhigh map straight across.
-    # ultra is muse's max-CLASS level, so firstmate's max maps onto it - but
-    # only ever as an EXPLICIT captain choice, never as a fallback, because
-    # AGENTS.md section 4 forbids selecting max without captain preference and
-    # the omitted effort here leaves muse on its own high default. muse's extra
-    # none/minimal levels sit below firstmate's shared vocabulary and are
-    # deliberately unreachable rather than remapped onto low.
-    case "$effort" in
-    low | medium | high | xhigh) printf -- '--reasoning-effort %s ' "$(shell_quote "$effort")" ;;
-    max) printf -- '--reasoning-effort %s ' "$(shell_quote ultra)" ;;
-    esac
-    ;;
-    # rovo has no --effort flag on `run`; its effort mapping rides
-    # --config-override, but that flag is single-value (see
-    # rovo_config_override_flag below) so it is built there, merged with the
-    # mandatory allowedExternalPaths grant, rather than here.
-    # kimi provider catalogs expose supported and default effort values, but a
-    # launch flag and mapping have not been live-verified; the requested axis
-    # stays in task metadata but never reaches the launch command. Cursor encodes
-    # effort in model ids such as cursor-grok-4.5-high, so it also receives no
-    # separate effort flag.
-  esac
-}
-
 case "$LAUNCH" in
 *__MUSEBIN__*)
   MUSE_BIN=$(resolve_muse_binary) || exit 1
@@ -2861,10 +2764,8 @@ rovo_config_override_flag() {
   local data_real state_real agent_json paths_json config_json
   data_real=$(cd "$data_dir" && pwd -P) || return 1
   state_real=$(cd "$state_dir" && pwd -P) || return 1
-  agent_json=
-  case "$effort" in
-  low | medium | high | max) agent_json="\"agent\":{\"efficiencyLevel\":\"$(json_escape "$effort")\"}," ;;
-  esac
+  agent_json=$(fm_rovo_efficiency_level "$effort")
+  [ -z "$agent_json" ] || agent_json="\"agent\":{\"efficiencyLevel\":\"$(json_escape "$agent_json")\"},"
   paths_json=$(printf '"%s","%s","%s"' \
     "$(json_escape "$data_real/$id")" \
     "$(json_escape "$state_real/$id.inbox")" \
@@ -5247,7 +5148,7 @@ sq_worktree=$(shell_quote "$WT")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 # A pinned Pi launch confines Pi's model lookup to the declared provider.
 [ -z "$WORKER_ACCOUNT_PROVIDER" ] || MODELFLAG="--provider $(shell_quote "$WORKER_ACCOUNT_PROVIDER") $MODELFLAG"
-EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL") || exit 1
+EFFORTFLAG=$(fm_effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL") || exit 1
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
 # Relaunch session continuity. Computed here, where the adopted endpoint (T) is
