@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fm-mail.sh - inbound mail and independently reviewed blocker notifications.
 #
-# Reads inbound mail over IMAP and sends reviewed blockers over SMTP. This is an
+# Reads inbound mail over IMAP and submits blockers to a separate mail gate. This is an
 # ordinary mail client surface, not an escalation of authority: every surfaced
 # message is a notification firstmate reads before deciding, and firstmate still
 # applies its own judgment exactly as it would for a TUI message (including
@@ -10,10 +10,11 @@
 # Subcommands:
 #   read                 List unseen INBOX mail as a compact digest (From /
 #                        Date / Subject / first line).
-#   alert <request.json>  Mandatory native critic followed by SMTP, or a durable
-#                        correction through fm-inbox. Request/receipt mechanics
-#                        are owned by bin/fm-captain-alert.py. No ungated send.
-#   alert-preflight       Local configuration checks; no SMTP or native call.
+#   alert <request.json>  Hand the request to the separate gate account, whose
+#                        mandatory critic precedes SMTP; any other outcome is a
+#                        durable correction through fm-inbox. The gate, request
+#                        and receipts are owned by bin/fm-captain-alert.py.
+#   alert-preflight       Name gate gaps; no SMTP or critic call.
 #   poll                 Surface UNSEEN mail this home has not yet woken as a
 #                        `check` wake so firstmate answers it concisely. IMAP
 #                        \Seen mail never wakes a poll, no message is ever
@@ -50,9 +51,9 @@
 #   FM_SMTP_HOST=<smtp host>
 #   FM_SMTP_PORT=<smtp port>     (default 465, implicit TLS)
 #   FM_MAIL_TIMEOUT=<seconds>    (default 20; IMAP/SMTP socket timeout)
-# Outgoing alert needs FM_MAIL_USER, FM_MAIL_PASS, FM_SMTP_HOST and
-# FM_CAPTAIN_ALERT_TO only, never IMAP. alert-preflight names gaps without
-# contacting SMTP or the critic. The .env must be mode 0600 for outgoing mail.
+# Outgoing alert needs only FM_CAPTAIN_ALERT_GATE (the gate program path) and
+# FM_CAPTAIN_ALERT_GATE_USER here; the sending credential lives with the gate
+# account, never in this .env.
 # FM_HOME falls back to the repo root when unset. This script carries no secret
 # and no default endpoint that could resolve against a wrong home; FM_MAIL_USER,
 # FM_MAIL_PASS, FM_IMAP_HOST, and FM_SMTP_HOST are required for inbound commands;
@@ -60,8 +61,8 @@
 # script, not from $FM_HOME/bin; cursor, journal, retry set, and queue stay
 # under $FM_HOME/state.
 #
-# IMAP/SMTP work is delegated to bin/fm-mail.py (imaplib/smtplib, implicit TLS
-# on 993/465). STARTTLS and port 587 are not supported. BODY.PEEK is used on
+# IMAP work is delegated to bin/fm-mail.py (imaplib, implicit TLS on 993). The
+# gate's SMTP uses implicit TLS on 465; STARTTLS and port 587 are not supported. BODY.PEEK is used on
 # read/poll so mail is never marked seen before firstmate actually answers it.
 
 set -euo pipefail
@@ -91,7 +92,7 @@ if [ -f "$ENV_FILE" ]; then
     key="${line%%=*}"
     key="${key#"${key%%[![:space:]]*}"}"
     case "$key" in
-      FM_MAIL_*|FM_IMAP_*|FM_SMTP_*|FM_CAPTAIN_ALERT_TO) ;;
+      FM_MAIL_*|FM_IMAP_*|FM_SMTP_*|FM_CAPTAIN_ALERT_GATE|FM_CAPTAIN_ALERT_GATE_USER) ;;
       *) continue ;;
     esac
     val="${line#*=}"

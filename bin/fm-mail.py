@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# fm-mail.py - the IMAP/SMTP engine behind bin/fm-mail.sh.
+# fm-mail.py - the IMAP engine behind bin/fm-mail.sh.
 #
 # A small mail client used by fm-mail.sh:
 #   read                   List unseen INBOX mail as a compact digest.
-#   Outgoing SMTP is called only by fm-captain-alert.py after native review.
+#   send                   Closed; only the separate gate in fm-captain-alert.py sends.
 #   poll_list              Emit unseen mail as tab-separated rows for the bash
 #                          poll, bounded to uids this home has not surfaced,
 #                          plus a retry-set of previously unfetchable uids;
@@ -21,22 +21,17 @@ import socket
 import ssl
 import sys
 import email
-import smtplib
 from email.header import decode_header, make_header
-from email.message import EmailMessage
-from email.utils import formatdate
 
 USER = os.environ.get('FM_MAIL_USER', '')
 PW = os.environ.get('FM_MAIL_PASS', '')
 IMH = os.environ.get('FM_IMAP_HOST', '')
 IMP = os.environ.get('FM_IMAP_PORT', '993')
-STH = os.environ.get('FM_SMTP_HOST', '')
-STP = int(os.environ.get('FM_SMTP_PORT', '465'))
 CTX = ssl.create_default_context()
 
 
 def mail_timeout():
-    """Seconds for IMAP/SMTP sockets. Invalid or non-positive values become 20."""
+    """Seconds for IMAP sockets. Invalid or non-positive values become 20."""
     raw = os.environ.get('FM_MAIL_TIMEOUT', '20')
     try:
         value = float(raw)
@@ -141,24 +136,6 @@ def cmd_read():
         return 0
     except Exception as e:
         print('fm-mail read error:', e)
-        return 1
-
-
-def _send_reviewed(to, subj, body):
-    try:
-        m = EmailMessage()
-        m['From'] = USER
-        m['To'] = to
-        m['Subject'] = subj
-        m['Date'] = formatdate(localtime=True)
-        m.set_content(body)
-        with smtplib.SMTP_SSL(STH, STP, context=CTX, timeout=MAIL_TIMEOUT) as s:
-            s.login(USER, PW)
-            s.send_message(m)
-        print('sent to', to)
-        return 0
-    except Exception:
-        print('fm-mail send error: SMTP failed; delivery unconfirmed')
         return 1
 
 

@@ -26,6 +26,7 @@ ok - native human-permission: NEEDS_CAPTAIN; models=claude-opus-5-5
 ```
 
 The live guard forbids SMTP and checks real native session/model evidence through the production entrypoint.
+This output predates the separate gate account and the gate's own reading of canonical task records; refresh it with the command above before it counts as evidence for the current gate.
 These are empirical classifications of fixed cases, not a guarantee that every future semantic judgment will be correct.
 `tests/fm-captain-alert.test.sh` separately proves the deterministic gate with fixture native/SMTP transports.
 

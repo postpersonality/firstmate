@@ -1490,12 +1490,12 @@ Arm the check once per home with `bin/fm-tool-update-check.sh arm`.
 
 ## Mail plane (.env)
 
-The mail plane (`bin/fm-mail.sh`) reads unseen IMAP messages and sends blocker notifications through a mandatory independent native critic.
-`alert` freezes the proposed email, recipient and raw evidence, invokes a fresh installed Claude print-mode process using its configured identity/model, and permits SMTP only after a source-backed `NEEDS_CAPTAIN` outcome.
+The mail plane (`bin/fm-mail.sh`) reads unseen IMAP messages and submits blocker notifications to a separate mail gate whose mandatory independent native critic precedes any SMTP.
+`alert` hands the request to the gate account through `sudo -n`; the gate reads the task's canonical records itself, freezes them with the proposed email and recipient, invokes a fresh print-mode Claude process at its pinned absolute path, and permits SMTP only after a source-backed `NEEDS_CAPTAIN` outcome.
 The previous unreviewed `send` command is closed in both public mail CLIs.
 Critic denial, insufficient evidence, invalid output, failure, timeout or changed inputs send no mail and return a durable corrective action through the existing Firstmate inbox.
-The request schema, binding, deduplication and receipt mechanics have one owner: the header of `bin/fm-captain-alert.py`.
-This guarantee applies to the delivered notification path; an administrator able to rewrite programs or credentials can replace software, so it is not an administrator-proof boundary.
+The request schema, gate configuration keys, binding, deduplication and receipt mechanics have one owner: the header of `bin/fm-captain-alert.py`.
+The gate separates the sending credential and the critic from the submitting account only; an account with root rights can read that credential or replace the programs.
 
 **Polling and delivery guarantees**
 
@@ -1509,69 +1509,44 @@ A duplicate wake is possible if the process is killed between the queue append a
 IMAP and SMTP use implicit TLS on the default ports 993 and 465 (`IMAP4_SSL` / `SMTP_SSL`).
 STARTTLS and port 587 are not supported.
 
-It is off unless the home's gitignored `.env` provides the connection values.
+Inbound mail is off unless the home's gitignored `.env` provides the connection values.
 This section is the single owner of the mail-plane configuration schema; for direct invocations, environment values override `.env`, matching the Relay contract.
 
-Required for outgoing notifications, in the home's protected, gitignored `.env` (mode 0600):
+Outgoing notifications need a deployed gate.
+The repository prepares the gate but installs nothing: Firstmate creates no account, sudoers rule, file under `/etc` or service.
+The deployment the gate checks for:
+
+- a dedicated gate account that the Firstmate account cannot become, nor root, except through the rule below;
+- a copy of `bin/fm-captain-alert.py` owned by root outside any directory Firstmate can write;
+- `/etc/firstmate/captain-alert.env`, owned by the gate account with mode 0600, holding `FM_MAIL_USER`, `FM_MAIL_PASS`, `FM_SMTP_HOST`, optional `FM_SMTP_PORT`, `FM_CAPTAIN_ALERT_TO`, `FM_CAPTAIN_ALERT_HOME` (the Firstmate home), `FM_CAPTAIN_ALERT_STATE` (the gate's receipt directory) and `FM_CAPTAIN_ALERT_CLAUDE` (the absolute path of a Claude CLI installed and authenticated for the gate account, which Firstmate cannot write);
+- read access for the gate account to `AGENTS.md`, `data/` and `state/` in the Firstmate home;
+- a sudoers rule that lets the Firstmate account run only `<gate program> gate` and `<gate program> preflight` as the gate account, without `SETENV`.
+
+The home's `.env` then carries only the submitting side:
 
 ```sh
-FM_MAIL_USER=   # SMTP login
-FM_MAIL_PASS=   # SMTP password (for Gmail, an app password)
-FM_SMTP_HOST=   # SMTP server hostname
-FM_CAPTAIN_ALERT_TO=   # explicitly chosen recipient, one plain email address
+FM_CAPTAIN_ALERT_GATE=        # absolute path of the installed gate program
+FM_CAPTAIN_ALERT_GATE_USER=   # the gate account
 ```
 
+The sending account's credential never goes into the home's `.env`: the submitting agent can read that file and would be able to send unreviewed mail.
+For the same reason the inbound IMAP account must not be the gate's sending account.
 No recipient is inferred from Git identity.
-`FM_IMAP_HOST` is additionally required by inbound `read`/`poll` and the historical inbound `status`; it is not needed for outgoing alerts.
+`FM_IMAP_HOST` is required by inbound `read`/`poll` and the historical inbound `status`; it is not needed for outgoing alerts.
 Outgoing activation does not arm inbound polling.
-Run `FM_HOME=/path/to/home bin/fm-mail.sh alert-preflight` to list only missing parameter names and corrective actions, without printing credentials, sending mail or contacting the critic.
+Run `FM_HOME=/path/to/home bin/fm-mail.sh alert-preflight` to list missing gate parameters and corrective actions without printing credentials, sending mail or contacting the critic.
 Presence checks do not prove native authentication, SMTP authentication or inbox arrival.
+Activation stays pending until the gate is deployed with real local credentials and the delivery of a real blocker has been verified.
 
 For Gmail, use `smtp.gmail.com` with implicit TLS on port 465, as documented by [Google's SMTP guide](https://developers.google.com/workspace/gmail/imap/imap-smtp).
 This password-based sender requires a Gmail app password, which requires 2-Step Verification; do not supply the main account password ([Google app-password help](https://support.google.com/mail/answer/185833)).
 OAuth is not implemented by this sender.
 If the account cannot create an app password, resolve that account constraint before activation.
-Enter the secret locally with hidden terminal input; never put it in chat, shell arguments, history or logs.
-This non-sending recipe appends only when none of the outgoing keys already exists, preserves other settings, refuses symlinks, and never prints values:
-
-```sh
-FM_HOME=/path/to/home python3 - <<'PY'
-import fcntl, getpass, os, re, warnings
-from pathlib import Path
-warnings.simplefilter('error', getpass.GetPassWarning)
-home = Path(os.environ['FM_HOME'])
-values = {
-    'FM_MAIL_USER': getpass.getpass('Gmail account email (hidden): ').strip(),
-    'FM_CAPTAIN_ALERT_TO': getpass.getpass('Notification recipient email (hidden): ').strip(),
-    'FM_SMTP_HOST': 'smtp.gmail.com',
-    'FM_SMTP_PORT': '465',
-}
-if not all(re.fullmatch(r'[^\s<>@,;]+@[^\s<>@,;]+', values[k])
-           for k in ('FM_MAIL_USER', 'FM_CAPTAIN_ALERT_TO')):
-    raise SystemExit('Use one plain email address in each field')
-values['FM_MAIL_PASS'] = getpass.getpass('Gmail app password (hidden): ').replace(' ', '')
-if not values['FM_MAIL_PASS'] or any('\n' in v or '\r' in v for v in values.values()):
-    raise SystemExit('Missing or multiline input; nothing written')
-fd = os.open(home / '.env', os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
-with os.fdopen(fd, 'r+') as f:
-    fcntl.flock(f, fcntl.LOCK_EX)
-    names = {m.group(1) for line in f for m in
-             [re.match(r'\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=', line)] if m}
-    if names & values.keys():
-        raise SystemExit('Outgoing keys already exist; preserve them and edit locally')
-    os.fchmod(f.fileno(), 0o600)
-    f.write('\n' + ''.join(k + "='" + v + "'\n" for k, v in values.items()))
-    f.flush(); os.fsync(f.fileno())
-print('Saved parameter names: ' + ', '.join(values))
-PY
-FM_HOME=/path/to/home bin/fm-mail.sh alert-preflight
-```
-
-Run the recipe in a terminal: a missing secure terminal makes hidden input fail rather than echoing the secret.
+Enter the secret locally into the gate configuration as the gate account; never put it in chat, shell arguments, history or logs.
 Never use a synthetic case to test live SMTP; the first real send must be a configured, independently approved blocker event.
 `tests/fm-captain-alert.test.sh` tests the deterministic gate with fixture transports, while `FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh` empirically tests native classification with SMTP forbidden.
 
-`FM_IMAP_PORT` (default 993), `FM_SMTP_PORT` (default 465), `FM_MAIL_TIMEOUT` (default 20 seconds), and `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200) are optional.
+`FM_IMAP_PORT` (default 993), `FM_MAIL_TIMEOUT` (default 20 seconds), and `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200) are optional.
 The per-poll wake cap bounds the wakes of one `poll` run; header fetches scan a larger bounded window of new unseen uids plus already-surfaced retry-set uids, so a flood or large backlog still makes bounded progress every poll, keeping the durable wake queue bounded without ever dropping mail.
 
 **Unfetchable headers**
@@ -2463,13 +2438,14 @@ FM_TEARDOWN_NM_TIMEOUT=10    # seconds allowed per no-mistakes query or abort in
 FM_CREW_STATE_RUNS_LIMIT=200  # plain runs-ledger rows scanned for fallback attribution; does not change the CLI's AXI overview window (selection owner: bin/fm-nm-run-lib.sh)
 FM_TEARDOWN_NM_RUNS_LIMIT=200  # recent no-mistakes run rows scanned to prove an unresolved-head parked run belongs to teardown's task
 FM_CREW_STATE_BIN=bin/fm-crew-state.sh   # test override for the current-state reader used by watcher triage: the working/paused classification, and the wedge timer's parked-gate wait evidence
-FM_MAIL_USER=      # mail-plane IMAP/SMTP login, from .env or environment (docs/configuration.md "Mail plane")
-FM_MAIL_PASS=      # mail-plane IMAP/SMTP password
+FM_MAIL_USER=      # mail-plane IMAP login, from .env or environment (docs/configuration.md "Mail plane")
+FM_MAIL_PASS=      # mail-plane IMAP password
 FM_IMAP_HOST=      # mail-plane IMAP server hostname
 FM_IMAP_PORT=993   # mail-plane IMAP server port
 FM_SMTP_HOST=      # mail-plane SMTP server hostname
 FM_SMTP_PORT=465   # mail-plane SMTP server port
-FM_CAPTAIN_ALERT_TO=   # explicit outgoing blocker recipient; mandatory native critic, no unreviewed send
+FM_CAPTAIN_ALERT_GATE=        # installed outgoing blocker gate program; recipient, credential and critic live with its own account
+FM_CAPTAIN_ALERT_GATE_USER=   # the gate account that sudo -n runs it as
 FMX_PAIRING_TOKEN=      # Relay pairing token; .env opt-in authorizes replies and eligible lifecycle actions
 FMX_RELAY_URL=https://myfirstmate.io   # optional Relay endpoint override, mainly for local relay development
 FMX_ENV_FILE=           # optional alternate .env file for direct Relay client invocations; bootstrap still checks $FM_HOME/.env

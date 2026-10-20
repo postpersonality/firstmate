@@ -33,6 +33,8 @@ SCRIPT_DIR="$(d=${BASH_SOURCE[0]%/*}; [ "$d" != "${BASH_SOURCE[0]}" ] || d=.; cd
 . "$SCRIPT_DIR/fm-supervision-engine-lib.sh"
 # shellcheck source=bin/fm-afk-contract.sh
 . "$SCRIPT_DIR/fm-afk-contract.sh"
+# shellcheck source=bin/fm-env-lib.sh
+. "$SCRIPT_DIR/fm-env-lib.sh"
 
 DRAIN_TMP=
 DRAIN_VIEW_TMP=
@@ -467,7 +469,7 @@ EOF
 # common case.
 print_open_decisions_section() {
   local snapshot=${1:-} open task key verb note line item_bytes=220 global_bytes=4000
-  local output='' used=0 shown=0 omitted=0 bytes
+  local output='' used=0 shown=0 omitted=0 bytes blocked=false
 
   if [ -n "$snapshot" ]; then
     open=$(scan_open_decisions_snapshot "$STATE" "$snapshot") || return 1
@@ -478,6 +480,7 @@ print_open_decisions_section() {
 
   while IFS=$(printf '\t') read -r task key verb note; do
     [ -n "$task" ] || continue
+    [ "$verb" != blocked ] || blocked=true
     line="$task"
     [ "$key" = default ] || line="$line [key=$key]"
     line="$line $verb: $note"
@@ -510,6 +513,11 @@ EOF
   # depends on the busy worker writing a matching resolved line (contract:
   # bin/fm-send.sh header).
   printf "OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'\n" || return 1
+  # A deployed mail gate is the captain's only blocker email path; its critic,
+  # not this drain, decides whether a listed blocker truly needs the captain.
+  if [ "$blocked" = true ] && [ -n "${FM_CAPTAIN_ALERT_GATE:-$(fmx_env_get FM_CAPTAIN_ALERT_GATE "$FM_HOME/.env")}" ]; then
+    printf 'OPEN DECISIONS: a blocker only the captain can clear goes to reviewed email: bin/fm-mail.sh alert <request.json> (format: bin/fm-captain-alert.py header)\n' || return 1
+  fi
 }
 
 # Print the RECORD DIVERGENCE section: every captain call whose two records

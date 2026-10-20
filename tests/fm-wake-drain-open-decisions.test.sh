@@ -215,6 +215,26 @@ test_over_long_decision_note_is_capped_with_a_marker() {
   pass "an over-long open decision is cut to its per-item budget with the shared truncation marker"
 }
 
+test_blocked_decision_names_the_mail_gate_once_deployed() {
+  local dir state out
+  dir=$(make_case mail-gate)
+  state="$dir/state"
+  out="$dir/drain.out"
+  printf 'blocked: waiting on a login only the captain holds\n' > "$state/task8.status"
+
+  env -u FM_CAPTAIN_ALERT_GATE FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "drain failed on an open blocker"
+  if grep -F 'bin/fm-mail.sh alert' "$out" >/dev/null; then
+    fail "an undeployed mail gate was offered for a blocker: $(cat "$out")"
+  fi
+  printf 'FM_CAPTAIN_ALERT_GATE=/usr/local/libexec/firstmate/fm-captain-alert.py\n' > "$dir/.env"
+  env -u FM_CAPTAIN_ALERT_GATE FM_HOME="$dir" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "drain failed with a deployed mail gate"
+  grep -F 'goes to reviewed email: bin/fm-mail.sh alert <request.json>' "$out" >/dev/null \
+    || fail "a deployed mail gate was not offered for an open blocker: $(cat "$out")"
+  pass "an open blocker names the reviewed mail gate only once that gate is deployed"
+}
+
 test_buried_decision_still_surfaces
 test_over_long_decision_note_is_capped_with_a_marker
 test_explicit_resolution_closes_it
@@ -224,3 +244,4 @@ test_no_open_decisions_prints_nothing
 test_open_decision_surfaces_even_with_an_unrelated_queued_wake
 test_buried_decision_surfaces_on_the_empty_queue_fast_path
 test_status_symlink_is_not_followed
+test_blocked_decision_names_the_mail_gate_once_deployed
