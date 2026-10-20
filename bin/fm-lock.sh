@@ -12,9 +12,7 @@
 # every other reader takes the first line as the pid.
 #
 # Native Codex app-server threads share a daemon PID; their matching native
-# thread ids partition that PID through the same library and sidecar. A live
-# app-server's PID-only lock names no thread, so no thread adopts it; it is
-# claimed only once that app-server has exited and the lock is stale.
+# thread ids partition that PID through the same library and sidecar.
 # The trusted id itself is recorded beside the lock in state/.lock-session, a
 # sidecar written only here and only under the claim lock: refreshed on every
 # confirmed-own acquisition, including the early already-mine exit that waits
@@ -171,10 +169,6 @@ confirm_own_lock() {  # <recorded-pid>
   fi
   recorded=$(cat "$LOCK" 2>/dev/null || true)
   if fm_session_lock_owned_by_self "$STATE"; then
-    if fm_session_lock_codex_api_pid >/dev/null && ! fm_session_lock_recorded_session_id "$STATE" >/dev/null; then
-      echo "error: this Codex app-server (pid $recorded) holds a legacy PID-only session lock that names no thread, so no thread adopts it; operate read-only, then restart the app-server and resume the primary thread so its native SessionStart claims the stale lock" >&2
-      exit 1
-    fi
     publish_lock_session_or_die
     commit_lock_session
     release_claim_lock
@@ -197,13 +191,16 @@ refuse_live_owner() {  # <recorded-pid>
   exit 1
 }
 
-if fm_session_lock_codex_sandbox_pid >/dev/null; then
-  if [ -f "$LOCK" ] && [ ! -L "$LOCK" ] && fm_session_lock_owned_by_self "$STATE"; then
-    confirm_own_lock "$(cat "$LOCK" 2>/dev/null || true)"
+refuse_unverified_sandbox_owner() {
+  if fm_session_lock_codex_sandbox_pid >/dev/null \
+    && fm_session_lock_recorded_session_id "$STATE" >/dev/null \
+    && ! fm_session_lock_owned_by_self "$STATE"; then
+    # A host PID is not observable from this tool namespace. Only a native
+    # hook outside it may reclaim a different or unidentified recorded owner.
+    echo 'error: the recorded primary thread is not this sandboxed session; operate read-only until its native hook verifies ownership' >&2
+    exit 1
   fi
-  echo 'error: a sandboxed Codex tool cannot verify the host owner of the session lock and never claims it; operate read-only until the native SessionStart hook records this thread' >&2
-  exit 1
-fi
+}
 
 if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
   old=$(cat "$LOCK" 2>/dev/null || true)
@@ -211,6 +208,7 @@ if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
     confirm_own_lock "$old"
     old=$(cat "$LOCK" 2>/dev/null || true)
   fi
+  refuse_unverified_sandbox_owner
   if fm_harness_pid_alive "$old"; then
     refuse_live_owner "$old"
   fi
@@ -235,6 +233,7 @@ if [ -e "$LOCK" ] || [ -L "$LOCK" ]; then
     echo "error: session lock is unreadable; operate read-only until resolved" >&2
     exit 1
   }
+  refuse_unverified_sandbox_owner
   if fm_harness_pid_alive "$old"; then
     fm_session_lock_owned_by_self "$STATE" && confirm_own_lock "$old"
     old=$(cat "$LOCK" 2>/dev/null || true)

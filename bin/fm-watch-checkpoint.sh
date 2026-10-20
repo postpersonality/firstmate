@@ -122,7 +122,7 @@ if fm_supervision_host_enabled "$CONFIG" codex; then
   fi
   [ ! -s "$OUT" ] || cat "$OUT"
   [ ! -s "$ERR" ] || cat "$ERR" >&2
-  if fm_timed_out "$RC"; then
+  if [ "$RC" -eq 124 ]; then
     if [ "$HARD_BOUND" -eq 1 ]; then
       printf 'checkpoint: no actionable wake within %ss\n' "$BOUND"
       exit 124
@@ -152,7 +152,7 @@ if grep -E '^watcher: already running' "$OUT" "$ERR" >/dev/null 2>&1; then
   exit 1
 fi
 
-if fm_timed_out "$RC"; then
+if [ "$RC" -eq 124 ]; then
   printf 'checkpoint: no actionable wake within %ss\n' "$SECONDS_ARG"
   exit 124
 fi

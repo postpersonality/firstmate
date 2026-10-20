@@ -47,12 +47,8 @@
 # are unchanged everywhere else, including for a dead daemon pid or a beacon
 # older than AFK_GRACE, which still block.
 #
-# A native Codex app-server Stop from the thread recorded beside the lock
-# delegates to bin/fm-codex-stop-watch.sh before the legacy loop flag: that
-# synchronous caller owns the checkpoint return. Any other thread's Stop never
-# claims the lock: a free, stale, PID-1 or legacy PID-only lock keeps the
-# one-block guard below and is told how the primary binds its thread, while a
-# live foreign owner gets the read-only notice instead.
+# Native Codex app-server Stops delegate to bin/fm-codex-stop-watch.sh before
+# the legacy loop flag: that synchronous caller owns the checkpoint return.
 # Loop-guard, legacy codex/Grok (default) mode: never block twice in the same turn.
 # Codex uses stop_hook_active and Grok uses stopHookActive; typed camel-case
 # takes precedence when both spellings are present. A true value means the
@@ -156,7 +152,6 @@ STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '
   else false
   end
 ' 2>/dev/null) || exit 0
-UNRECORDED_CODEX_THREAD=0
 # On the native API path a live watcher is not a delivery owner. The synchronous
 # Stop caller retains the checkpoint return, including after another hook blocked.
 if [ "$CLAUDE_MODE" -eq 0 ] && [ "$CURSOR_MODE" -eq 0 ] \
@@ -164,14 +159,8 @@ if [ "$CLAUDE_MODE" -eq 0 ] && [ "$CURSOR_MODE" -eq 0 ] \
   # shellcheck source=bin/fm-session-lock-lib.sh
   . "$SCRIPT_DIR/fm-session-lock-lib.sh"
   if fm_session_lock_codex_api_pid >/dev/null; then
-    FM_CODEX_HOOK_SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id | strings' 2>/dev/null)
-    export FM_CODEX_HOOK_SESSION_ID
-    if [ -n "$FM_CODEX_HOOK_SESSION_ID" ] \
-      && [ "$(fm_session_lock_recorded_session_id "$STATE" || true)" = "$FM_CODEX_HOOK_SESSION_ID" ]; then
-      printf '%s' "$PAYLOAD" | "$SCRIPT_DIR/fm-codex-stop-watch.sh"
-      exit $?
-    fi
-    UNRECORDED_CODEX_THREAD=1
+    printf '%s' "$PAYLOAD" | "$SCRIPT_DIR/fm-codex-stop-watch.sh"
+    exit $?
   fi
 fi
 if [ "$CLAUDE_MODE" -eq 0 ] && [ "$STOP_HOOK_ACTIVE" = "true" ]; then
@@ -273,9 +262,6 @@ block_stop() {
       printf '●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.\n'
     fi
     printf '●  %s\n' "$reason"
-    if [ "$UNRECORDED_CODEX_THREAD" -eq 1 ]; then
-      printf '●  The session lock does not record this native Codex thread, and Stop never claims it. Only the native SessionStart hook binds the firstmate primary thread, outside the tool sandbox: resume the primary thread, restarting this app-server first if it holds a legacy PID-only lock, so later Stops retain its checkpoint; any other thread ends without fleet actions.\n'
-    fi
     printf '●%s\n' "$rule"
   } >&2
   exit 2
@@ -287,8 +273,7 @@ block_stop() {
 # stealing ownership, so blocking its Stop would create an impossible loop.
 # Report the ownership conflict as a diagnostic and let this turn end safely;
 # the owning session remains responsible for restoring the watcher.
-if { [ "$CLAUDE_MODE" -eq 1 ] || [ "$UNRECORDED_CODEX_THREAD" -eq 1 ]; } \
-  && fm_session_lock_foreign_owner_live "$STATE"; then
+if [ "$CLAUDE_MODE" -eq 1 ] && fm_session_lock_foreign_owner_live "$STATE"; then
   printf '{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid %s). Allowing this turn to end safely; the owning session must restore supervision."}\n' \
     "$FM_SESSION_LOCK_FOREIGN_OWNER_PID"
   exit 0

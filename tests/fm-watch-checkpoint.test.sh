@@ -175,41 +175,6 @@ test_host_hard_bound_includes_away_and_engine_time() {
   pass 'checkpoint: hard bound forbids a longer away park or engine turn'
 }
 
-# Without perl, fm_exec_timed falls back to timeout -k, whose KILL escalation
-# returns 137 for a TERM-ignoring command. That is the bound, not a failure.
-test_kill_escalation_is_the_quiet_bound() {
-  local home fakebin tool
-  if ! command -v timeout >/dev/null 2>&1; then
-    pass "checkpoint: timeout kill escalation (skipped: no timeout binary on this host)"
-    return 0
-  fi
-  home=$(make_host_home kill-escalation)
-  fakebin="$TMP_ROOT/kill-escalation-bin"
-  mkdir -p "$fakebin"
-  for tool in bash timeout sleep cat grep mktemp dirname rm; do
-    ln -s "$(command -v "$tool")" "$fakebin/$tool"
-  done
-  cat > "$home/root/bin/fm-watch.sh" <<'SH'
-#!/usr/bin/env bash
-trap "" TERM
-sleep "${STUB_SLEEP:-30}"
-exit "${STUB_EXIT:-0}"
-SH
-  cp "$home/root/bin/fm-watch.sh" "$home/root/bin/fm-supervision-host.sh"
-  chmod +x "$home/root/bin/fm-supervision-host.sh" "$home/root/bin/fm-watch.sh"
-  PATH="$fakebin" FM_SIGNAL_GRACE=1 run_host_checkpoint "$home" boundary --seconds 1 --hard-bound
-  expect_code 124 "$STATUS" "a hard-bound host KILLed at its bound is a quiet checkpoint: $(cat "$home/err.txt")"
-  assert_contains "$(cat "$home/out.txt")" "checkpoint: no actionable wake within 1s" "the host kill escalation must read as the quiet line"
-  rm "$home/config/supervision-host"
-  PATH="$fakebin" FM_SIGNAL_GRACE=1 run_host_checkpoint "$home" boundary --seconds 1
-  expect_code 124 "$STATUS" "a watcher KILLed at its bound is a quiet checkpoint: $(cat "$home/err.txt")"
-  assert_contains "$(cat "$home/out.txt")" "checkpoint: no actionable wake within 1s" "the watcher kill escalation must read as the quiet line"
-  PATH="$fakebin" STUB_SLEEP=0 STUB_EXIT=3 run_host_checkpoint "$home" boundary --seconds 5
-  expect_code 3 "$STATUS" "a watcher failure inside the bound must keep its own status"
-  assert_not_contains "$(cat "$home/out.txt")" "no actionable wake" "a watcher failure must not read as a quiet checkpoint"
-  pass "checkpoint: a timeout kill escalation is the quiet bound, and a real failure keeps its status"
-}
-
 # The Codex owner stays file-gated: without config/supervision-host, or with
 # config/supervision-host-off, the checkpoint never runs the host.
 test_host_checkpoint_needs_the_file_and_honors_off() {
@@ -254,6 +219,5 @@ test_existing_singleton_watcher_is_not_success
 test_host_checkpoint_bounds_the_park_by_posture
 test_host_checkpoint_passes_a_handback_and_reports_a_stand_down
 test_host_hard_bound_includes_away_and_engine_time
-test_kill_escalation_is_the_quiet_bound
 test_host_checkpoint_needs_the_file_and_honors_off
 test_real_host_checkpoint_ends_quietly_at_its_bound
