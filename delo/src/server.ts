@@ -30,6 +30,13 @@ export function router(store: Store, opener = 'xdg-open') {
       }
       if (req.method === 'GET' && url.pathname === '/api/meta') return Response.json({ csrf }, { headers: { 'cache-control': 'no-store' } });
       if (req.method === 'GET' && url.pathname === '/api/overview') return send(await store.overview());
+      const terminal = /^\/api\/tasks\/([^/]+)\/terminal\/open$/.exec(url.pathname);
+      if (req.method === 'POST' && terminal) {
+        const taskId = id.parse(decodeURIComponent(terminal[1]));
+        const { binding } = z.object({ binding: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(await req.json());
+        if (store.firstmate.show(taskId).kind === 'program') throw new Error('У дела нет собственного терминала. Выберите задачу исполнителя.');
+        return send(await store.firstmate.terminal(taskId, binding));
+      }
       const pin = /^\/api\/tasks\/([^/]+)\/pin$/.exec(url.pathname);
       if (req.method === 'POST' && pin) {
         const taskId = decodeURIComponent(pin[1]); id.parse(taskId);
@@ -59,7 +66,11 @@ export function router(store: Store, opener = 'xdg-open') {
       const caseRoute = /^\/api\/cases\/([^/]+)(?:\/(close|reopen|continue|agent))?$/.exec(url.pathname);
       if (caseRoute) {
         const caseId = decodeURIComponent(caseRoute[1]); id.parse(caseId);
-        if (req.method === 'GET' && !caseRoute[2]) return send(store.getCase(caseId, await store.overview()));
+        if (req.method === 'GET' && !caseRoute[2]) {
+          const c = store.getCase(caseId, await store.overview());
+          const entries = (tasks: typeof c.tasks) => Promise.all(tasks.map(async task => ({ ...task, terminal: await store.firstmate.terminal(task.id) })));
+          return send({ ...c, tasks: await entries(c.tasks), earlier: await entries(c.earlier) });
+        }
         if (req.method === 'POST' && caseRoute[2] === 'close') return send(store.closeCase(caseId, await req.json()));
         if (req.method === 'POST' && caseRoute[2] === 'reopen') return send(store.reopenCase(caseId));
         if (req.method === 'POST' && caseRoute[2] === 'continue') return send(store.continueCase(caseId), 201);
@@ -71,7 +82,7 @@ export function router(store: Store, opener = 'xdg-open') {
       const goalId = decodeURIComponent(route[1]); id.parse(goalId);
       if (req.method === 'GET') {
         const goal = store.get(goalId); const inbox = store.inbox(goalId);
-        return send({ ...goal, requests: inbox.requests.filter(r => r.action && goal.actions.includes(r.action) && (r.action !== 'close' || goal.inFlight)), inbox, worker: await store.worker(goalId) });
+        return send({ ...goal, requests: inbox.requests.filter(r => r.action && goal.actions.includes(r.action) && (r.action !== 'close' || goal.inFlight)), inbox, worker: await store.worker(goalId), terminal: goal.kind === 'program' ? undefined : await store.firstmate.terminal(goalId) });
       }
       if (req.method === 'PATCH') return send(store.update(goalId, await req.json()));
       return send({ error: 'Метод не поддерживается' }, 405);

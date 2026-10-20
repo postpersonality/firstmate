@@ -9,6 +9,89 @@ import { Store } from '../src/store.ts';
 import { firstmateHome } from './firstmate-home.ts';
 import { router } from '../src/server.ts';
 import { run } from '../src/process.ts';
+import { Firstmate } from '../src/firstmate.ts';
+
+test('case children and task cards open only their own terminal through the protected public action', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-terminal-ui-'));
+  const home = firstmateHome(root); mkdirSync(join(home, 'state'));
+  const store = new Store({ firstmateHome: home });
+  const tasks: any[] = [
+    { id: 'case', title: 'Дело', kind: 'program', state: 'in_flight', body: '' },
+    { id: 'one', title: 'Первый агент', kind: 'scout', state: 'in_flight', body: 'Дело: case' },
+    { id: 'two', title: 'Второй агент', kind: 'ship', state: 'queued', held: 'yes', hold_kind: 'parked', body: 'Дело: case' },
+    { id: 'gone', title: 'Закрытый терминал', kind: 'scout', state: 'in_flight', body: 'Дело: case' },
+  ];
+  for (const [id, pane, tab] of [['one', 'w30:p39', 'w30:t39'], ['two', 'w30:p40', 'w30:t40'], ['gone', 'w30:p41', 'w30:t41']]) {
+    writeFileSync(join(home, 'state', `${id}.meta`), `backend=herdr\nkind=scout\nendpoint_task_id=${id}\nspawn_gen=${id}-generation\nwindow=default:${pane}\nherdr_session=default\nherdr_workspace_id=w30\nherdr_tab_id=${tab}\nherdr_pane_id=${pane}\n`);
+  }
+  const focused: string[] = []; let unavailable = false;
+  store.firstmate = new Firstmate(home, undefined, async (command, args) => {
+    assert.equal(command, 'herdr');
+    if (args[0] === 'pane') {
+      if (args[2] === 'w30:p41' || unavailable) throw new Error('pane unavailable');
+      const tab = args[2] === 'w30:p39' ? 'w30:t39' : 'w30:t40';
+      return JSON.stringify({ result: { pane: { pane_id: args[2], tab_id: tab, workspace_id: 'w30', terminal_id: `term_${args[2]}` } } });
+    }
+    if (args[1] === 'get') return JSON.stringify({ result: { tab: { tab_id: args[2], workspace_id: 'w30', pane_count: 1 } } });
+    assert.equal(args[1], 'focus'); focused.push(args[2]); return '{}';
+  });
+  t.mock.method(store.firstmate, 'list', () => tasks);
+  t.mock.method(store.firstmate, 'show', (id: string) => { const task = tasks.find(t => t.id === id); if (!task) throw new Error('Цель не найдена'); return task; });
+  t.mock.method(store.firstmate, 'archive', () => []);
+  t.mock.method(store.firstmate, 'receipts', () => ({ pending: [], handled: [] }));
+  t.mock.method(store.firstmate, 'snapshot', async (script: string) => script === 'fm-bearings-snapshot.sh' ? {} : {
+    backlog: { records: tasks.map(t => ({ ...t, body_lines: t.body.split('\n') })) },
+    tasks: [{ id: 'one', kind: 'scout', harness: 'claude', current_state: { state: 'blocked', detail: 'usage limit reached' } }],
+  });
+  const handle = router(store);
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: 'http://localhost:4317/#case:case', runScripts: 'outside-only' });
+  const { window } = dom; const document = window.document;
+  window.setInterval = (() => 0) as typeof window.setInterval;
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  (window as any).fetch = async (input: string, init: RequestInit = {}) => handle(new Request(new URL(input, window.location.href), init));
+  const until = async (check: () => unknown) => { for (let i = 0; i < 100 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 10)); assert.ok(check()); };
+  const button = (id: string) => document.querySelector(`[data-action="open-terminal"][data-id="${id}"]`) as HTMLButtonElement | null;
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    await until(() => document.querySelector('main h1')?.textContent === 'Дело');
+    assert.ok(button('one'), 'the quota-blocked child has a discoverable terminal button');
+    assert.ok(button('two'), 'the parked child has its own terminal button');
+    assert.equal(button('case'), null, 'the parent is not an executor');
+    assert.equal(button('gone'), null);
+    assert.match(document.querySelector('a[href="#gone"]')!.closest('.row')!.textContent!, /Терминал недоступен/);
+    assert.deepEqual(focused, [], 'reading case and task data never focuses a terminal');
+    const c = await (await handle(new Request('http://localhost:4317/api/cases/case'))).json();
+    const meta = await (await handle(new Request('http://localhost:4317/api/meta'))).json();
+    const path = 'http://localhost:4317/api/tasks/one/terminal/open';
+    const post = (binding: string, extra: any = {}) => handle(new Request(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-delo-csrf': meta.csrf, origin: 'http://localhost:4317', ...extra }, body: JSON.stringify({ binding }) }));
+    const binding = c.tasks.find((t: any) => t.id === 'one').terminal.binding;
+    assert.equal((await post(binding, { origin: 'https://evil.example' })).status, 403);
+    assert.equal((await post(binding, { 'x-delo-csrf': '' })).status, 403);
+    assert.equal((await post('$(touch /tmp/delo-forbidden)')).status, 400);
+    assert.equal((await post(c.tasks.find((t: any) => t.id === 'two').terminal.binding)).status, 400, 'another child binding cannot select this worker');
+    assert.equal((await handle(new Request(path))).status, 404, 'GET cannot focus a terminal');
+    assert.deepEqual(focused, []);
+    button('one')!.click(); await until(() => focused.length === 1);
+    assert.deepEqual(focused, ['w30:t39']); assert.equal(window.location.hash, '#case:case');
+    button('two')!.click(); await until(() => focused.length === 2);
+    assert.deepEqual(focused, ['w30:t39', 'w30:t40']);
+    window.location.hash = 'one'; await until(() => document.querySelector('main h1')?.textContent === 'Первый агент');
+    assert.ok(button('one')); assert.match(document.querySelector('main')!.textContent!, /usage limit reached/);
+    (document.querySelector('[data-action="edit"]') as HTMLButtonElement).click();
+    await until(() => document.querySelector('[name=title]'));
+    (document.querySelector('[name=title]') as HTMLInputElement).value = 'Несохранённый ввод';
+    unavailable = true;
+    button('one')!.click();
+    await until(() => document.getElementById('message')!.classList.contains('error'));
+    assert.match(document.getElementById('message')!.textContent!, /Терминал недоступен/);
+    assert.equal((document.querySelector('[name=title]') as HTMLInputElement).value, 'Несохранённый ввод');
+    assert.equal(window.location.hash, '#one'); assert.equal(focused.length, 2);
+    assert.deepEqual(tasks.map(t => t.state), ['in_flight', 'in_flight', 'queued', 'in_flight']);
+    const parent = await handle(new Request('http://localhost:4317/api/tasks/case/terminal/open', { method: 'POST', headers: { 'content-type': 'application/json', 'x-delo-csrf': meta.csrf }, body: JSON.stringify({ binding }) }));
+    assert.equal(parent.status, 400); assert.equal(focused.length, 2);
+  } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
+});
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require('jsdom') as any;

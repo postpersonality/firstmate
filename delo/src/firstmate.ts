@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { run, runAsync } from './process.ts';
 import { decode } from '@toon-format/toon';
+import { workerTerminal } from './terminal.ts';
 
 export type FirstmateState = 'queued' | 'in_flight' | 'done';
 export type FirstmateTask = {
@@ -17,7 +18,8 @@ const inheritedNames = ['FM_HOME', 'FM_DATA_OVERRIDE', 'FM_ROOT_OVERRIDE', 'FM_S
 export class Firstmate {
   readonly home: string;
   private readonly command: string;
-  constructor(home: string, command?: string) { this.home = resolve(home); this.command = command ?? join(this.home, 'bin', 'fm-tasks-axi.sh'); }
+  private readonly terminalRunner: typeof runAsync;
+  constructor(home: string, command?: string, terminalRunner = runAsync) { this.home = resolve(home); this.command = command ?? join(this.home, 'bin', 'fm-tasks-axi.sh'); this.terminalRunner = terminalRunner; }
 
   private env() {
     const env = { ...process.env };
@@ -29,6 +31,8 @@ export class Firstmate {
   private call(args: string[], command = this.command, input?: string) { return run(command, args, this.home, 45000, this.env(), input); }
 
   async snapshot(script: 'fm-bearings-snapshot.sh' | 'fm-fleet-snapshot.sh') { return JSON.parse(await runAsync(join(this.home, 'bin', script), ['--json'], this.home, 45000, this.env())); }
+
+  terminal(taskId: string, binding?: string) { return workerTerminal(this.home, taskId, binding, this.terminalRunner, this.env()); }
 
   // Native runtime can be unknown while the current generation has explicitly declared a wait.
   async declaredWait(worker: any): Promise<{ state: string; detail: string } | undefined> {

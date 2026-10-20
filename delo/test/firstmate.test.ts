@@ -1,11 +1,104 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Firstmate } from '../src/firstmate.ts';
 import { run, runAsync } from '../src/process.ts';
 import { firstmateHome } from './firstmate-home.ts';
+
+test('terminal navigation verifies the selected home, generation and exact surviving Herdr tab', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'delo-terminal-'));
+  mkdirSync(join(home, 'state'));
+  const meta = join(home, 'state', 'child.meta');
+  const original = 'backend=herdr\nkind=scout\nendpoint_task_id=child\nspawn_gen=g1\nwindow=default:w30:p39\nherdr_session=default\nherdr_workspace_id=w30\nherdr_tab_id=w30:t39\nherdr_pane_id=w30:p39\n';
+  let pane: any = { pane_id: 'w30:p39', tab_id: 'w30:t39', workspace_id: 'w30', terminal_id: 'term_original' };
+  let tab: any = { tab_id: 'w30:t39', workspace_id: 'w30', pane_count: 1 };
+  let fail = ''; let mutate: (() => void) | undefined;
+  const calls: string[][] = [];
+  const runner: typeof runAsync = async (command, args, cwd, _timeout, env) => {
+    assert.equal(command, 'herdr'); assert.equal(cwd, home);
+    assert.equal(env?.HERDR_PANE_ID, undefined); assert.equal(env?.HERDR_SOCKET_PATH, undefined);
+    assert.equal(env?.FM_HOME, home);
+    calls.push(args);
+    if (fail === args.slice(0, 2).join(' ')) throw new Error('native refusal');
+    if (args[0] === 'pane' && args[1] === 'get') return JSON.stringify({ result: { pane } });
+    if (args[0] === 'tab' && args[1] === 'get') { mutate?.(); return JSON.stringify({ result: { tab } }); }
+    assert.deepEqual(args, ['tab', 'focus', 'w30:t39', '--session', 'default']);
+    return JSON.stringify({ result: {} });
+  };
+  const fm = new Firstmate(home, undefined, runner);
+  const focuses = () => calls.filter(a => a[0] === 'tab' && a[1] === 'focus').length;
+  const inherited = { HERDR_PANE_ID: process.env.HERDR_PANE_ID, HERDR_SOCKET_PATH: process.env.HERDR_SOCKET_PATH };
+  process.env.HERDR_PANE_ID = 'unrelated-pane'; process.env.HERDR_SOCKET_PATH = '/tmp/unrelated-herdr.sock';
+  try {
+    writeFileSync(meta, original);
+    const target = await fm.terminal('child');
+    assert.equal(target.available, true);
+    assert.match(target.binding!, /^[a-f0-9]{64}$/);
+    const otherHome = join(home, 'other'); mkdirSync(join(otherHome, 'state'), { recursive: true });
+    writeFileSync(join(otherHome, 'state', 'child.meta'), original);
+    const other = new Firstmate(otherHome, undefined, async (command, args, _cwd, timeout, env) => runner(command, args, home, timeout, { ...env, FM_HOME: home }));
+    const otherTarget = await other.terminal('child');
+    assert.equal(otherTarget.available, true); assert.notEqual(otherTarget.binding, target.binding);
+    await assert.rejects(fm.terminal('child', otherTarget.binding), /изменился|Обновите/);
+    assert.equal(focuses(), 0, 'opening the public page is read-only');
+    await fm.terminal('child', target.binding);
+    assert.equal(focuses(), 1);
+    for (const declaration of ['blocked: quota', 'paused: waiting', 'working: busy']) {
+      writeFileSync(join(home, 'state', 'child.status'), declaration);
+      assert.equal((await fm.terminal('child')).available, true, declaration);
+    }
+    const before = focuses();
+    writeFileSync(meta, original.replace('g1', 'g2'));
+    await assert.rejects(fm.terminal('child', target.binding), /изменился|Обновите/);
+    writeFileSync(meta, original);
+    pane.terminal_id = 'term_replaced';
+    await assert.rejects(fm.terminal('child', target.binding), /изменился|Обновите/);
+    pane.terminal_id = 'term_original';
+    pane.terminal_id = 123;
+    assert.equal((await fm.terminal('child')).available, false, 'native identity must be a string');
+    pane.terminal_id = 'term_original';
+    pane.pane_id = 'w30:wrong';
+    assert.equal((await fm.terminal('child')).available, false);
+    pane.pane_id = 'w30:p39';
+    pane.tab_id = 'w31:t8'; pane.workspace_id = 'w31';
+    assert.equal((await fm.terminal('child')).available, false, 'moved bindings are never guessed');
+    pane.tab_id = 'w30:t39'; pane.workspace_id = 'w30';
+    tab.pane_count = 2;
+    assert.equal((await fm.terminal('child')).available, false, 'a split tab could focus another pane');
+    tab.pane_count = 1;
+    for (const bad of [original.replace('endpoint_task_id=child', 'endpoint_task_id=other'), original + 'spawn_gen=duplicate\n', original.replace('backend=herdr', 'backend=tmux'), original + 'remote_host=other\n', original.replace('herdr_session=default', 'herdr_session=--help').replace('window=default:', 'window=--help:'), original.replaceAll('w30:p39', '$(touch /tmp/delo-forbidden)')]) {
+      writeFileSync(meta, bad);
+      assert.equal((await fm.terminal('child')).available, false);
+      await assert.rejects(fm.terminal('child', target.binding));
+    }
+    writeFileSync(meta, original);
+    mutate = () => writeFileSync(meta, original.replace('g1', 'g3'));
+    await assert.rejects(fm.terminal('child', target.binding), /изменился|Обновите/);
+    mutate = undefined; writeFileSync(meta, original);
+    let observations = 0;
+    mutate = () => { if (++observations === 2) tab.pane_count = 2; };
+    await assert.rejects(fm.terminal('child', target.binding), /несколько панелей/);
+    mutate = undefined; tab.pane_count = 1;
+    fail = 'pane get';
+    const unavailable = await fm.terminal('child');
+    assert.equal(unavailable.available, false); assert.match(unavailable.reason!, /недоступен|проверить/);
+    await assert.rejects(fm.terminal('child', target.binding));
+    fail = '';
+    rmSync(meta); symlinkSync(join(home, 'other.meta'), meta); writeFileSync(join(home, 'other.meta'), original);
+    assert.equal((await fm.terminal('child')).available, false, 'metadata cannot escape the selected home state');
+    assert.equal((await fm.terminal('../other')).available, false);
+    assert.equal((await fm.terminal('missing')).available, false);
+    assert.equal(focuses(), before, 'no failure focused a different endpoint');
+    rmSync(meta); writeFileSync(meta, original);
+    fail = 'tab focus';
+    await assert.rejects(fm.terminal('child', target.binding), /не удалось|Не удалось/);
+  } finally {
+    for (const [key, value] of Object.entries(inherited)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    rmSync(home, { recursive: true, force: true });
+  }
+});
 
 test('Firstmate bridge creates and reads a task in the selected home', () => {
   const home = firstmateHome(mkdtempSync(join(tmpdir(), 'delo-firstmate-')));
