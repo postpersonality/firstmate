@@ -303,7 +303,7 @@ The registrations in detail:
 
 The existing synchronous project Stop registration delegates to `bin/fm-codex-stop-watch.sh` when the nearest harness is a Codex app-server.
 The hook payload supplies its native thread id; environment variables alone are not assumed to exist.
-The checkpoint fits beneath its existing 30-second registration; the script header owns the checkpoint cap, failure budget, state files and exact mechanics.
+The checkpoint fits beneath its existing 30-second registration; the script header owns the checkpoint cap, state files and exact mechanics.
 It retains the existing foreground checkpoint's result and returns it through exit-2 Stop feedback, so a short assistant reply cannot discard that return.
 An existing healthy watcher is followed through the durable wake queue, without starting another watcher.
 A pending wake is delivered before another wait, and a quiet checkpoint also compels a primary continuation.
@@ -311,17 +311,19 @@ The script never decides fleet actions or acknowledges wakes; the resumed primar
 
 Successful bounded parks may continue even when another Stop hook set `stop_hook_active`.
 That flag describes a previous hook continuation, not a delivered fleet wake or an explicit captain stop.
-Repeated checkpoint failure or an identical wake left unhandled gets bounded repair and then an explicit failure message; it never becomes an unlimited immediate Stop loop, and unhandled rows remain durable.
+Once the lock records this thread and supervision work is pending, Stop fails closed: session-lock verification failure, checkpoint-lock contention, checkpoint failure and an identical wake left unhandled each return another continuation, and unhandled rows remain durable.
+A Stop from a thread the lock does not record is never blocked.
 Native interruption cancels the synchronous return owner; an empty fleet or held/parked backlog alone starts no supervision work.
 The existing away daemon remains a legitimate alternate owner.
 
 `bin/fm-session-lock-lib.sh` partitions a shared app-server PID by its native thread id in the existing `state/.lock-session` sidecar.
-`bin/fm-lock.sh` remains its sole writer, including the first binding of a legacy PID-only lock.
+`bin/fm-lock.sh` remains its sole writer.
+Stop only revalidates the thread already recorded there; a free or legacy PID-only lock is bound only by an explicit owner claim through `bin/fm-lock.sh` or native SessionStart.
 A different recorded thread cannot acquire or park that home merely because it shares the daemon PID.
 The native Linux tool sandbox confirms that same sidecar through its runtime-supplied agreeing vendor ids; it preserves the host PID and cannot reclaim another recorded thread from inside its PID namespace.
 
 The guarantee requires the enabled, trusted project Stop hook to execute in a live native runtime with that event identity and verifiable app-server ancestry.
-It does not cover a disabled/untrusted or timed-out hook, runtime termination, repeated watcher/handler failure, or a client whose native event and ancestry cannot establish that identity.
+It does not cover a disabled/untrusted or timed-out hook, native interruption, runtime termination, a lock not yet claimed for this thread, or a client whose native event and ancestry cannot establish that identity.
 The global semantic Stop checker, native goals and domain completion/decision authority remain separate owners.
 [`verification/supervision.md`](verification/supervision.md) owns native evidence; `tests/fm-codex-stop-watch.test.sh` covers portable behavior and the opt-in native API guard exercises actual continuations and worker steering.
 

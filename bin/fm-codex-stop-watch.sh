@@ -7,15 +7,18 @@
 #
 # Only a genuine primary, the native thread id and the existing session lock
 # may park. fm-lock.sh remains the sole writer of the lock and its sidecar.
-# A legacy PID-only lock is bound by that writer before the first park. The
-# lock verification is bounded to 8s plus 1s termination grace. It is skipped
-# for an already bound and verified owner. Lock verification and the checkpoint
-# share a 20s budget beneath the existing 30s hook registration, with
-# 1s watcher termination grace. A healthy existing watcher is followed through
-# its durable queue rather than duplicated or killed. Pending rows always go
-# to main; this script never drains, acknowledges, decides or dispatches work.
-# A successful bounded wait may continue repeatedly; failures get one repair
-# continuation per native turn, then an explicit error instead of a Stop loop.
+# Stop only revalidates the thread already recorded in that sidecar; a free,
+# legacy PID-only or other thread's lock needs an explicit owner claim through
+# fm-lock.sh or SessionStart. The lock verification is bounded to 8s plus 1s
+# termination grace. It is skipped for an already bound and verified owner.
+# Lock verification and the checkpoint share a 20s budget beneath the existing
+# 30s hook registration, with 1s watcher termination grace. A healthy existing
+# watcher is followed through its durable queue rather than duplicated or killed.
+# Pending rows always go to main; this script never drains, acknowledges,
+# decides or dispatches work.
+# Once the recorded thread has pending work, Stop fails closed: lock failure,
+# checkpoint-lock contention, checkpoint failure and an unhandled repeated wake
+# each return another continuation. Another thread's Stop is never blocked.
 # Interrupting the native turn cancels its synchronous hook and its foreground
 # checkpoint. Empty homes and a verified away daemon do not park here.
 # FM_CODEX_STOP_CHECKPOINT may shorten the bound (1..20), never raise it.
@@ -47,70 +50,60 @@ turn=$(printf '%s' "$PAYLOAD" | jq -r '.turn_id')
 
 notice() { jq -cn --arg message "$1" '{systemMessage:$message}'; }
 owned() { fm_session_lock_owned_by_self "$STATE"; }
-# Revalidate through the existing writer, including a stale PID recorded by a
-# sandboxed tool in another PID namespace. A live foreign owner is never stolen.
-if ! fm_session_lock_recorded_session_id "$STATE" >/dev/null || ! owned; then
-  lock_status=0
-  (fm_exec_timed 8 1 "$SCRIPT_DIR/fm-lock.sh") >/dev/null 2>&1 || lock_status=$?
-  if [ "$lock_status" -ne 0 ]; then
-    notice "FIRSTMATE SUPERVISION: another session owns this home or session-lock verification failed (exit $lock_status); no checkpoint was started."
-    exit 0
-  fi
-fi
-if ! owned; then
-  notice 'FIRSTMATE SUPERVISION: session-lock ownership is unproved; no checkpoint was started.'
+recorded() { [ "$(fm_session_lock_recorded_session_id "$STATE" || true)" = "$session" ]; }
+if ! recorded; then
+  notice 'FIRSTMATE SUPERVISION: the session lock does not record this native thread; Stop never claims it, so no checkpoint was started. The primary claims it explicitly with bin/fm-lock.sh.'
   exit 0
 fi
+# Revalidate through the existing writer, including a stale PID recorded by a
+# sandboxed tool in another PID namespace. A live foreign owner is never stolen.
+lock_status=0
+owned || (fm_exec_timed 8 1 "$SCRIPT_DIR/fm-lock.sh") >/dev/null 2>&1 || lock_status=$?
 fm_supervision_status "$STATE"
 if [ "$FM_SUP_NEEDED" = false ] && [ "$FM_SUP_QUEUE_PENDING" = false ]; then exit 0; fi
 if fm_afk_daemon_owns_supervision "$STATE"; then exit 0; fi
 
-bound=${FM_CODEX_STOP_CHECKPOINT:-20}
-case "$bound" in ''|*[!0-9]*|0) bound=20 ;; esac
-[ "$bound" -le 20 ] || bound=20
-out=$(mktemp "$STATE/.codex-stop-output.XXXXXX") || exit 1
-stop_lock="$STATE/.codex-stop.lock"
-if ! fm_lock_try_acquire "$stop_lock"; then rm -f "$out"; exit 0; fi
-trap 'rm -f "$out"; fm_lock_release "$stop_lock"' EXIT
-failure="$STATE/.codex-stop-repair"
-delivery="$STATE/.codex-stop-delivery"
-key="$session:$turn"
-failed() {
-  if [ "$(cat "$failure" 2>/dev/null || true)" = "$key" ]; then
-    notice "FIRSTMATE SUPERVISION FAILED: repeated continuation failure in this native turn; automatic repair stopped: $1"
-    exit 0
-  fi
-  printf '%s\n' "$key" > "$failure"
-  continuation "$1"
-}
 continuation() {
-  owned || { notice 'FIRSTMATE SUPERVISION: ownership changed during Stop; checkpoint feedback withheld.'; exit 0; }
+  recorded || { notice 'FIRSTMATE SUPERVISION: session-lock ownership changed during Stop; checkpoint feedback withheld.'; exit 0; }
   printf 'firstmate watcher wake: %s\n' "$1" >&2
   printf 'Drain bin/fm-wake-drain.sh, handle its current wakes and permitted next fleet actions, then run its exact WAKE_ACK_REQUIRED command. Respect real captain/security waits and explicit stops.\n' >&2
   exit 2
 }
+owned || continuation "session-lock verification failed (exit $lock_status); repair this thread's session lock with bin/fm-lock.sh before ending"
+
+bound=${FM_CODEX_STOP_CHECKPOINT:-20}
+case "$bound" in ''|*[!0-9]*|0) bound=20 ;; esac
+[ "$bound" -le 20 ] || bound=20
+deadline=$((SECONDS + bound))
+[ "$deadline" -le "$end_by" ] || deadline=$end_by
+out=$(mktemp "$STATE/.codex-stop-output.XXXXXX") || continuation 'cannot create the checkpoint output file'
+stop_lock="$STATE/.codex-stop.lock"
+if ! fm_lock_acquire_wait_max "$stop_lock" $((deadline - SECONDS)); then
+  rm -f "$out"
+  continuation "another Stop held the checkpoint lock for the whole ${bound}s bound"
+fi
+trap 'rm -f "$out"; fm_lock_release "$stop_lock"' EXIT
+delivery="$STATE/.codex-stop-delivery"
+key="$session:$turn"
 delivered() {
-  local fingerprint previous
+  local fingerprint
   if [ -s "$STATE/.wake-queue" ]; then
     fingerprint="$key:$(cksum < "$STATE/.wake-queue")"
-    previous=$(cat "$delivery" 2>/dev/null || true)
-    [ "$previous" != "$fingerprint" ] || failed 'the previous durable wake was not handled/acknowledged; repair the primary handler before ending'
+    [ "$(cat "$delivery" 2>/dev/null || true)" != "$fingerprint" ] \
+      || continuation 'the previous durable wake was not handled/acknowledged; repair the primary handler before ending'
     printf '%s\n' "$fingerprint" > "$delivery"
   else
     rm -f "$delivery"
   fi
-  rm -f "$failure"
   continuation "$1"
 }
 
 if [ -s "$STATE/.wake-queue" ]; then delivered 'pending durable wake at Stop boundary'; fi
-deadline=$((SECONDS + bound))
-[ "$deadline" -le "$end_by" ] || deadline=$end_by
 if fm_watcher_healthy "$STATE" "$SCRIPT_DIR/fm-watch.sh" "${FM_GUARD_GRACE:-300}" "$FM_HOME"; then
   # A previously yielded checkpoint may still own the singleton. Retain a
   # native return path while it finishes; its queue, not its output, is durable.
   while [ "$SECONDS" -lt "$deadline" ]; do
-    owned || exit 0
+    recorded || exit 0
     [ ! -s "$STATE/.wake-queue" ] || delivered 'existing watcher published a durable wake'
     fm_watcher_healthy "$STATE" "$SCRIPT_DIR/fm-watch.sh" "${FM_GUARD_GRACE:-300}" "$FM_HOME" || break
     sleep 1
@@ -125,4 +118,4 @@ FM_SIGNAL_GRACE=1 "$SCRIPT_DIR/fm-watch-checkpoint.sh" --seconds "$remaining" --
 if [ "$status" -eq 0 ] || [ "$status" -eq 124 ]; then
   delivered "$(cat "$out")"
 fi
-failed "checkpoint failed (exit $status); repair the existing watcher owner before continuing: $(cat "$out")"
+continuation "checkpoint failed (exit $status); repair the existing watcher owner before continuing: $(cat "$out")"
