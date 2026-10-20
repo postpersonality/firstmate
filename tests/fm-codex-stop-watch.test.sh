@@ -28,7 +28,7 @@ if [ "${TEST_START:-0}" = 1 ]; then
   printf '{"hook_event_name":"SessionStart","session_id":"S1","source":"startup"}\n' | bash "$FM_HOME/bin/fm-sessionstart-run.sh"
   exit $?
 fi
-printf '{"hook_event_name":"Stop","session_id":"S1","turn_id":"T1","stop_hook_active":true}\n' \
+printf '{"hook_event_name":"Stop","session_id":"%s","turn_id":"T1","stop_hook_active":true}\n' "${TEST_STOP_SESSION:-S1}" \
   | bash "$TEST_ROOT/bin/fm-turnend-guard.sh"
 SH
   printf '%s\n' "$home"
@@ -106,7 +106,7 @@ home=$(make_home foreign)
 status=0
 TEST_LOCK_SESSION=S2 run_stop "$home" || status=$?
 expect_code 0 "$status" 'a different thread in the same app-server must not claim the primary lock'
-assert_contains "$(cat "$home/out")" 'another session owns' 'foreign-thread refusal is missing'
+assert_contains "$(cat "$home/out")" 'does not record this native thread' 'foreign-thread refusal is missing'
 assert_contains "$(cat "$home/state/.lock-session")" 'S2' 'the native Stop stole the other thread sidecar'
 assert_absent "$home/state/.watch.lock/pid" 'foreign-thread Stop started a watcher'
 pass 'Codex API Stop: shared daemon PID does not grant another thread ownership'
@@ -162,16 +162,14 @@ done
 SH
 printf 'exec %q "$@"\n' "$(command -v perl)" >> "$home/fakebin/perl"
 chmod +x "$home/fakebin/perl"
-status=0
-PATH="$home/fakebin:$PATH" run_stop "$home" || status=$?
-expect_code 2 "$status" 'first failed checkpoint needs one actual repair continuation'
-assert_contains "$(cat "$home/err")" 'checkpoint failed' 'checkpoint failure did not reach the handler'
-status=0
-PATH="$home/fakebin:$PATH" run_stop "$home" || status=$?
-expect_code 0 "$status" 'repeated failure must not create an unbounded Stop loop'
-assert_contains "$(cat "$home/out")" 'SUPERVISION FAILED' 'bounded failure was silently allowed'
+for attempt in 1 2 3; do
+  status=0
+  PATH="$home/fakebin:$PATH" run_stop "$home" || status=$?
+  expect_code 2 "$status" "failed checkpoint attempt $attempt must fail closed for the recorded primary with pending work"
+  assert_contains "$(cat "$home/err")" 'checkpoint failed' 'checkpoint failure did not reach the handler'
+done
 assert_absent "$home/state/.watch.lock/pid" 'failed checkpoint leaked a watcher'
-pass 'Codex API Stop: failed delivery gets one repair turn, then a visible bounded failure'
+pass 'Codex API Stop: repeated checkpoint failure keeps returning a repair continuation instead of allowing Stop'
 
 home=$(make_home pending)
 FM_HOME="$home" bash -c '. "$1/bin/fm-wake-lib.sh"; fm_wake_append signal worker.status "done: pending across boundary"' _ "$ROOT"
@@ -180,12 +178,49 @@ run_stop "$home" || status=$?
 expect_code 2 "$status" 'pending wake must survive and force a real handler turn'
 assert_contains "$(cat "$home/err")" 'pending durable wake' 'pending wake was not delivered'
 assert_absent "$home/state/.watch.lock/pid" 'pending delivery started an unnecessary watcher'
+for attempt in 2 3; do
+  status=0
+  run_stop "$home" || status=$?
+  expect_code 2 "$status" "unhandled identical wake attempt $attempt must fail closed"
+  assert_contains "$(cat "$home/err")" 'was not handled/acknowledged' 'unhandled duplicate wake lost its repair instruction'
+done
+assert_contains "$(cat "$home/state/.wake-queue")" 'worker.status' 'repeated delivery erased unhandled work'
+pass 'Codex API Stop: an unhandled pending wake stays durable and keeps blocking Stop'
+
+home=$(make_home contention)
+bash -c '. "$1/bin/fm-wake-lib.sh"; fm_lock_try_acquire "$2" || exit 1; exec sleep 30' \
+  _ "$ROOT" "$home/state/.codex-stop.lock" &
+holder=$!
+for _ in {1..50}; do
+  [ ! -e "$home/state/.codex-stop.lock" ] || break
+  sleep 0.1
+done
+assert_present "$home/state/.codex-stop.lock" 'fixture never held the checkpoint lock'
 status=0
 run_stop "$home" || status=$?
-expect_code 2 "$status" 'an unhandled identical wake gets one repair continuation'
+kill "$holder" 2>/dev/null || true
+wait "$holder" 2>/dev/null || true
+expect_code 2 "$status" 'checkpoint-lock contention must fail closed for the recorded primary with pending work'
+assert_contains "$(cat "$home/err")" 'checkpoint lock' 'contention continuation did not name the held lock'
+assert_absent "$home/state/.watch.lock/pid" 'contended Stop started a second watcher'
+pass 'Codex API Stop: a held checkpoint lock returns a continuation instead of a silent Stop'
+
+home=$(make_home legacy-stop)
+for thread in S2 S1; do
+  status=0
+  TEST_NO_SESSION=1 TEST_STOP_SESSION=$thread run_stop "$home" || status=$?
+  expect_code 0 "$status" "Stop of thread $thread must not adopt a legacy PID-only lock"
+  assert_absent "$home/state/.lock-session" "Stop of thread $thread adopted a legacy PID-only lock"
+  assert_absent "$home/state/.watch.lock/pid" 'an unclaimed legacy lock started a watcher'
+done
 status=0
-run_stop "$home" || status=$?
-expect_code 0 "$status" 'an inert handler must not cause an infinite immediate Stop loop'
-assert_contains "$(cat "$home/out")" 'SUPERVISION FAILED' 'unhandled duplicate wake silently allowed Stop'
-assert_contains "$(cat "$home/state/.wake-queue")" 'worker.status' 'loop suppression erased unhandled work'
-pass 'Codex API Stop: pending wakes are retained; an inert duplicate handler fails visibly without spinning'
+TEST_LOCK_ONLY=1 TEST_NO_SESSION=1 run_stop "$home" || status=$?
+expect_code 0 "$status" 'the explicit owner claim must bind the legacy lock'
+status=0
+TEST_NO_SESSION=1 run_stop "$home" || status=$?
+expect_code 2 "$status" 'the explicitly claimed primary must be supervised at Stop'
+status=0
+TEST_NO_SESSION=1 TEST_STOP_SESSION=S2 run_stop "$home" || status=$?
+expect_code 0 "$status" 'another thread of the same app-server must not be blocked'
+assert_contains "$(cat "$home/state/.lock-session")" 'S1' 'another thread replaced the claimed primary'
+pass 'Codex API Stop: a legacy PID-only lock binds only through an explicit owner claim'
