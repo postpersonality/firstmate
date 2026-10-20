@@ -44,12 +44,12 @@ for key in ('Q23', 'next-step', 'human-permission'):
                           env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=240)
     assert proc.returncode == 1, 'synthetic native proof must not send SMTP'
     receipts = home / 'state' / 'captain-alerts' / key
-    review_path, = receipts.glob('*/review.json')
+    review_path, = receipts.glob('*/*/review.json')
     review = json.loads(review_path.read_text())
     transport = json.loads((review_path.parent / 'transport.json').read_text())
     wanted = 'NEEDS_CAPTAIN' if permission else 'SELF_RESOLVE'
     assert review['verdict'] == wanted, (key, review)
     assert transport['session_id'] and transport['modelUsage'] and transport['exit_code'] == 0
-    assert not (receipts / 'sent.json').exists(), 'synthetic proof reached SMTP'
+    assert not list(receipts.glob('*/sent.json')), 'synthetic proof reached SMTP'
     print('ok - native ' + key + ': ' + wanted + '; models=' + ','.join(transport['modelUsage']))
 PY

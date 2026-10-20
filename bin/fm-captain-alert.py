@@ -8,7 +8,7 @@ $FM_HOME/.env (env wins): FM_MAIL_USER, FM_MAIL_PASS, FM_SMTP_HOST,
 FM_SMTP_PORT (465), FM_CAPTAIN_ALERT_TO (the recipient) and
 FM_CAPTAIN_ALERT_CLAUDE (absolute critic path, never PATH). Everything the gate
 starts gets SAFE_PATH; the critic gets no FM_* variable.
-Request keys, exactly: id (stable event slug), task (task id), decision (key of
+Request keys, exactly: id (caller's correlation slug), task (task id), decision (key of
 the task's open blocked/needs-decision record, "default" when keyless), subject,
 body, analysis {why_blocked, attempts[], alternatives[], human_only}.
 The gate reads the task's canonical records itself: brief (data/<task>/brief.md),
@@ -19,12 +19,16 @@ named decision while the shared fold, status_open_decisions, holds it open.
 A fresh print-mode critic (180s, no tools) must return NEEDS_CAPTAIN bound to
 request_sha256, quoting every present role. Before SMTP the gate rereads the
 records and refuses any change.
-Receipts: $FM_HOME/state/captain-alerts/<id>/<binding>/, mode 0700/0600, with the
-frozen context and the critic's path, executable and output sha256, session and
-models. A message handed to the authenticated SMTP server is never sent again,
-whatever the outcome. A SELF_RESOLVE or INSUFFICIENT_EVIDENCE verdict is replayed
-for unchanged evidence; every failure before that handoff, including
-configuration gaps, critic failure and SMTP connection or login, retries fresh.
+Receipts: $FM_HOME/state/captain-alerts/<task>/<decision>/<binding>/, mode
+0700/0600, with the frozen context and the critic's path, executable and output
+sha256, session and models; <decision> hashes the bound task, generation and
+decision (key, verb, summary), whatever the request id. Delivery is locked and
+deduplicated per <decision>: once a message for it reaches the authenticated SMTP
+server, no request for it is sent again, whatever the outcome; its sent.json or
+attempted.json names that request's id and binding. A SELF_RESOLVE or
+INSUFFICIENT_EVIDENCE verdict is replayed for unchanged evidence; every failure
+before that handoff, including configuration gaps, critic failure and SMTP
+connection or login, retries fresh.
 A missing or unreadable record is named, never skipped.
 No skip/configurable-off path exists.
 """
@@ -290,7 +294,7 @@ def gate(home, raw):
     payload = freeze(raw, cfg, home)
     binding = payload['request_sha256']
     req = payload['request']
-    root = home / 'state' / 'captain-alerts' / req['id']
+    root = home / 'state' / 'captain-alerts' / req['task'] / digest(encoded(payload['task']))
     root.mkdir(parents=True, exist_ok=True)
     with (root / 'lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -298,9 +302,11 @@ def gate(home, raw):
         receipt = directory / 'outcome.json'
         result = dict(id=req['id'], binding=binding, receipt=str(receipt))
         if (root / 'sent.json').exists():
-            return dict(result, status='SENT', action='already sent; this event is deduplicated')
+            return dict(result, receipt=str(root / 'sent.json'), status='SENT',
+                        action='this open decision was already mailed; deduplicated')
         if (root / 'attempted.json').exists():
-            return dict(result, status='NO_MAIL', action='SMTP was already attempted for this event; delivery may be uncertain. Inspect its receipt before a new event.')
+            return dict(result, receipt=str(root / 'attempted.json'), status='NO_MAIL',
+                        action='SMTP was already attempted for this open decision; delivery may be uncertain. Inspect its receipt before a new event.')
         if receipt.exists():
             outcome = json.loads(receipt.read_text())
             if outcome['status'] in ('SELF_RESOLVE', 'INSUFFICIENT_EVIDENCE'):
@@ -319,14 +325,14 @@ def gate(home, raw):
                 outcome.update(status='SENDING', action='SMTP outcome uncertain; inspect before any new notification')
                 save(receipt, outcome)
                 try:
-                    send(cfg, req, lambda: save(root / 'attempted.json', dict(binding=binding, at=int(time.time()))))
+                    send(cfg, req, lambda: save(root / 'attempted.json', dict(id=req['id'], binding=binding, at=int(time.time()))))
                 except Exception:
                     # Provider errors may echo credentials; only these fixed texts leave the gate.
                     if (root / 'attempted.json').exists():
                         raise ValueError('SMTP failed; delivery unconfirmed, no automatic retry; verify the service before a new event') from None
                     raise ValueError('SMTP connection or login failed before sending; repair the service or credentials and resubmit for a fresh review') from None
                 outcome.update(status='SENT', action='SMTP accepted the notification (inbox arrival unverified)')
-                save(root / 'sent.json', dict(binding=binding, at=int(time.time())))
+                save(root / 'sent.json', dict(id=req['id'], binding=binding, at=int(time.time())))
         except (ValueError, OSError, KeyError, TypeError, AttributeError, subprocess.TimeoutExpired):
             error = sys.exc_info()[1]
             action = str(error) if type(error) is ValueError else 'Critic transport or evidence failure; resubmit to review again'

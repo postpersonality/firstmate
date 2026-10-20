@@ -66,7 +66,12 @@ BRIEF='Correct Q23 authority wording; proceed with ordinary in-scope fixes.'
 printf '%s' "$BRIEF" > "$FM_HOME/data/demo/brief.md"
 printf '%s' 'No public publication without explicit owner permission.' > "$FM_HOME/state/demo.inbox/handled/000.msg"
 printf '%s' 'Ordinary accepted work remains authorized; public publication still needs explicit permission.' > "$FM_HOME/state/demo.inbox/001.msg"
-printf '%s\n' 'blocked: publication permission is absent' > "$FM_HOME/state/demo.status"
+# One open decision per sending case: delivery is deduplicated per decision.
+printf '%s\n' 'blocked: publication permission is absent' \
+  'blocked [key=retry]: publication permission is absent; the first review failed' \
+  'blocked [key=recipient]: publication permission is absent; the recipient moved' \
+  'blocked [key=attempt]: publication permission is absent; SMTP may fail mid-send' \
+  'blocked [key=login]: publication permission is absent; SMTP login may fail' > "$FM_HOME/state/demo.status"
 printf '%s\n' kind=ship spawn_gen=s1.1.1 > "$FM_HOME/state/demo.meta"
 printf '%s' 'Only the human owner may authorize public publication.' > "$FM_HOME/AGENTS.md"
 printf '%s' 'Outside the home.' > "$ALERT_TMP/outside.md"
@@ -79,11 +84,13 @@ from pathlib import Path
 r = Path(os.environ['ALERT_TMP'])
 for key in ['Q23','next-step','permission','failed','invalid','changed','bad-hash','smtp-fail','insufficient',
             'recipient-change','ghost','escape','with-sources','nopass','relative','shared-env',
-            'reworked-a','reworked-b','respawn','unreadable','nometa','login-fail']:
+            'reworked-a','reworked-b','respawn','unreadable','nometa','login-fail','permission-twin','smtp-fail-twin']:
     task = {'ghost':'ghost', 'escape':'escape', 'reworked-a':'reworked', 'nometa':'nometa'}.get(key, 'demo')
-    request = {'id':key, 'task':task, 'decision':'stale' if key == 'reworked-b' else 'default',
+    decision = {'reworked-b':'stale', 'failed':'retry', 'recipient-change':'recipient', 'smtp-fail':'attempt',
+                'smtp-fail-twin':'attempt', 'login-fail':'login'}.get(key, 'default')
+    request = {'id':key, 'task':task, 'decision':decision,
         'subject':'Permission needed: ' + key,
-        'body':'-' if key == 'permission' else 'Please grant publication permission.', 'analysis':{
+        'body':'-' if key.startswith('permission') else 'Please grant publication permission.', 'analysis':{
           'why_blocked':'Publication needs human consent', 'attempts':['Verified consent is absent'],
           'alternatives':['Keep local work ready; publication cannot proceed'],
           'human_only':'Explicit public publication permission'}}
@@ -191,11 +198,11 @@ pass 'changed recipient requires a new native review'
 
 mail_cli alert "$ALERT_TMP/permission.json" > "$ALERT_TMP/out-a" &
 alert_a=$!
-mail_cli alert "$ALERT_TMP/permission.json" > "$ALERT_TMP/out-b" &
+mail_cli alert "$ALERT_TMP/permission-twin.json" > "$ALERT_TMP/out-b" &
 alert_b=$!
 wait "$alert_a"
 wait "$alert_b"
-[ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 1 ] || fail 'permission sends exactly once'
+[ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 1 ] || fail 'two request ids for one open decision send exactly once'
 python3 - <<'PY'
 import json, os
 from pathlib import Path
@@ -203,18 +210,39 @@ message=json.loads((Path(os.environ['ALERT_TMP'])/'message.json').read_text())
 assert message['body'].strip() == '-', 'reviewed literal body changed in transport'
 PY
 before=$(reviews)
-mail_cli alert "$ALERT_TMP/permission.json" > "$ALERT_TMP/out"
+for id in permission permission-twin; do
+  mail_cli alert "$ALERT_TMP/$id.json" > "$ALERT_TMP/out"
+  assert_contains "$(cat "$ALERT_TMP/out")" 'already mailed' "$id replay names the deduplication"
+done
 [ "$(reviews)" = "$before" ] || fail 'replay invokes no critic'
 [ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 1 ] || fail 'replay sent again'
-python3 - "$FM_HOME"/state/captain-alerts/permission/*/transport.json <<'PY'
-import hashlib, json, os, sys
+python3 - <<'PY'
+import hashlib, json, os
 from pathlib import Path
-transport = json.loads(Path(sys.argv[1]).read_text())
+root = Path(os.environ['FM_HOME']) / 'state' / 'captain-alerts' / 'demo'
+sent = [p for p in root.glob('*/sent.json') if json.loads(p.read_text())['id'].startswith('permission')]
+assert len(sent) == 1, sent
+marker = json.loads(sent[0].read_text())
+transport = json.loads((sent[0].parent / marker['binding'] / 'transport.json').read_text())
 critic = Path(os.environ['ALERT_TMP']) / 'critic' / 'claude'
 assert transport['executable_sha256'] == hashlib.sha256(critic.read_bytes()).hexdigest(), transport
 assert transport['session_id'] == 'fixture-session' and transport['modelUsage'], transport
+assert transport['request_sha256'] == marker['binding'], (transport, marker)
 PY
-pass 'genuine human permission passes once, with the exact critic and session recorded; repeat does not spam'
+pass 'genuine human permission passes once per open decision, whatever the request id, with the exact critic and session recorded; repeat does not spam'
+
+printf '%s\n' kind=ship spawn_gen=s2.2.2 > "$FM_HOME/state/demo.meta"
+before=$(reviews)
+mail_cli alert "$ALERT_TMP/permission.json" > "$ALERT_TMP/out" || fail "a new generation was not sent: $(cat "$ALERT_TMP/out")"
+[ "$(reviews)" -gt "$before" ] || fail 'a new generation reused an earlier review'
+[ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 2 ] || fail 'a new generation under the same request id must send once'
+printf '%s\n' kind=ship spawn_gen=s1.1.1 > "$FM_HOME/state/demo.meta"
+printf '%s\n' 'blocked: publication permission is still absent after the first email' >> "$FM_HOME/state/demo.status"
+before=$(reviews)
+mail_cli alert "$ALERT_TMP/permission.json" > "$ALERT_TMP/out" || fail "a re-raised decision was not sent: $(cat "$ALERT_TMP/out")"
+[ "$(reviews)" -gt "$before" ] || fail 'a re-raised decision reused an earlier review'
+[ "$(wc -l < "$ALERT_TMP/smtp" | tr -d ' ')" = 3 ] || fail 'a re-raised decision under the same request id must send once'
+pass 'a new generation or a re-raised decision is reviewed and sent afresh under the same request id'
 
 rm "$ALERT_TMP/smtp"
 rc=0
@@ -225,6 +253,8 @@ assert_not_contains "$(cat "$ALERT_TMP/out")" 'delivered' 'SMTP error cannot cla
 before=$(reviews)
 reject smtp-fail
 assert_contains "$(cat "$ALERT_TMP/out")" 'already attempted' 'an attempted event is never sent twice'
+reject smtp-fail-twin
+assert_contains "$(cat "$ALERT_TMP/out")" 'already attempted' 'another request id for an attempted decision is never sent'
 [ "$(reviews)" = "$before" ] || fail 'an attempted event was reviewed again'
 pass 'SMTP failure is durable, never retried and never claims delivery'
 
