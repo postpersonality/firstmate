@@ -6,8 +6,8 @@ every distinct non-SENT outcome into an idempotent fm-inbox note.
 Configuration is the mail plane's environment, filled from the 0600
 $FM_HOME/.env (env wins): FM_MAIL_USER, FM_MAIL_PASS, FM_SMTP_HOST,
 FM_SMTP_PORT (465), FM_CAPTAIN_ALERT_TO (the recipient) and
-FM_CAPTAIN_ALERT_CLAUDE (absolute critic path, never PATH). Everything the gate
-starts gets SAFE_PATH; the critic gets no FM_* variable.
+FM_CAPTAIN_ALERT_CLAUDE (absolute critic path, never PATH). The decision fold
+and the critic get SAFE_PATH, and the critic gets no FM_* variable.
 Request keys, exactly: id (caller's correlation slug), task (task id), decision (key of
 the task's open blocked/needs-decision record, "default" when keyless), subject,
 body, analysis {why_blocked, attempts[], alternatives[], human_only}.

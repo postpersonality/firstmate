@@ -50,7 +50,7 @@
 #   FM_IMAP_PORT=<imap port>     (default 993, implicit TLS)
 #   FM_SMTP_HOST=<smtp host>
 #   FM_SMTP_PORT=<smtp port>     (default 465, implicit TLS)
-#   FM_MAIL_TIMEOUT=<seconds>    (default 20; IMAP/SMTP socket timeout)
+#   FM_MAIL_TIMEOUT=<seconds>    (default 20; IMAP socket timeout)
 # Outgoing alert also needs FM_CAPTAIN_ALERT_TO and FM_CAPTAIN_ALERT_CLAUDE
 # (bin/fm-captain-alert.py) and does not need FM_IMAP_HOST.
 # FM_HOME falls back to the repo root when unset. This script carries no secret
