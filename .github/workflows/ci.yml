@@ -411,7 +411,7 @@ jobs:
 
   macos-stock-bash:
     name: Stock macOS Bash snapshot compatibility
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     # Normal tier (see the timeout policy above).
     timeout-minutes: 30
     steps:
