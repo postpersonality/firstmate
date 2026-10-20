@@ -39,7 +39,8 @@ A second actual thread in the same app-server executed the lock command, receive
 An interrupted primary produced no further Stops or leftover watcher; an empty primary completed with guard exit 0 and no watcher beacon.
 
 [`runtime-backends.md`](runtime-backends.md#native-codex-api-primary-identity) records the measured hook/tool identity distinction.
-The portable regression covers an existing healthy watcher, pending delivery across the boundary, idempotent acknowledgement, fail-closed repeated watcher failure, unhandled duplicate wakes and checkpoint-lock contention, foreign ownership, a legacy PID-only lock that Stop never adopts, and held-only backlog:
+The portable regression covers an existing healthy watcher, pending delivery across the boundary, idempotent acknowledgement, fail-closed repeated watcher failure, unhandled duplicate wakes and checkpoint-lock contention, foreign ownership, a read-only duplicate attachment of the recorded thread, a legacy PID-only lock that Stop never adopts with its one-block guard, resume nudge and explicit bind, a timeout fallback whose kill escalation returns 137, and held-only backlog.
+The native proof above predates the legacy guard, the duplicate-attachment refusal and the 137 handling; only the portable regression covers them:
 
 ```sh
 bash bin/fm-test-run.sh --jobs 1 \
