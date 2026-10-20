@@ -35,4 +35,8 @@ test('worker contract preserves code-review-workflow, discovers related sources 
   assert.match(brief, /worklog/);
   assert.match(brief, /вердикт/);
   assert.match(brief, /report.md/);
+  assert.match(brief, /review-progress\.ts.*--home '\/tmp\/fm'.*--task 'review-7'/);
+  assert.match(brief, /--event start --phase/);
+  assert.match(brief, /--event end --phase/);
+  assert.match(brief, /--event done/);
 });

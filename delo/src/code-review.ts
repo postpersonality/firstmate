@@ -25,6 +25,8 @@ export type CodeReviewInput = z.infer<typeof codeReviewInput>;
 
 // This is a dispatch brief for the agent; the HTTP server never reads remote sources or performs review.
 export function codeReviewInstructions(input: CodeReviewInput, taskId: string, home: string) {
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  const progress = `node ${quote(`${home}/delo/src/review-progress.ts`)} --home ${quote(home)} --task ${quote(taskId)}`;
   return `Проведи код-ревью: ${input.url}
 Используй существующий навык именно под именем code-review-workflow.
 Прочти /home/user/Projects/my-skills/code-review-workflow/SKILL.md и следуй ему, включая необходимые ponytail, ponytail-review, codebase-design, jira, bitbucket и confluence; GitHub читай через gh-axi.
@@ -42,9 +44,15 @@ ${input.repo ? `Контекстный проект (только чтение):
 СА - один из источников проверки соответствия требованиям, а не рамка всего ревью.
 Работай только на чтение с внешними проектами, Jira и PR: не меняй код и статусы, не публикуй комментарии, не выполняй approve, worklog, переходы Jira или code-review-finalize.
 
-Через существующие Firstmate status и отчёт фиксируй входную ссылку, текущую фазу (сбор контекста, ревью, перепроверка замечаний, отчёт), время начала и длительность фаз; не создавай новый исполнитель или БД задач.
+На реальных границах фаз «Сбор контекста», «Ревью», «Перепроверка замечаний», «Отчёт» вызывай существующий журнал прогресса:
+${progress} --event start --phase '<текущая фаза>'
+${progress} --event end --phase '<текущая фаза>' --detail '<проверенные источники или наблюдаемый результат>'
+Начни «Сбор контекста» до чтения метаданных; не придумывай времена и длительности - CLI фиксирует фактическое время каждого вызова и Firstmate status.
 Итог сохрани одним Markdown-отчётом data/${taskId}/report.md по структуре code-review-workflow: проверенные SHA, ссылки на задачу/PR/эпик/СА, доказанные замечания, покрытие, ограничения и отвергнутые подозрения.
 Добавь явный вердикт с учётом ограничений: дефектов не найдено / нужны исправления / проверить не удалось; verdict не означает внешнее approve.
-Приложи собственный report.md к локальной задаче штатным --report при её завершении; в status запиши итог и длительность, чтобы Дело показывало результат через существующий мониторинг.
+После записи отчёта вызови ${progress} --event done --phase 'Отчёт' --detail '<вердикт и ограничения>'.
+При сбое запиши честный частичный отчёт и вызови ${progress} --event failed --phase '<текущая фаза>' --detail '<причина>'.
+CLI обязан сохранить написанный по навыку report.md; не заменяй его шаблоном СА и не запускай SA runner для код-ревью.
+Приложи собственный report.md к локальной задаче штатным --report при её завершении, чтобы Дело показывало результат через существующий мониторинг.
 `;
 }
