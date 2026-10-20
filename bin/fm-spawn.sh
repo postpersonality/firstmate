@@ -2763,8 +2763,10 @@ rovo_config_override_flag() {
   local data_real state_real agent_json paths_json config_json
   data_real=$(cd "$data_dir" && pwd -P) || return 1
   state_real=$(cd "$state_dir" && pwd -P) || return 1
-  agent_json=$(fm_rovo_efficiency_level "$effort")
-  [ -z "$agent_json" ] || agent_json="\"agent\":{\"efficiencyLevel\":\"$(json_escape "$agent_json")\"},"
+  agent_json=
+  case "$effort" in
+  low | medium | high | max) agent_json="\"agent\":{\"efficiencyLevel\":\"$(json_escape "$effort")\"}," ;;
+  esac
   paths_json=$(printf '"%s","%s","%s"' \
     "$(json_escape "$data_real/$id")" \
     "$(json_escape "$state_real/$id.inbox")" \

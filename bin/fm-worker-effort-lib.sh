@@ -115,23 +115,15 @@ fm_effort_flag_for_harness() {
     max) printf -- '--reasoning-effort %s ' "$(_fm_worker_effort_quote ultra)" ;;
     esac
     ;;
-    # rovo has no --effort flag on `run`; its effort rides --config-override,
-    # which is single-value, so bin/fm-spawn.sh's rovo_config_override_flag
-    # folds fm_rovo_efficiency_level into the mandatory allowedExternalPaths
-    # grant rather than emitting it here.
+    # rovo has no --effort flag on `run`; its effort mapping rides
+    # --config-override, but that flag is single-value (see bin/fm-spawn.sh's
+    # rovo_config_override_flag) so it is built there, merged with the
+    # mandatory allowedExternalPaths grant, rather than here.
     # kimi provider catalogs expose supported and default effort values, but a
     # launch flag and mapping have not been live-verified; the requested axis
     # stays in task metadata but never reaches the launch command. Cursor encodes
     # effort in model ids such as cursor-grok-4.5-high, so it also receives no
     # separate effort flag.
-  esac
-}
-
-# fm_rovo_efficiency_level <effort>: print rovo's agent.efficiencyLevel for
-# <effort>, or nothing when rovo has no matching level (xhigh, ultra).
-fm_rovo_efficiency_level() {
-  case "$1" in
-  low | medium | high | max) printf '%s' "$1" ;;
   esac
 }
 
