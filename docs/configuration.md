@@ -962,14 +962,14 @@ A remote secondmate is launched on its host from its own home's configuration, s
 The optional local, gitignored `config/crew-effort` pins the reasoning effort of every worker launch from this home, so a routine launch cannot quietly run at a lower level.
 With no file, every launch is unchanged.
 
-Activate it with one level, for example `printf 'xhigh\n' > config/crew-effort`, and remove the file to return to unpinned launches.
-The file must hold exactly one of `low`, `medium`, `high`, `xhigh`, `max`, or `ultra`, with surrounding whitespace ignored.
-Any other content, or an unreadable or nonregular file, refuses every launch and names the file to fix.
+Activate it with `printf 'xhigh\n' > config/crew-effort`, and remove the file to return to unpinned launches.
+The file must hold exactly `xhigh`, with surrounding whitespace ignored.
+Any other content, including another level such as `medium` or `max`, or an unreadable or nonregular file, refuses every launch and names the file to fix.
 The file is read on every launch, so a change reaches the next worker or relaunch without a restart.
 
 The file existing is not enforcement on its own: a Firstmate checkout that predates the pin ignores it.
 Enforcement holds only once the implementation has landed on the default branch and the home's checkout has updated to that revision, for example through `/updatefirstmate`.
-Verify it in that home then: a launch naming a different `--effort` must refuse, and a launch naming none must print and record `effort=` with the pinned level.
+Verify it in that home then: a launch naming a different `--effort` must refuse, and a launch naming none must record `effort=xhigh` in `state/<id>.meta` and start the runtime with its native `xhigh` setting, such as `--effort xhigh` on the Claude command line.
 
 ### What a pinned launch does
 
@@ -983,8 +983,7 @@ Every refusal happens before a new worker's endpoint, local copy, or task record
 
 ### Runtime support
 
-A pinned launch must carry the level through the runtime's own verified setting, so a runtime that would record the level and omit it from the launch refuses instead.
-For an `xhigh` pin:
+A pinned launch must carry `xhigh` through the runtime's own verified setting, so a runtime that would record the level and omit it from the launch refuses instead.
 
 | Runtime | With an `xhigh` pin |
 | --- | --- |
@@ -993,7 +992,7 @@ For an `xhigh` pin:
 | `grok`, `agy`, `rovo`, `kimi`, `cursor`, `gemini`, `devin` | Refuses, because the runtime has no verified `xhigh` setting. |
 | A raw launch command | Refuses, because Firstmate cannot verify which effort a raw command applies. |
 
-Other levels follow the same native mappings, owned by [`bin/fm-worker-effort-lib.sh`](../bin/fm-worker-effort-lib.sh).
+[`bin/fm-worker-effort-lib.sh`](../bin/fm-worker-effort-lib.sh) owns these native mappings.
 
 The pin guards Firstmate's own launch path; it does not stop an operator from editing the file or starting a runtime outside Firstmate.
 

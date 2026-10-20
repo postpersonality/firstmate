@@ -137,7 +137,7 @@ fm_rovo_efficiency_level() {
 
 # fm_worker_effort_pin <config-dir>: print the pinned effort, empty when
 # config/crew-effort is absent. Non-zero with the reason on stderr when the
-# file is unreadable or does not hold exactly one supported level.
+# file is unreadable or does not hold exactly xhigh.
 fm_worker_effort_pin() {
   local file=$1/crew-effort present value
   present=$(perl -MErrno=ENOENT -e '
@@ -157,9 +157,9 @@ fm_worker_effort_pin() {
   value=${value#"${value%%[![:space:]]*}"}
   value=${value%"${value##*[![:space:]]}"}
   case "$value" in
-  low | medium | high | xhigh | max | ultra) printf '%s' "$value" ;;
+  xhigh) printf '%s' "$value" ;;
   *)
-    echo "error: config/crew-effort must hold exactly one of low, medium, high, xhigh, max, ultra (got '$value'); fix or remove the file" >&2
+    echo "error: config/crew-effort must hold exactly xhigh (got '$value'); fix or remove the file" >&2
     return 1
     ;;
   esac
@@ -189,13 +189,9 @@ fm_worker_effort_apply() {
     return 1
   fi
   case "$model" in - | default) model= ;; esac
-  if [ "$harness" = rovo ]; then
-    native=$(fm_rovo_efficiency_level "$pin")
-  else
-    native=$(fm_effort_flag_for_harness "$harness" "$pin" "$model") || return 1
-  fi
+  native=$(fm_effort_flag_for_harness "$harness" "$pin" "$model")
   if [ -z "$native" ]; then
-    echo "error: config/crew-effort pins worker effort to $pin, but the $harness runtime${model:+ with model $model} has no verified native setting for it, so this launch is refused rather than running without it; choose a runtime that supports $pin or change the pin" >&2
+    echo "error: config/crew-effort pins worker effort to $pin, but the $harness runtime${model:+ with model $model} has no verified native setting for it, so this launch is refused rather than running without it; choose a runtime that supports $pin or remove the pin" >&2
     return 1
   fi
   printf '%s' "$pin"
