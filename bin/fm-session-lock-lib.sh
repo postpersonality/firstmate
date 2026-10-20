@@ -190,8 +190,8 @@ fm_session_lock_codex_api_pid() {  # [<ancestry-pids>]
 }
 
 # Linux model tools see the native sandbox init as PID 1, not the host's
-# app-server PID. Its genuine vendor ids may confirm the Stop-bound sidecar,
-# but must not replace the host PID or reclaim a different recorded thread.
+# app-server PID. Its genuine vendor ids may only confirm the thread a host-side
+# writer recorded beside a host PID; they never write or claim the lock.
 fm_session_lock_codex_sandbox_pid() {  # [<ancestry-pids>]
   local pids=${1:-} pid args
   [ -n "$pids" ] || pids=$(fm_harness_ancestry_pids) || return 1
@@ -337,8 +337,8 @@ fm_session_lock_owned_by_self() {
     ''|*[!0-9]*) return 1 ;;
   esac
   pids=$(fm_harness_ancestry_pids) || return 1
-  if fm_session_lock_codex_sandbox_pid "$pids" >/dev/null \
-    && recorded=$(fm_session_lock_recorded_session_id "$state"); then
+  if fm_session_lock_codex_sandbox_pid "$pids" >/dev/null; then
+    [ "$lock_pid" != 1 ] || return 1
     fm_session_lock_same_session "$state" "$pids"
     return $?
   fi

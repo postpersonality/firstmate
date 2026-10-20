@@ -318,20 +318,26 @@ Native interruption cancels the synchronous return owner; an empty fleet or held
 The existing away daemon remains a legitimate alternate owner.
 
 `bin/fm-session-lock-lib.sh` partitions a shared app-server PID by its native thread id in the existing `state/.lock-session` sidecar.
-`bin/fm-lock.sh` remains its sole writer.
-Stop only revalidates the thread already recorded there; a free or legacy PID-only lock is bound only by an explicit owner claim through `bin/fm-lock.sh` or native SessionStart.
+`bin/fm-lock.sh` remains its sole writer, and it writes only from a native hook outside the Linux tool sandbox, where the app-server PID is verifiable.
+Stop only revalidates the thread already recorded there; a free or legacy PID-only lock is bound only by the native SessionStart hook.
+Native SessionStart `startup`, `clear` and `compact` run `bin/fm-session-start.sh` in the hook; `resume`, `reload` and `fork` do too unless the lock already records that thread with this app-server.
 A different recorded thread cannot acquire or park that home merely because it shares the daemon PID.
-A legacy PID-only lock held by this app-server names no thread, so its Stops keep the one-block guard bounded by `stop_hook_active`, and the block tells the primary thread to bind.
-A thread resumed in that app-server is nudged to run `bin/fm-session-start.sh` until the sidecar records it.
+A legacy PID-only lock held by this app-server names no thread, so its Stops keep the one-block guard bounded by `stop_hook_active`, and the block names the upgrade below.
+
+Inside the native Linux tool sandbox the model's shell sees `codex-linux-sandbox` as PID 1, not the host app-server.
+There `bin/fm-lock.sh` only confirms a lock whose sidecar already records the thread beside a host PID, leaving both files unchanged.
+It refuses every other lock, including a free, PID-only, stale or PID-1 lock, so a sandboxed tool never publishes PID 1 and stays read-only until a native hook records its thread.
 
 To upgrade a primary that took the helm before thread binding:
 
-1. In the primary thread, run `bin/fm-lock.sh` once. It prints `lock acquired: harness pid <pid>` and records that thread.
-2. Confirm that `state/.lock-session` names the primary thread. A thread whose lock line or sidecar names another live owner is refused and stays read-only.
-3. Later Stops of that thread run `bin/fm-codex-stop-watch.sh` and fail closed as described above.
+1. Let the primary's current turn end; the legacy Stop block is bounded by `stop_hook_active`.
+2. Restart the primary's app-server and resume the primary thread before any other thread. Its native SessionStart `resume` runs `bin/fm-session-start.sh` outside the sandbox, takes over the lock the exited app-server left, and prints `lock acquired: harness pid <new app-server pid>`.
+3. Confirm that `state/.lock-session` names the primary thread and that line 1 of `state/.lock` is the new app-server PID. A start refused by another live owner prints `READ-ONLY SESSION` and binds nothing.
+4. Later Stops of that thread run `bin/fm-codex-stop-watch.sh` and fail closed as described above.
 
-Native SessionStart `startup`, `clear` and `compact` bind the same way through `bin/fm-session-start.sh`.
-The native Linux tool sandbox confirms that same sidecar through its runtime-supplied agreeing vendor ids; it preserves the host PID and cannot reclaim another recorded thread from inside its PID namespace.
+This keeps a known boundary.
+While the recorded thread's app-server lives, every other native thread, in that app-server or another, stays read-only, even after the recorded thread is abandoned or archived.
+Thread liveness is not observed; moving the primary to another thread requires ending the app-server that holds the lock first.
 
 The guarantee requires the enabled, trusted project Stop hook to execute in a live native runtime with that event identity and verifiable app-server ancestry.
 It does not cover a disabled/untrusted or timed-out hook, native interruption, runtime termination, a lock not yet claimed for this thread, a duplicate attachment while the lock's app-server is live, or a client whose native event and ancestry cannot establish that identity.

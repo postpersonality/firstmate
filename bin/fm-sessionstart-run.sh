@@ -33,6 +33,9 @@
 #                           this process still holds the lock (the nudge stays
 #                           silent) and a plain instruction is enough when a new
 #                           process resumed an old session (the nudge fires).
+#                           A native Codex API thread whose lock does not record
+#                           it with this app-server gets the full digest here
+#                           instead: its sandboxed tools cannot claim the lock.
 #
 # Every ordinary transport path exits 0, exactly like the nudge wrapper: a
 # Claude SessionStart exit 2 blocks session initialization, so a failed session
@@ -147,7 +150,10 @@ fi
 
 case "$SOURCE" in
   resume|reload|fork)
-    exec "$SCRIPT_DIR/fm-sessionstart-nudge.sh"
+    if [ -z "${FM_CODEX_HOOK_SESSION_ID:-}" ] || fm_session_lock_same_session "$STATE"; then
+      exec "$SCRIPT_DIR/fm-sessionstart-nudge.sh"
+    fi
+    "$SCRIPT_DIR/fm-session-start.sh" --source "$SOURCE" || true
     ;;
   clear|compact)
     if session_start_completed; then
