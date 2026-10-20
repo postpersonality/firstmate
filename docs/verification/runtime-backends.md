@@ -1409,16 +1409,17 @@ Firstmate requires both `HERDR_PANE_ID` and `HERDR_SOCKET_PATH` before accepting
 {"pane_id":"w1:p1","tab_id":"w1:t1","workspace_id":"w1"}
 ```
 
-Project placement was verified on 2026-10-20 on Linux x86_64 against Herdr 0.8.2, protocol 20, through the guarded non-default lab helper:
+Project placement and scoped recovery were verified on 2026-10-20 on Linux x86_64 against Herdr 0.8.2, protocol 20, through the guarded non-default lab helper:
 
 ```sh
-bash bin/fm-test-run.sh \
+HERDR_LAB_HELPER=/home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh \
+  bash bin/fm-test-run.sh --jobs 1 \
+  tests/fm-backend-herdr.test.sh \
   tests/fm-backend-herdr-launcher-workspace-e2e.test.sh \
   tests/fm-backend-herdr-workspace-per-home-e2e.test.sh \
   tests/fm-backend-herdr-presentation-e2e.test.sh
 ```
 
-`HERDR_LAB_HELPER` selected the operational checkout's `bin/fm-herdr-lab.sh`.
 The fixture selects a private shell configuration, proves real shell entry before allocation, and verifies every public-spawn copy is a scratch clone under the fixture directory.
 The pane-bound and Firstmate cases run public spawn inside genuine lab panes with Herdr's own injected parent identity.
 Its per-process optional automatic-rename override keeps label mutations out of legacy binding fixtures; it changes no shared settings.
@@ -1430,36 +1431,26 @@ Exact selected output:
 ```text
 ok - pane-bound worker reuses project Space despite unrelated launcher and focus; existing panes survive
 ok - detached caller uses the same project Space and a separate worker tab
+ok - public spawn replaces only its own exactly recorded shell husk
 ok - source checkout and same-origin clone share project identity
-ok - Firstmate worker gets its own tab; orchestration tab and existing workers survive
+ok - same-origin management Space stays separate; pane-bound creation and detached project reuse get their own worker tabs
 ok - absent project Space is created once across concurrent homes, then reused by public spawn
 ok - multiple path-identified project Spaces refuse without choosing the focused one
 ok - shared project Space preserves another home same-name task endpoint
 ok - ambiguous same-name Spaces are preserved and reported
 ok - teardown closes only its recorded fixture endpoint; other workers and orchestration survive
+ok - persistent secondmate recovery retains its home Space and replaces only its own husk
 ok - secondmate keeps its home Space; primary and secondmate workers share the project Space
 ok - each home recovers only its own recorded endpoints inside the shared project Space
+ok - teardown preserves another home worker and persistent secondmate endpoint
 ok - exact owned legacy projection reclaims only its saved husk and preserves parent and focus
-ok - new project placement ignores historical projection opt-in and preserves legacy worker
+ok - same-project transition excludes exact own projection and mixed old container, creates/reuses project Space without moving old workers
 ok - legacy exact-pane cleanup preserves project worker and orchestration parent
-FM_TEST_SUMMARY total=3 failed=0 skipped_gate=0 duration_ms=61555
-```
-
-Focused pane-bound placement and persistent secondmate husk recovery were also checked with the same lab configuration:
-
-```sh
-bash bin/fm-test-run.sh tests/fm-backend-herdr-launcher-workspace-e2e.test.sh
-bash bin/fm-test-run.sh tests/fm-backend-herdr-workspace-per-home-e2e.test.sh
-```
-
-```text
-FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=28995
-ok - persistent secondmate recovery retains its home Space and replaces only its own husk
-FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=24886
+FM_TEST_SUMMARY total=4 failed=0 skipped_gate=0 duration_ms=106159
 ```
 
 Successful teardown includes the helper's unchanged-default-session tripwire.
-Native worktree path precedence, malformed inventory, mixed project paths, and undecidable plain or numbered same-name candidates are additionally covered by `tests/fm-backend-herdr.test.sh`.
+Native worktree path precedence, operating homes with the same Git origin, malformed inventory, mixed project paths, undecidable plain or numbered same-name candidates, and refusal of unbound or foreign husks are additionally covered by the backend unit suite in that command.
 The concurrent creation proof calls the public backend resolver from two homes; the public spawn path separately proves reuse of the resulting Space.
 Paid harness trust and readiness behavior is outside this placement proof and remains covered by its existing guards.
 

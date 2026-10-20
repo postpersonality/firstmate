@@ -15,6 +15,8 @@ printf 'state/\nconfig/\ndata/\nprojects/\n.no-mistakes/\n' > "$secondmate/.giti
 git -C "$secondmate" init -q -b main
 git -C "$secondmate" add .
 git -C "$secondmate" -c user.name=Tests -c user.email=tests@example.invalid commit -qm initial
+# A real secondmate home is a Firstmate worktree, sharing the project origin.
+git -C "$secondmate" remote add origin "$project.origin.git"
 mkdir -p "$primary/data/mate"
 echo 'Run fixture command only.' > "$primary/data/mate/brief.md"
 FM_SKIP_SECONDMATE_SYNC=1 FM_SKIP_SECONDMATE_INHERIT=1 \

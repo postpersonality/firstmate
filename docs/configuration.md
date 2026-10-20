@@ -502,7 +502,7 @@ Legacy tmux metadata remains cleanup-compatible when its exact window name is `f
 
 [`herdr-backend.md`](herdr-backend.md#watching-and-task-containers) owns project Space placement, identity matching, collision handling, detached callers, and recorded-endpoint recovery.
 `FM_HOME` still scopes task ownership and the persistent secondmate's `2ndmate-<id>` container.
-The inherited `config/herdr-presentation-spaces` file is retained for compatibility; [Presentation spaces](herdr-backend.md#presentation-spaces) owns recovery and cleanup of existing projections.
+The retired `config/herdr-presentation-spaces` file is ignored and no longer inherited; [Presentation spaces](herdr-backend.md#presentation-spaces) owns recovery and cleanup of existing projections.
 
 For normal herdr operations, `HERDR_SESSION` selects the named session, but destructive test cleanup must not rely on `HERDR_SESSION` alone.
 Use the explicit guarded cleanup path described in [`docs/herdr-backend.md`](herdr-backend.md) instead of `herdr server stop`.

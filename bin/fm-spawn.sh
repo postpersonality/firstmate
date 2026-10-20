@@ -3684,9 +3684,9 @@ if [ "$RELAUNCH" -eq 1 ]; then
     #
     # KNOWN LIMITATION (bead fm-herdr-rebind-leak-20260913): the tab minted
     # below is registered with no abort cleanup, so a later refusal leaves that
-    # pane behind and a retry mints another. Documented in
-    # docs/agent-control.md rather than fixed here, because the remedy is
-    # machinery the ordinary flat spawn path does not have either.
+    # pane behind. A retry preserves/refuses an unbound same-label tab: cwd
+    # never substitutes for an exact own task record in a shared Space.
+    # docs/agent-control.md owns this unresolved recovery limit.
     #
     # Re-create the tab under the RECORDED herdr session. Without the explicit
     # session the container would resolve from the AMBIENT one
@@ -3723,7 +3723,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
     HERDR_SEEDED_DEFAULT_TAB_ID=${HERDR_CONTAINER_RAW#*$'\t'}
     HERDR_SES=${CONTAINER%%:*}
     HERDR_WORKSPACE_ID=${CONTAINER#*:}
-    HERDR_TASK_IDS=$(fm_backend_herdr_create_task "$CONTAINER" "$W" "$WT" "$HERDR_SEEDED_DEFAULT_TAB_ID" preserve-existing) || exit 1
+    HERDR_TASK_IDS=$(fm_backend_herdr_create_task "$CONTAINER" "$W" "$WT" "$HERDR_SEEDED_DEFAULT_TAB_ID" preserve-existing "$STATE/$ID.meta") || exit 1
     read -r HERDR_TAB_ID HERDR_PANE_ID <<EOF
 $HERDR_TASK_IDS
 EOF
@@ -3830,7 +3830,7 @@ else
       HERDR_SEEDED_DEFAULT_TAB_ID=${HERDR_CONTAINER_RAW#*$'\t'}
       HERDR_SES=${CONTAINER%%:*}
       HERDR_WORKSPACE_ID=${CONTAINER#*:}
-      HERDR_TASK_IDS=$(FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_create_task "$CONTAINER" "$W" "$PROJ_ABS" "$HERDR_SEEDED_DEFAULT_TAB_ID" "$HERDR_TAB_POLICY") || exit 1
+      HERDR_TASK_IDS=$(FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_create_task "$CONTAINER" "$W" "$PROJ_ABS" "$HERDR_SEEDED_DEFAULT_TAB_ID" "$HERDR_TAB_POLICY" "$STATE/$ID.meta") || exit 1
       read -r HERDR_TAB_ID HERDR_PANE_ID <<EOF
 $HERDR_TASK_IDS
 EOF

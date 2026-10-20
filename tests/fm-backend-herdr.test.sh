@@ -16,6 +16,8 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/herdr-test-safety.sh"
 # shellcheck source=tests/herdr-client-pair-fixture.sh
 . "$(dirname "${BASH_SOURCE[0]}")/herdr-client-pair-fixture.sh"
+# shellcheck source=tests/herdr-legacy-fixture.sh
+. "$(dirname "${BASH_SOURCE[0]}")/herdr-legacy-fixture.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "skip: jq not found (required by the herdr adapter)"; exit 0; }
 
@@ -1542,60 +1544,7 @@ test_create_task_creates_with_no_focus_flag() {
   pass "fm_backend_herdr_create_task: tab create passes --no-focus"
 }
 
-# --- default-on disposable presentation projection --------------------------
-
-# make_release_fakebin: a `herdr` stub whose only job is `status --json`, so the
-# presentation version floor can be exercised against scripted client and
-# selected-session server releases with no herdr installed at all. An empty
-# protocol or version omits that field; the literal client value "unreadable"
-# makes the whole call fail, and a server-running value other than true or false
-# omits that state.
-make_release_fakebin() {  # <dir> <client-protocol> <client-version> [<server-running> <server-protocol> <server-version>] -> echoes fakebin dir
-  local dir=$1 protocol=$2 version=$3 server_running=${4:-false} server_protocol=${5:-} server_version=${6:-}
-  local fb="$1/release-fakebin" fields="" server_fields=""
-  mkdir -p "$fb"
-  if [ -n "$version" ]; then
-    fields="\"version\":\"$version\""
-  fi
-  if [ -n "$protocol" ]; then
-    [ -n "$fields" ] && fields="$fields,"
-    fields="$fields\"protocol\":$protocol"
-  fi
-  case "$server_running" in
-    true|false) server_fields="\"running\":$server_running" ;;
-  esac
-  if [ -n "$server_version" ]; then
-    [ -n "$server_fields" ] && server_fields="$server_fields,"
-    server_fields="$server_fields\"version\":\"$server_version\""
-  fi
-  if [ -n "$server_protocol" ]; then
-    [ -n "$server_fields" ] && server_fields="$server_fields,"
-    server_fields="$server_fields\"protocol\":$server_protocol"
-  fi
-  cat > "$fb/herdr" <<SH
-#!/usr/bin/env bash
-set -u
-[ "\${1:-}" = status ] || exit 3
-SH
-  if [ "$protocol" = unreadable ] || [ "$version" = unreadable ]; then
-    printf 'exit 4\n' >> "$fb/herdr"
-  else
-    printf 'printf %s\n' "'{\"client\":{$fields},\"server\":{$server_fields}}\\n'" >> "$fb/herdr"
-  fi
-  chmod +x "$fb/herdr"
-  printf '%s\n' "$fb"
-}
-
-# fm_backend_herdr_presentation_enabled is the one gate bin/fm-spawn.sh consults
-# before projecting a crewmate or scout, so these cases pin the default-on
-# contract, its explicit opt-out, its explicit opt-in, and the version floor
-# that decides the unconfigured default at that interface.
-presentation_enabled_verdict() {  # <config-dir> <fakebin> [state-dir] [session] -> "on"/"off"
-  HERDR_SESSION="${4:-}" PATH="$2:$PATH" bash -c '
-    . "$0/bin/backends/herdr.sh"
-    if fm_backend_herdr_presentation_enabled "$1" "$2"; then printf "on\n"; else printf "off\n"; fi
-  ' "$ROOT" "$1" "${3:-}"
-}
+# --- legacy cleanup release floor ------------------------------------------
 
 # The exact release identities measured against the real macOS aarch64 release
 # binaries on 2026-08-05 and recorded in docs/verification/runtime-backends.md.
@@ -1604,203 +1553,14 @@ AT_FLOOR_VERSION=0.8.0
 BELOW_FLOOR_PROTOCOL=17
 BELOW_FLOOR_VERSION=0.7.5
 
-test_presentation_defaults_on_at_or_above_the_floor() {
-  local dir config fb verdict stderr
-  dir="$TMP_ROOT/presentation-default-on"; config="$dir/config"; mkdir -p "$config"
-  stderr="$dir/default-on.err"
-  fb=$(make_release_fakebin "$dir" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION")
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>"$stderr")
-  [ "$verdict" = on ] || fail "an absent presentation config at the floor must resolve on, got '$verdict'"
-  [ ! -s "$stderr" ] || fail "a supported release must not warn: $(cat "$stderr")"
-  verdict=$(presentation_enabled_verdict "$dir/missing-config-dir" "$fb" 2>/dev/null)
-  [ "$verdict" = on ] || fail "a missing config dir at the floor must resolve on, got '$verdict'"
-  pass "herdr presentation: a home that set nothing gets the projection by default at or above the floor"
-}
 
-test_presentation_default_falls_back_below_the_floor() {
-  local dir config fb verdict stderr
-  dir="$TMP_ROOT/presentation-below-floor"; config="$dir/config"; mkdir -p "$config"
-  stderr="$dir/below-floor.err"
-  fb=$(make_release_fakebin "$dir" "$BELOW_FLOOR_PROTOCOL" "$BELOW_FLOOR_VERSION")
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>"$stderr")
-  [ "$verdict" = off ] || fail "an unconfigured home below the floor must fall back flat, got '$verdict'"
-  assert_contains "$(cat "$stderr")" "$BELOW_FLOOR_VERSION" \
-    "the below-floor warning must name the running release"
-  assert_contains "$(cat "$stderr")" "0.8.0" \
-    "the below-floor warning must name the upgrade that fixes it"
-  pass "herdr presentation: an unconfigured home below the floor falls back flat with one naming warning"
-}
 
-test_presentation_unreadable_release_falls_back() {
-  local dir config fb verdict stderr
-  dir="$TMP_ROOT/presentation-unreadable"; config="$dir/config"; mkdir -p "$config"
-  stderr="$dir/unreadable.err"
-  fb=$(make_release_fakebin "$dir" unreadable unreadable)
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>"$stderr")
-  [ "$verdict" = off ] || fail "an unverifiable release must fall back flat, got '$verdict'"
-  assert_contains "$(cat "$stderr")" "could not be read" \
-    "an unverifiable release must say the floor could not be checked"
-  pass "herdr presentation: an unreadable client release falls back flat instead of guessing"
-}
 
-test_presentation_explicit_opt_in_survives_the_floor() {
-  local dir config fb verdict stderr
-  dir="$TMP_ROOT/presentation-legacy-opt-in"; config="$dir/config"; mkdir -p "$config"
-  stderr="$dir/legacy.err"
-  fb=$(make_release_fakebin "$dir" "$BELOW_FLOOR_PROTOCOL" "$BELOW_FLOOR_VERSION")
-  # The historical opt-in was a bare `touch` of the file, so an empty file must
-  # keep meaning a deliberate on - and must not warn, or every migrated home
-  # warns on every spawn.
-  : > "$config/herdr-presentation-spaces"
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>"$stderr")
-  [ "$verdict" = on ] || fail "a legacy empty opt-in file must resolve on below the floor, got '$verdict'"
-  [ ! -s "$stderr" ] || fail "a legacy empty opt-in file must not warn: $(cat "$stderr")"
-  printf '\n \n' > "$config/herdr-presentation-spaces"
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>"$stderr")
-  [ "$verdict" = on ] || fail "a whitespace-only opt-in file must resolve on below the floor, got '$verdict'"
-  [ ! -s "$stderr" ] || fail "a whitespace-only opt-in file must not warn: $(cat "$stderr")"
-  printf 'on\n' > "$config/herdr-presentation-spaces"
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>"$stderr")
-  [ "$verdict" = on ] || fail "an explicit on must resolve on below the floor, got '$verdict'"
-  [ ! -s "$stderr" ] || fail "an explicit opt-in must not warn: $(cat "$stderr")"
-  pass "herdr presentation: a deliberate opt-in is never silently downgraded below the floor"
-}
 
-test_presentation_explicit_off_opts_out() {
-  local dir config fb verdict value
-  dir="$TMP_ROOT/presentation-opt-out"; config="$dir/config"; mkdir -p "$config"
-  fb=$(make_release_fakebin "$dir" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION")
-  for value in 'off' 'off
-' '  off  ' 'OFF' 'Off'; do
-    printf '%s' "$value" > "$config/herdr-presentation-spaces"
-    verdict=$(presentation_enabled_verdict "$config" "$fb" 2>/dev/null)
-    [ "$verdict" = off ] || fail "the opt-out value '$value' must resolve off, got '$verdict'"
-  done
-  pass "herdr presentation: an explicit off opts the home out"
-}
 
-test_presentation_unrecognized_value_warns_and_keeps_the_default() {
-  local dir config fb verdict stderr
-  dir="$TMP_ROOT/presentation-unrecognized"; config="$dir/config"; mkdir -p "$config"
-  stderr="$dir/unrecognized.err"
-  printf 'disabled\n' > "$config/herdr-presentation-spaces"
-  fb=$(make_release_fakebin "$dir" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION")
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>"$stderr")
-  [ "$verdict" = on ] || fail "an unrecognized value at the floor must keep the default on, got '$verdict'"
-  assert_contains "$(cat "$stderr")" 'unrecognized value' \
-    "an unrecognized value must warn so a typo is visible"
-  # A typo is not a deliberate opt-in, so below the floor it takes the default's
-  # flat fallback rather than forcing a focus-unsafe projection.
-  fb=$(make_release_fakebin "$dir" "$BELOW_FLOOR_PROTOCOL" "$BELOW_FLOOR_VERSION")
-  verdict=$(presentation_enabled_verdict "$config" "$fb" 2>"$stderr")
-  [ "$verdict" = off ] || fail "an unrecognized value below the floor must follow the default, got '$verdict'"
-  pass "herdr presentation: an unrecognized value warns and follows the default instead of failing a spawn"
-}
 
-test_presentation_floor_warning_is_one_per_release() {
-  local dir config state fb first second third
-  dir="$TMP_ROOT/presentation-floor-dedupe"; config="$dir/config"; state="$dir/state"
-  mkdir -p "$config" "$state"
-  fb=$(make_release_fakebin "$dir" "$BELOW_FLOOR_PROTOCOL" "$BELOW_FLOOR_VERSION")
-  first=$(presentation_enabled_verdict "$config" "$fb" "$state" 2>&1 >/dev/null)
-  second=$(presentation_enabled_verdict "$config" "$fb" "$state" 2>&1 >/dev/null)
-  [ -n "$first" ] || fail "the first below-floor spawn must warn"
-  [ -z "$second" ] || fail "a repeat spawn on the same release must not warn again: $second"
-  # A downgrade or an upgrade is a different release, so it is announced again.
-  fb=$(make_release_fakebin "$dir/other" 16 0.7.3)
-  third=$(presentation_enabled_verdict "$config" "$fb" "$state" 2>&1 >/dev/null)
-  assert_contains "$third" '0.7.3' "a changed release must re-announce the floor"
-  pass "herdr presentation: the below-floor warning is one per home per release, not one per spawn"
-}
 
-test_presentation_floor_warning_marker_is_atomic_and_symlink_safe() {
-  local dir config state fb i pid warnings marker outside symlink_warning failure_state failure_warning
-  local pids=()
-  dir="$TMP_ROOT/presentation-floor-marker-safety"; config="$dir/config"; state="$dir/state"
-  mkdir -p "$config" "$state"
-  fb=$(make_release_fakebin "$dir" "$BELOW_FLOOR_PROTOCOL" "$BELOW_FLOOR_VERSION")
-  for i in {1..20}; do
-    presentation_enabled_verdict "$config" "$fb" "$state" \
-      >"$dir/concurrent-$i.out" 2>"$dir/concurrent-$i.err" &
-    pids+=("$!")
-  done
-  for pid in "${pids[@]}"; do
-    wait "$pid" || fail "a concurrent presentation-floor verdict failed"
-  done
-  warnings=$(awk '/^warning:/ { count++ } END { print count + 0 }' "$dir"/concurrent-*.err)
-  [ "$warnings" -eq 1 ] \
-    || fail "concurrent below-floor spawns must publish exactly one warning, got $warnings"
 
-  state="$dir/symlink-state"
-  mkdir -p "$state"
-  marker="$state/.herdr-presentation-floor-version-0-7-5--protocol-17-"
-  outside="$dir/symlink-target"
-  ln -s "$outside" "$marker"
-  symlink_warning=$(presentation_enabled_verdict "$config" "$fb" "$state" 2>&1 >/dev/null)
-  [ -z "$symlink_warning" ] \
-    || fail "an existing dangling marker symlink must be treated as already claimed: $symlink_warning"
-  [ ! -e "$outside" ] \
-    || fail "publishing the floor marker followed a dangling symlink outside the state directory"
-
-  failure_state="$dir/failure-state"
-  mkdir -p "$failure_state"
-  cat > "$fb/ln" <<'SH'
-#!/usr/bin/env bash
-exit 1
-SH
-  chmod +x "$fb/ln"
-  failure_warning=$(presentation_enabled_verdict "$config" "$fb" "$failure_state" 2>&1 >/dev/null)
-  [ -n "$failure_warning" ] \
-    || fail "a non-collision marker publication failure must not suppress the warning"
-  pass "herdr presentation: warning marker publication is atomic, symlink-safe, and fails visible"
-}
-
-test_presentation_running_server_release_is_load_bearing() {
-  local dir config fb verdict stderr
-  dir="$TMP_ROOT/presentation-running-server-floor"; config="$dir/config"
-  mkdir -p "$config"
-  stderr="$dir/server.err"
-
-  fb=$(make_release_fakebin "$dir/old-server" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION" \
-    true "$BELOW_FLOOR_PROTOCOL" "$BELOW_FLOOR_VERSION")
-  verdict=$(presentation_enabled_verdict "$config" "$fb" "" stale-session 2>"$stderr")
-  [ "$verdict" = off ] \
-    || fail "an old running server must keep a new client below the presentation floor, got '$verdict'"
-  assert_contains "$(cat "$stderr")" "server version $BELOW_FLOOR_VERSION" \
-    "the floor warning must name the selected running server release"
-
-  fb=$(make_release_fakebin "$dir/new-server" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION" \
-    true "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION")
-  verdict=$(presentation_enabled_verdict "$config" "$fb" "" current-session 2>"$stderr")
-  [ "$verdict" = on ] \
-    || fail "an at-floor client and running server must project, got '$verdict'"
-  [ ! -s "$stderr" ] || fail "an at-floor client and running server must not warn: $(cat "$stderr")"
-
-  fb=$(make_release_fakebin "$dir/old-client" "$BELOW_FLOOR_PROTOCOL" "$BELOW_FLOOR_VERSION" \
-    true "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION")
-  verdict=$(presentation_enabled_verdict "$config" "$fb" "" current-session 2>"$stderr")
-  [ "$verdict" = off ] \
-    || fail "a below-floor client must conservatively block projection despite an at-floor server, got '$verdict'"
-  assert_contains "$(cat "$stderr")" "$BELOW_FLOOR_VERSION" \
-    "the conservative client/server warning must name the below-floor client"
-
-  printf 'on\n' > "$config/herdr-presentation-spaces"
-  fb=$(make_release_fakebin "$dir/opt-in-old-server" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION" \
-    true "$BELOW_FLOOR_PROTOCOL" "$BELOW_FLOOR_VERSION")
-  verdict=$(presentation_enabled_verdict "$config" "$fb" "" stale-session 2>"$stderr")
-  [ "$verdict" = on ] \
-    || fail "an explicit opt-in must survive a below-floor running server, got '$verdict'"
-  [ ! -s "$stderr" ] || fail "an explicit opt-in below the server floor must not warn: $(cat "$stderr")"
-  unlink "$config/herdr-presentation-spaces"
-
-  fb=$(make_release_fakebin "$dir/unknown-server" "$AT_FLOOR_PROTOCOL" "$AT_FLOOR_VERSION" unknown)
-  verdict=$(presentation_enabled_verdict "$config" "$fb" "" unknown-session 2>"$stderr")
-  [ "$verdict" = off ] \
-    || fail "an unreadable selected-session server state must fail flat instead of substituting the client, got '$verdict'"
-  assert_contains "$(cat "$stderr")" "could not be read" \
-    "an unreadable selected-session server state must warn"
-  pass "herdr presentation: client and selected server floors compose conservatively without overriding explicit opt-in"
-}
 
 # The floor classifier is pure, so these cases pin it against every release
 # identity measured from the real binaries plus the deliberate signal-loss and
@@ -1869,47 +1629,7 @@ test_release_floor_verdict_survives_losing_either_signal() {
   pass "herdr presentation floor: either signal alone can carry an above verdict, and each divergence is real"
 }
 
-test_presentation_preference_reports_three_distinct_states() {
-  local dir config got
-  dir="$TMP_ROOT/presentation-preference"; config="$dir/config"; mkdir -p "$config"
-  preference() {
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_presentation_preference "$1"' "$ROOT" "$1" 2>/dev/null
-  }
-  got=$(preference "$config")
-  [ "$got" = default ] || fail "an absent file must report the default, got '$got'"
-  printf 'on\n' > "$config/herdr-presentation-spaces"
-  got=$(preference "$config")
-  [ "$got" = on ] || fail "an explicit on must report on, got '$got'"
-  printf 'off\n' > "$config/herdr-presentation-spaces"
-  got=$(preference "$config")
-  [ "$got" = off ] || fail "an explicit off must report off, got '$got'"
-  printf 'disabled\n' > "$config/herdr-presentation-spaces"
-  got=$(preference "$config")
-  [ "$got" = default ] || fail "an unrecognized value must report the default, got '$got'"
-  pass "herdr presentation: config parsing separates a deliberate choice from an unconfigured default"
-}
 
-test_projection_journal_is_atomic_and_uses_128_bit_token() {
-  local dir state out token parsed status
-  dir="$TMP_ROOT/projection-journal"; state="$dir/state"; mkdir -p "$state"
-  out=$(bash -c '
-    . "$0/bin/backends/herdr.sh"
-    token=$(fm_backend_herdr_projection_journal_create "$1" task-p1) || exit 1
-    parsed=$(fm_backend_herdr_projection_journal_token "$1/task-p1.herdr-presentation" task-p1) || exit 1
-    printf "%s\n%s\n" "$token" "$parsed"
-    fm_backend_herdr_projection_journal_create "$1" task-p1 >/dev/null 2>&1
-  ' "$ROOT" "$state" 2>&1)
-  status=$?
-  [ "$status" -ne 0 ] || fail "a second presentation journal publication must fail instead of overwriting the first"
-  token=$(printf '%s\n' "$out" | sed -n '1p')
-  parsed=$(printf '%s\n' "$out" | sed -n '2p')
-  [ "$token" = "$parsed" ] || fail "journal round-trip changed the projection id"
-  [ "${#token}" -eq 22 ] || fail "a 128-bit base64url projection id must be 22 characters, got '${#token}'"
-  case "$token" in *[!A-Za-z0-9_-]*) fail "projection id was not base64url: $token" ;; esac
-  [ "$(wc -l < "$state/task-p1.herdr-presentation" | tr -d '[:space:]')" = 3 ] \
-    || fail "presentation journal must contain only version, task id, and projection id"
-  pass "herdr presentation journal: atomically publishes one non-authoritative 128-bit correlator and refuses overwrite"
-}
 
 test_projection_journal_v2_binds_and_advances_exact_endpoint() {
   local dir state home home_real out token
@@ -1918,11 +1638,11 @@ test_projection_journal_v2_binds_and_advances_exact_endpoint() {
   home_real=$(cd "$home" && pwd -P)
   out=$(bash -c '
     . "$0/bin/backends/herdr.sh"
-    token=$(fm_backend_herdr_projection_journal_create "$1" fm-hibit-r1) || exit 1
+    token=$(herdr_fixture_journal_create "$1" fm-hibit-r1) || exit 1
     journal="$1/fm-hibit-r1.herdr-presentation"
     home=$(fm_backend_herdr_projection_home_identity "$2") || exit 1
     label=$(fm_backend_herdr_projection_workspace_label fm-hibit-r1 "$token")
-    fm_backend_herdr_projection_journal_bind \
+    herdr_fixture_journal_bind \
       "$journal" fm-hibit-r1 "$home" lab-session w2 w2:t2 w2:p2 w1 firstmate "$label" fm-fm-hibit-r1 || exit 1
     fm_backend_herdr_projection_journal_snapshot "$journal" fm-hibit-r1 || exit 1
     printf "%s|%s|%s|%s|%s|%s|%s\n" \
@@ -1953,80 +1673,7 @@ test_projection_journal_v2_binds_and_advances_exact_endpoint() {
   pass "herdr presentation journal: version 2 binds exact home/endpoint/parent identities and advances atomically"
 }
 
-test_projection_create_uses_exact_response_ids_and_leaves_one_task_pane() {
-  local dir state log resp fb out token journal
-  dir="$TMP_ROOT/projection-create"; state="$dir/state"; mkdir -p "$dir/responses" "$state"
-  log="$dir/log"; resp="$dir/responses"; : > "$log"
-  printf '{"result":{"workspace":{"workspace_id":"w9"},"tab":{"tab_id":"w9:t1"},"root_pane":{"pane_id":"w9:p1"}}}\n' > "$resp/1.out"
-  printf '{"result":{"tab":{"tab_id":"w9:t2"},"root_pane":{"pane_id":"w9:p2"}}}\n' > "$resp/2.out"
-  printf '{"result":{"tabs":[{"tab_id":"w9:t1","label":"1","workspace_id":"w9"},{"tab_id":"w9:t2","label":"fm-task-p2","workspace_id":"w9"}]}}\n' > "$resp/3.out"
-  printf '{"result":{"panes":[{"pane_id":"w9:p1","tab_id":"w9:t1"},{"pane_id":"w9:p2","tab_id":"w9:t2"}]}}\n' > "$resp/4.out"
-  printf '{"error":{"code":"agent_not_found"}}\n' > "$resp/5.out"
-  printf '{"result":{"pane":{"pane_id":"w9:p1","tab_id":"w9:t1","workspace_id":"w9"}}}\n' > "$resp/6.out"
-  # The emptying-close plan's tab list proves the seeded prune is NOT
-  # workspace-emptying (the task tab remains), so the close stays plain.
-  printf '{"result":{"tabs":[{"tab_id":"w9:t1","label":"1","workspace_id":"w9"},{"tab_id":"w9:t2","label":"fm-task-p2","workspace_id":"w9"}]}}\n' > "$resp/7.out"
-  printf '{"error":{"code":"pane_not_found"}}\n' > "$resp/9.out"
-  printf '{"result":{"tabs":[{"tab_id":"w9:t2","label":"fm-task-p2","workspace_id":"w9"}]}}\n' > "$resp/10.out"
-  printf '{"result":{"panes":[{"pane_id":"w9:p2","tab_id":"w9:t2"}]}}\n' > "$resp/11.out"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" HERDR_SESSION=fmtest \
-    bash -c '
-      . "$0/bin/backends/herdr.sh"
-      fm_backend_herdr_projection_focus_snapshot() { printf "captain-ws\tcaptain-tab"; }
-      fm_backend_herdr_projection_focus_restore() { return 0; }
-      token=$(fm_backend_herdr_projection_journal_create "$1" task-p2) || exit 1
-      label=$(fm_backend_herdr_projection_workspace_label task-p2 "$token")
-      fm_backend_herdr_projection_create_task /tmp/proj "$label" fm-task-p2 || exit 1
-      printf "%s %s %s %s %s\n" \
-        "$FM_BACKEND_HERDR_PROJECTION_WORKSPACE_ID" \
-        "$FM_BACKEND_HERDR_PROJECTION_SEEDED_TAB_ID" \
-        "$FM_BACKEND_HERDR_PROJECTION_SEEDED_PANE_ID" \
-        "$FM_BACKEND_HERDR_PROJECTION_TAB_ID" \
-        "$FM_BACKEND_HERDR_PROJECTION_PANE_ID"
-    ' "$ROOT" "$state") || fail "projection create should succeed from complete exact responses"
-  [ "$out" = "w9 w9:t1 w9:p1 w9:t2 w9:p2" ] || fail "projection create did not retain exact response IDs: $out"
-  journal="$state/task-p2.herdr-presentation"
-  token=$(bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_journal_token "$1" task-p2' "$ROOT" "$journal") \
-    || fail "projection journal was not readable"
-  assert_contains "$(cat "$log")" $'workspace\x1fcreate\x1f--cwd\x1f/tmp/proj\x1f--label\x1f└ task-p2 · p:'"$token"$'\x1f--no-focus' \
-    "projection workspace create did not use the corner label, full token, and --no-focus"
-  assert_contains "$(cat "$log")" $'tab\x1fcreate\x1f--workspace\x1fw9\x1f--cwd\x1f/tmp/proj\x1f--label\x1ffm-task-p2\x1f--no-focus' \
-    "projection task tab did not target the exact new workspace"
-  assert_contains "$(cat "$log")" $'pane\x1fclose\x1fw9:p1' \
-    "projection create did not prune the exact seeded root pane"
-  assert_not_contains "$(cat "$log")" $'workspace\x1fclose' \
-    "projection create must never call workspace close"
-  pass "herdr presentation create: exact response IDs yield one normal task pane with no workspace-close authority"
-}
 
-test_projection_create_never_closes_a_concurrent_same_label_tab() {
-  local dir log resp fb out status
-  dir="$TMP_ROOT/projection-concurrent-tab"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; : > "$log"
-  printf '{"result":{"workspace":{"workspace_id":"w9"},"tab":{"tab_id":"w9:t1"},"root_pane":{"pane_id":"w9:p1"}}}\n' > "$resp/1.out"
-  printf '{"result":{"tab":{"tab_id":"w9:t2"},"root_pane":{"pane_id":"w9:p2"}}}\n' > "$resp/2.out"
-  printf '{"result":{"tabs":[{"tab_id":"w9:t1","label":"1","workspace_id":"w9"},{"tab_id":"w9:t2","label":"fm-task-p2","workspace_id":"w9"},{"tab_id":"w9:t3","label":"fm-task-p2","workspace_id":"w9"}]}}\n' > "$resp/3.out"
-  printf '{"result":{"panes":[{"pane_id":"w9:p1","tab_id":"w9:t1"},{"pane_id":"w9:p2","tab_id":"w9:t2"},{"pane_id":"w9:p3","tab_id":"w9:t3"}]}}\n' > "$resp/4.out"
-  printf '{"error":{"code":"agent_not_found"}}\n' > "$resp/5.out"
-  printf '{"result":{"pane":{"pane_id":"w9:p1","tab_id":"w9:t1","workspace_id":"w9"}}}\n' > "$resp/6.out"
-  printf '{"result":{"tabs":[{"tab_id":"w9:t1","label":"1","workspace_id":"w9"},{"tab_id":"w9:t2","label":"fm-task-p2","workspace_id":"w9"},{"tab_id":"w9:t3","label":"fm-task-p2","workspace_id":"w9"}]}}\n' > "$resp/7.out"
-  printf '{"error":{"code":"pane_not_found"}}\n' > "$resp/9.out"
-  printf '{"result":{"tabs":[{"tab_id":"w9:t2","label":"fm-task-p2","workspace_id":"w9"},{"tab_id":"w9:t3","label":"fm-task-p2","workspace_id":"w9"}]}}\n' > "$resp/10.out"
-  printf '{"result":{"panes":[{"pane_id":"w9:p2","tab_id":"w9:t2"},{"pane_id":"w9:p3","tab_id":"w9:t3"}]}}\n' > "$resp/11.out"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" HERDR_SESSION=fmtest \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_focus_snapshot() { printf "captain-ws\tcaptain-tab"; }; fm_backend_herdr_projection_focus_restore() { return 0; }; fm_backend_herdr_projection_create_task /tmp/proj label fm-task-p2' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -ne 0 ] || fail "a concurrent tab should prevent exact one-pane projection convergence"
-  assert_contains "$out" "did not converge to exactly one task pane" \
-    "projection did not report the concurrent shape"
-  assert_not_contains "$(cat "$log")" $'tab\x1fclose\x1fw9:t3' \
-    "projection closed a concurrent same-label tab"
-  assert_not_contains "$(cat "$log")" $'pane\x1fclose\x1fw9:p3' \
-    "projection closed a concurrent same-label pane"
-  pass "herdr presentation create: concurrent same-label tabs are never prune targets"
-}
 
 test_projection_focus_snapshot_requires_exact_workspace_and_tab() {
   local dir log resp fb out
@@ -3091,293 +2738,15 @@ test_projection_label_builder_uses_corner_and_strips_owner_prefixes() {
   pass "herdr presentation labels: └ concise-task · p:<full-token> for primary and secondmate children"
 }
 
-test_projection_order_moves_only_exact_new_workspace_and_preserves_relative_order() {
-  local dir log resp fb mover mover_log out status
-  dir="$TMP_ROOT/projection-order"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; mover_log="$dir/mover.log"
-  : > "$log"; : > "$mover_log"
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate","focused":false},{"workspace_id":"w2","label":"firstmate/old · p:AbCdEfGhIjKlMnOpQrStUv","focused":false},{"workspace_id":"w3","label":"2ndmate-alpha","focused":false},{"workspace_id":"w4","label":"2ndmate-bravo","focused":true},{"workspace_id":"w5","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe","focused":false}]}}' > "$resp/1.out"
-  printf '%s\n' '{"client":{"version":"0.7.4","protocol":16},"server":{"running":true}}' > "$resp/2.out"
-  # shellcheck disable=SC2016 # $defs is a literal JSON Schema key.
-  printf '%s\n' '{"schemas":{"request":{"oneOf":[{"properties":{"method":{"const":"workspace.move"}}}],"$defs":{"WorkspaceMoveParams":{"required":["workspace_id","insert_index"],"properties":{"insert_index":{"type":"integer"}}}}}}}' > "$resp/3.out"
-  printf '%s\n' '{"sessions":[{"name":"fmtest","running":true,"socket_path":"/tmp/fmtest.sock"}]}' > "$resp/4.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$FM_FAKE_MOVER_LOG"
-printf '%s\n' '{"id":"fm-workspace-move","result":{"type":"workspace_list","workspaces":[{"workspace_id":"w1","label":"firstmate","focused":false},{"workspace_id":"w2","label":"firstmate/old · p:AbCdEfGhIjKlMnOpQrStUv","focused":false},{"workspace_id":"w5","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe","focused":false},{"workspace_id":"w3","label":"2ndmate-alpha","focused":false},{"workspace_id":"w4","label":"2ndmate-bravo","focused":true}]}}'
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_HERDR_SCRIPT_STATUS=1 \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_LOG="$mover_log" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_focus_snapshot() { printf "w4\tw4:t2"; }; fm_backend_herdr_projection_focus_restore() { return 0; }; fm_backend_herdr_projection_order_best_effort fmtest w5 firstmate' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "best-effort projection ordering must not fail the spawn"
-  [ -z "$out" ] || fail "successful projection ordering emitted a warning: $out"
-  [ "$(cat "$mover_log")" = "$(cd /tmp && pwd -P)/fmtest.sock"$'\t'"w5"$'\t'"2" ] \
-    || fail "projection ordering did not move only the exact new response id to the owning-parent append index"
-  assert_not_contains "$(cat "$log")" $'workspace\x1fclose' "projection ordering called workspace close"
-  assert_not_contains "$(cat "$log")" $'session\x1fdelete' "projection ordering called session delete"
-  assert_not_contains "$(cat "$log")" $'workspace\x1frename' "projection ordering called a label-based workspace mutation"
-  pass "herdr presentation ordering: exact new workspace appends to the primary block while focus and relative orders stay stable"
-}
 
-test_projection_order_secondmate_parent_block() {
-  local dir log resp fb mover mover_log out status
-  dir="$TMP_ROOT/projection-order-secondmate"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; mover_log="$dir/mover.log"
-  : > "$log"; : > "$mover_log"
-  # firstmate, primary child, 2ndmate-A, A-child legacy, 2ndmate-B, human, NEW for A
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"w2","label":"└ primary · p:AbCdEfGhIjKlMnOpQrStUv"},{"workspace_id":"w3","label":"2ndmate-alpha"},{"workspace_id":"w4","label":"2ndmate-alpha/old · p:AbCdEfGhIjKlMnOpQrStU1"},{"workspace_id":"w5","label":"2ndmate-bravo"},{"workspace_id":"wH","label":"human-notes"},{"workspace_id":"w6","label":"└ new-a · p:ZyXwVuTsRqPoNmLkJiHgFe"}]}}' > "$resp/1.out"
-  printf '%s\n' '{"client":{"version":"0.7.4","protocol":16},"server":{"running":true}}' > "$resp/2.out"
-  # shellcheck disable=SC2016
-  printf '%s\n' '{"schemas":{"request":{"oneOf":[{"properties":{"method":{"const":"workspace.move"}}}],"$defs":{"WorkspaceMoveParams":{"required":["workspace_id","insert_index"],"properties":{"insert_index":{"type":"integer"}}}}}}}' > "$resp/3.out"
-  printf '%s\n' '{"sessions":[{"name":"fmtest","running":true,"socket_path":"/tmp/fmtest.sock"}]}' > "$resp/4.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$FM_FAKE_MOVER_LOG"
-printf '%s\n' '{"id":"fm-workspace-move","result":{"type":"workspace_list","workspaces":[{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"w2","label":"└ primary · p:AbCdEfGhIjKlMnOpQrStUv"},{"workspace_id":"w3","label":"2ndmate-alpha"},{"workspace_id":"w4","label":"2ndmate-alpha/old · p:AbCdEfGhIjKlMnOpQrStU1"},{"workspace_id":"w6","label":"└ new-a · p:ZyXwVuTsRqPoNmLkJiHgFe"},{"workspace_id":"w5","label":"2ndmate-bravo"},{"workspace_id":"wH","label":"human-notes"}]}}'
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_HERDR_SCRIPT_STATUS=1 \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_LOG="$mover_log" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_focus_snapshot() { printf "w5\tw5:t1"; }; fm_backend_herdr_projection_focus_restore() { return 0; }; fm_backend_herdr_projection_order_best_effort fmtest w6 2ndmate-alpha' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "secondmate parent ordering must not fail the spawn: $out"
-  [ -z "$out" ] || fail "successful secondmate ordering emitted a warning: $out"
-  [ "$(cat "$mover_log")" = "$(cd /tmp && pwd -P)/fmtest.sock"$'\t'"w6"$'\t'"4" ] \
-    || fail "secondmate child was not inserted after its parent block: $(cat "$mover_log")"
-  assert_not_contains "$(cat "$log")" $'workspace\x1frename' "secondmate ordering renamed a legacy child"
-  pass "herdr presentation ordering: secondmate children append under their owning parent block"
-}
 
-test_projection_order_foreign_legacy_child_is_read_only() {
-  local dir log resp fb mover out status
-  dir="$TMP_ROOT/projection-order-foreign-legacy"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; : > "$log"
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"w2","label":"2ndmate-alpha"},{"workspace_id":"w3","label":"2ndmate-bravo/foreign · p:AbCdEfGhIjKlMnOpQrStUv"},{"workspace_id":"w4","label":"└ new-alpha · p:ZyXwVuTsRqPoNmLkJiHgFe"}]}}' > "$resp/1.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-echo called > "$FM_FAKE_MOVER_CALLED"
-exit 0
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_CALLED="$dir/called" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_order_best_effort fmtest w4 2ndmate-alpha' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "foreign legacy ordering must not fail the spawn"
-  assert_contains "$out" "ambiguous workspace layout" "foreign legacy child did not warn"
-  [ ! -e "$dir/called" ] || fail "foreign legacy child attempted workspace.move"
-  assert_not_contains "$(cat "$log")" $'workspace\x1fclose' "foreign legacy layout triggered workspace cleanup"
-  assert_not_contains "$(cat "$log")" $'session\x1fdelete' "foreign legacy layout triggered session cleanup"
-  assert_not_contains "$(cat "$log")" $'workspace\x1frename' "foreign legacy layout triggered workspace rename"
-  pass "herdr presentation ordering: a foreign legacy child is warning-only and read-only"
-}
 
-test_projection_order_allows_intervening_parent_child_block() {
-  local dir log resp fb mover mover_log out status
-  dir="$TMP_ROOT/projection-order-intervening-parent"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; mover_log="$dir/mover.log"
-  : > "$log"; : > "$mover_log"
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"w2","label":"firstmate/old · p:AbCdEfGhIjKlMnOpQrStUv"},{"workspace_id":"w3","label":"2ndmate-alpha"},{"workspace_id":"w4","label":"2ndmate-bravo"},{"workspace_id":"w5","label":"└ bravo-child · p:QqWwEeRrTtYyUuIiOoPpAa"},{"workspace_id":"w6","label":"└ new-first · p:ZyXwVuTsRqPoNmLkJiHgFe"}]}}' > "$resp/1.out"
-  printf '%s\n' '{"client":{"version":"0.7.4","protocol":16},"server":{"running":true}}' > "$resp/2.out"
-  # shellcheck disable=SC2016
-  printf '%s\n' '{"schemas":{"request":{"oneOf":[{"properties":{"method":{"const":"workspace.move"}}}],"$defs":{"WorkspaceMoveParams":{"required":["workspace_id","insert_index"],"properties":{"insert_index":{"type":"integer"}}}}}}}' > "$resp/3.out"
-  printf '%s\n' '{"sessions":[{"name":"fmtest","running":true,"socket_path":"/tmp/fmtest.sock"}]}' > "$resp/4.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$FM_FAKE_MOVER_LOG"
-printf '%s\n' '{"id":"fm-workspace-move","result":{"type":"workspace_list","workspaces":[{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"w2","label":"firstmate/old · p:AbCdEfGhIjKlMnOpQrStUv"},{"workspace_id":"w6","label":"└ new-first · p:ZyXwVuTsRqPoNmLkJiHgFe"},{"workspace_id":"w3","label":"2ndmate-alpha"},{"workspace_id":"w4","label":"2ndmate-bravo"},{"workspace_id":"w5","label":"└ bravo-child · p:QqWwEeRrTtYyUuIiOoPpAa"}]}}'
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_HERDR_SCRIPT_STATUS=1 \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_LOG="$mover_log" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_focus_snapshot() { printf "w4\tw4:t1"; }; fm_backend_herdr_projection_focus_restore() { return 0; }; fm_backend_herdr_projection_order_best_effort fmtest w6 firstmate' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "intervening parent ordering must not fail the spawn: $out"
-  [ -z "$out" ] || fail "legitimate intervening parent ordering emitted a warning: $out"
-  [ "$(cat "$mover_log")" = "$(cd /tmp && pwd -P)/fmtest.sock"$'\t'"w6"$'\t'"2" ] \
-    || fail "intervening parent block prevented the owning-parent insertion: $(cat "$mover_log")"
-  pass "herdr presentation ordering: intervening parent child blocks remain traversable"
-}
 
-test_projection_order_human_spaces_never_move_targets() {
-  local dir log resp fb mover mover_log out status
-  dir="$TMP_ROOT/projection-order-human"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; mover_log="$dir/mover.log"
-  : > "$log"; : > "$mover_log"
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"wH1","label":"notes"},{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"wH2","label":"scratch"},{"workspace_id":"w2","label":"2ndmate-alpha"},{"workspace_id":"w3","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe"}]}}' > "$resp/1.out"
-  printf '%s\n' '{"client":{"version":"0.7.4","protocol":16},"server":{"running":true}}' > "$resp/2.out"
-  # shellcheck disable=SC2016
-  printf '%s\n' '{"schemas":{"request":{"oneOf":[{"properties":{"method":{"const":"workspace.move"}}}],"$defs":{"WorkspaceMoveParams":{"required":["workspace_id","insert_index"],"properties":{"insert_index":{"type":"integer"}}}}}}}' > "$resp/3.out"
-  printf '%s\n' '{"sessions":[{"name":"fmtest","running":true,"socket_path":"/tmp/fmtest.sock"}]}' > "$resp/4.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$FM_FAKE_MOVER_LOG"
-printf '%s\n' '{"id":"fm-workspace-move","result":{"type":"workspace_list","workspaces":[{"workspace_id":"wH1","label":"notes"},{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"w3","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe"},{"workspace_id":"wH2","label":"scratch"},{"workspace_id":"w2","label":"2ndmate-alpha"}]}}'
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_HERDR_SCRIPT_STATUS=1 \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_LOG="$mover_log" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_focus_snapshot() { printf "w2\tw2:t1"; }; fm_backend_herdr_projection_focus_restore() { return 0; }; fm_backend_herdr_projection_order_best_effort fmtest w3 firstmate' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "human-interleaved ordering must not fail: $out"
-  [ "$(cat "$mover_log")" = "$(cd /tmp && pwd -P)/fmtest.sock"$'\t'"w3"$'\t'"2" ] \
-    || fail "human spaces changed the move target or insert index: $(cat "$mover_log")"
-  pass "herdr presentation ordering: only the exact new id moves; human spaces keep relative order"
-}
 
-test_projection_order_failure_warns_without_cleanup_or_spawn_failure() {
-  local dir log resp fb mover out status
-  dir="$TMP_ROOT/projection-order-failure"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; : > "$log"
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate","focused":true},{"workspace_id":"w2","label":"2ndmate-alpha","focused":false},{"workspace_id":"w3","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe","focused":false}]}}' > "$resp/1.out"
-  printf '%s\n' '{"client":{"version":"0.7.4","protocol":16},"server":{"running":true}}' > "$resp/2.out"
-  # shellcheck disable=SC2016 # $defs is a literal JSON Schema key.
-  printf '%s\n' '{"schemas":{"request":{"oneOf":[{"properties":{"method":{"const":"workspace.move"}}}],"$defs":{"WorkspaceMoveParams":{"required":["workspace_id","insert_index"],"properties":{"insert_index":{"type":"integer"}}}}}}}' > "$resp/3.out"
-  printf '%s\n' '{"sessions":[{"name":"fmtest","running":true,"socket_path":"/tmp/fmtest.sock"}]}' > "$resp/4.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-exit 9
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_HERDR_SCRIPT_STATUS=1 \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_focus_snapshot() { printf "w1\tw1:t1"; }; fm_backend_herdr_projection_focus_restore() { return 0; }; fm_backend_herdr_projection_order_best_effort fmtest w3 firstmate' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "a workspace.move failure must not fail the projected spawn"
-  assert_contains "$out" "workspace move failed or had an ambiguous response" \
-    "workspace.move failure did not report the best-effort warning"
-  assert_not_contains "$(cat "$log")" $'workspace\x1fclose' "workspace.move failure triggered workspace cleanup"
-  assert_not_contains "$(cat "$log")" $'pane\x1fclose' "workspace.move failure triggered pane cleanup"
-  assert_not_contains "$(cat "$log")" $'session\x1fdelete' "workspace.move failure triggered session cleanup"
-  pass "herdr presentation ordering: move failure warns, returns success, and grants no cleanup authority"
-}
 
-test_projection_order_ambiguous_existing_block_is_read_only() {
-  local dir log resp fb mover out status
-  dir="$TMP_ROOT/projection-order-ambiguous"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; : > "$log"
-  # Detached legacy child after the next parent breaks the contiguous block.
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate","focused":true},{"workspace_id":"w2","label":"2ndmate-alpha","focused":false},{"workspace_id":"w3","label":"firstmate/old · p:AbCdEfGhIjKlMnOpQrStUv","focused":false},{"workspace_id":"w4","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe","focused":false}]}}' > "$resp/1.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-echo called > "$FM_FAKE_MOVER_CALLED"
-exit 0
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_CALLED="$dir/called" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_order_best_effort fmtest w4 firstmate' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "ambiguous projection ordering must not fail the spawn"
-  assert_contains "$out" "ambiguous workspace layout" "ambiguous projection layout did not warn"
-  [ ! -e "$dir/called" ] || fail "ambiguous projection layout attempted workspace.move"
-  [ "$(wc -l < "$log" | tr -d '[:space:]')" = 1 ] \
-    || fail "ambiguous projection ordering did more than one read-only workspace list"
-  pass "herdr presentation ordering: an ambiguous existing worker block is warning-only and read-only"
-}
 
-test_projection_order_anchors_the_parent_by_exact_id() {
-  local dir log resp fb mover layout out status
-  layout='{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate","focused":false},{"workspace_id":"w7","label":"firstmate","focused":false},{"workspace_id":"wH","label":"human-notes","focused":false},{"workspace_id":"w8","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe","focused":false}]}}'
 
-  # Without the exact parent id, two same-labeled parents make the whole layout
-  # ambiguous and ordering steps aside.
-  dir="$TMP_ROOT/projection-order-dup-label"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; : > "$log"
-  printf '%s\n' "$layout" > "$resp/1.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-echo called > "$FM_FAKE_MOVER_CALLED"
-exit 0
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_CALLED="$dir/called" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_order_best_effort fmtest w8 firstmate' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "ambiguous projection ordering must not fail the spawn"
-  assert_contains "$out" "ambiguous workspace layout" "a duplicated parent label should make label-anchored ordering step aside"
-  [ ! -e "$dir/called" ] || fail "ambiguous parent label attempted workspace.move"
 
-  # With the launcher's exact parent workspace id, the same layout is no longer
-  # ambiguous: ordering gets past parent selection and stops later, on this
-  # fake's protocol, having still moved nothing.
-  dir="$TMP_ROOT/projection-order-exact-parent"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; : > "$log"
-  printf '%s\n' "$layout" > "$resp/1.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-echo called > "$FM_FAKE_MOVER_CALLED"
-exit 0
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_CALLED="$dir/called" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_order_best_effort fmtest w8 firstmate w7' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "exact-parent projection ordering must not fail the spawn"
-  assert_not_contains "$out" "ambiguous workspace layout" "the exact parent id should have resolved the duplicated label"
-  assert_contains "$out" "protocol" "exact-parent ordering did not reach its protocol gate"
-  [ ! -e "$dir/called" ] || fail "exact-parent ordering attempted workspace.move below the required protocol"
-  pass "herdr presentation ordering: the launcher's exact parent workspace id disambiguates a duplicated home label without moving anything"
-}
-
-test_projection_order_foreign_new_child_before_parent_is_read_only() {
-  local dir log resp fb mover out status
-  dir="$TMP_ROOT/projection-order-foreign-new"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; : > "$log"
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate","focused":true},{"workspace_id":"wH","label":"human-notes","focused":false},{"workspace_id":"w2","label":"└ foreign · p:AbCdEfGhIjKlMnOpQrStUv","focused":false},{"workspace_id":"w3","label":"2ndmate-alpha","focused":false},{"workspace_id":"w4","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe","focused":false}]}}' > "$resp/1.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-echo called > "$FM_FAKE_MOVER_CALLED"
-exit 0
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_CALLED="$dir/called" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_order_best_effort fmtest w4 firstmate' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "foreign new-child ordering must not fail the spawn"
-  assert_contains "$out" "ambiguous workspace layout" "foreign new child before its parent did not warn"
-  [ ! -e "$dir/called" ] || fail "foreign new child before its parent attempted workspace.move"
-  [ "$(wc -l < "$log" | tr -d '[:space:]')" = 1 ] \
-    || fail "foreign new-child ordering did more than one read-only workspace list"
-  pass "herdr presentation ordering: a foreign new-format child is warning-only and read-only"
-}
-
-test_projection_order_missing_parent_is_read_only() {
-  local dir log resp fb mover out status
-  dir="$TMP_ROOT/projection-order-missing-parent"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; : > "$log"
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"w2","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe"}]}}' > "$resp/1.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-echo called > "$FM_FAKE_MOVER_CALLED"
-exit 0
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_CALLED="$dir/called" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_order_best_effort fmtest w2 2ndmate-missing' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "missing parent must not fail the spawn"
-  assert_contains "$out" "ambiguous workspace layout" "missing parent did not warn"
-  [ ! -e "$dir/called" ] || fail "missing parent attempted workspace.move"
-  pass "herdr presentation ordering: missing owning parent is warning-only and read-only"
-}
 
 test_presentation_session_lock_path_is_shared_across_homes() {
   local dir log resp fb path_a path_b path_other path_tmp path_private
@@ -3446,31 +2815,6 @@ test_presentation_session_lock_path_rejects_malformed_socket() {
   pass "herdr presentation lock: null and missing socket paths fail closed"
 }
 
-test_projection_order_rejects_malformed_socket() {
-  local dir log resp fb mover out status
-  dir="$TMP_ROOT/projection-order-malformed-socket"; mkdir -p "$dir/responses"
-  log="$dir/log"; resp="$dir/responses"; mover="$dir/mover"; : > "$log"
-  printf '%s\n' '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate"},{"workspace_id":"wH","label":"2ndmate-alpha"},{"workspace_id":"w2","label":"└ new · p:ZyXwVuTsRqPoNmLkJiHgFe"}]}}' > "$resp/1.out"
-  printf '%s\n' '{"client":{"version":"0.7.4","protocol":16},"server":{"running":true}}' > "$resp/2.out"
-  # shellcheck disable=SC2016
-  printf '%s\n' '{"schemas":{"request":{"oneOf":[{"properties":{"method":{"const":"workspace.move"}}}],"$defs":{"WorkspaceMoveParams":{"required":["workspace_id","insert_index"],"properties":{"insert_index":{"type":"integer"}}}}}}}' > "$resp/3.out"
-  printf '%s\n' '{"sessions":[{"name":"fmtest","running":true,"socket_path":null}]}' > "$resp/4.out"
-  cat > "$mover" <<'SH'
-#!/usr/bin/env bash
-echo called > "$FM_FAKE_MOVER_CALLED"
-exit 0
-SH
-  chmod +x "$mover"
-  fb=$(make_herdr_fakebin "$dir")
-  out=$(PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_HERDR_SCRIPT_STATUS=1 \
-    FM_BACKEND_HERDR_WORKSPACE_MOVER="$mover" FM_FAKE_MOVER_CALLED="$dir/called" \
-    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_order_best_effort fmtest w2 firstmate' "$ROOT" 2>&1)
-  status=$?
-  [ "$status" -eq 0 ] || fail "malformed ordering socket must not fail the spawn"
-  assert_contains "$out" "ambiguous named session socket" "malformed ordering socket did not warn"
-  [ ! -e "$dir/called" ] || fail "malformed ordering socket attempted workspace.move"
-  pass "herdr presentation ordering: malformed socket metadata is warning-only and read-only"
-}
 
 test_projection_reclaim_refusal_matrix_is_non_mutating() {
   local dir state home other_home home_real journal legacy token label out mutation_log
@@ -3479,9 +2823,9 @@ test_projection_reclaim_refusal_matrix_is_non_mutating() {
   home_real=$(cd "$home" && pwd -P)
   token=$(bash -c '
     . "$0/bin/backends/herdr.sh"
-    token=$(fm_backend_herdr_projection_journal_create "$1" refusal-r1) || exit 1
+    token=$(herdr_fixture_journal_create "$1" refusal-r1) || exit 1
     label=$(fm_backend_herdr_projection_workspace_label refusal-r1 "$token")
-    fm_backend_herdr_projection_journal_bind \
+    herdr_fixture_journal_bind \
       "$1/refusal-r1.herdr-presentation" refusal-r1 "$2" fmtest \
       w2 w2:t2 w2:p2 w1 firstmate "$label" fm-refusal-r1 || exit 1
     printf "%s" "$token"
@@ -3489,7 +2833,7 @@ test_projection_reclaim_refusal_matrix_is_non_mutating() {
   journal="$state/refusal-r1.herdr-presentation"
   label="└ refusal-r1 · p:$token"
   mkdir -p "$state/legacy"
-  bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_journal_create "$1" refusal-r1 >/dev/null' \
+  bash -c '. "$0/bin/backends/herdr.sh"; herdr_fixture_journal_create "$1" refusal-r1 >/dev/null' \
     "$ROOT" "$state/legacy" || fail "could not create legacy reclaim fixture"
   legacy="$state/legacy/refusal-r1.herdr-presentation"
   mutation_log="$dir/mutations.log"; : > "$mutation_log"
@@ -3545,9 +2889,9 @@ test_projection_reclaim_replaces_only_exact_husk_and_advances_binding() {
   log="$dir/log"; resp="$dir/responses"; : > "$log"
   token=$(bash -c '
     . "$0/bin/backends/herdr.sh"
-    token=$(fm_backend_herdr_projection_journal_create "$1" fm-hibit-r1) || exit 1
+    token=$(herdr_fixture_journal_create "$1" fm-hibit-r1) || exit 1
     label=$(fm_backend_herdr_projection_workspace_label fm-hibit-r1 "$token")
-    fm_backend_herdr_projection_journal_bind \
+    herdr_fixture_journal_bind \
       "$1/fm-hibit-r1.herdr-presentation" fm-hibit-r1 "$2" fmtest \
       w2 w2:t2 w2:p2 w1 firstmate "$label" fm-fm-hibit-r1 || exit 1
     printf "%s" "$token"
@@ -3619,7 +2963,7 @@ test_projection_recovery_is_read_only_and_refuses_live_duplicate_risk() {
   local dir state log resp fb token journal out status calls
   dir="$TMP_ROOT/projection-recovery"; state="$dir/state"; mkdir -p "$dir/responses" "$state"
   log="$dir/log"; resp="$dir/responses"; : > "$log"
-  token=$(bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_projection_journal_create "$1" task-p3' "$ROOT" "$state")
+  token=$(bash -c '. "$0/bin/backends/herdr.sh"; herdr_fixture_journal_create "$1" task-p3' "$ROOT" "$state")
   journal="$state/task-p3.herdr-presentation"
   printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate/task-p3 · p:%s"},{"workspace_id":"w2","label":"copy/task-p3 · p:%s"}]}}\n' "$token" "$token" > "$resp/1.out"
   printf '{"result":{"panes":[{"pane_id":"w1:p1","tab_id":"w1:t1"}]}}\n' > "$resp/2.out"
@@ -3697,7 +3041,7 @@ test_project_workspace_path_and_ambiguity_matrix() {
   dir="$TMP_ROOT/project-matrix"; mkdir -p "$dir"
   project="$dir/project"; other="$dir/other"
   git init -q "$project"; git init -q "$other"
-  for mode in native cwd foreign duplicate unknown numbered numbered-stale mixed malformed; do
+  for mode in native cwd foreign duplicate unknown numbered numbered-stale mixed unowned-projection malformed; do
     mkdir -p "$dir/$mode/responses"
     log="$dir/$mode/log"; resp="$dir/$mode/responses"; : > "$log"
     case "$mode" in
@@ -3722,6 +3066,9 @@ test_project_workspace_path_and_ambiguity_matrix() {
       mixed)
         printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"}]}}\n' > "$resp/1.out"
         jq -n --arg p "$project" --arg o "$other" '{result:{panes:[{workspace_id:"w1",cwd:$p},{workspace_id:"w1",cwd:$o}]}}' > "$resp/2.out" ;;
+      unowned-projection)
+        printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"└ worker · p:ABCDEFGHIJKLMNOPQRSTUV"}]}}\n' > "$resp/1.out"
+        jq -n --arg p "$project" '{result:{panes:[{workspace_id:"w1",cwd:$p}]}}' > "$resp/2.out" ;;
       malformed)
         printf '{"result":{}}\n' > "$resp/1.out"
         printf '{"result":{"panes":[]}}\n' > "$resp/2.out" ;;
@@ -3733,13 +3080,13 @@ test_project_workspace_path_and_ambiguity_matrix() {
     rc=$?
     case "$mode" in
       native|cwd) [ "$rc" = 0 ] && [ "$out" = w1 ] || fail "$mode project match failed: $out" ;;
-      foreign) [ "$rc" = 0 ] && [ "$out" = wnew ] || fail 'distinct project should create its own Space' ;;
+      foreign|mixed) [ "$rc" = 0 ] && [ "$out" = wnew ] || fail 'distinct project should create its own Space' ;;
       *)
         [ "$rc" -ne 0 ] || fail "$mode inventory should refuse"
         assert_not_contains "$(cat "$log")" $'\x1f''create' "$mode must not create any endpoint" ;;
     esac
   done
-  pass 'project Space resolution prefers native paths and fails closed on duplicate, mixed, unknown and malformed identity'
+  pass 'project Space resolution prefers native paths and skips mixed containers and fails closed on duplicate, unknown and malformed identity'
 }
 
 # The current checkout may itself be linked. Mask only its origin read, without
@@ -3762,6 +3109,93 @@ SH
     bash -c '. "$0/bin/fm-wake-lib.sh"; fm_treehouse_project_identity "$0"' "$ROOT")
   [ "$out" = "$expected" ] || fail "originless identity did not resolve the primary checkout: $out"
   pass 'originless project identity resolves the primary root without changing shared Git config'
+}
+
+# Shared project Spaces accept husk recovery only through this home's exact
+# task record; cwd, labels, and another home's record grant no ownership.
+test_project_task_husk_requires_exact_own_binding() {
+  local dir mode out rc log
+  dir="$TMP_ROOT/owned-project-husk"; mkdir -p "$dir/home/state" "$dir/foreign/state"
+  for mode in own foreign unbound window workspace live symlink; do
+    log="$dir/$mode.log"; : > "$log"
+    rm -f "$dir/created" "$dir/home/state/task.meta"
+    printf 'backend=herdr\nherdr_session=fmtest\nherdr_workspace_id=w1\nherdr_tab_id=w1:t1\nherdr_pane_id=w1:p1\nwindow=fmtest:w1:p1\n' > "$dir/foreign/state/task.meta"
+    cp "$dir/foreign/state/task.meta" "$dir/home/state/task.meta"
+    case "$mode" in
+      unbound) rm "$dir/home/state/task.meta" ;;
+      window) sed 's/window=.*/window=fmtest:w1:p9/' "$dir/home/state/task.meta" > "$dir/meta"; mv "$dir/meta" "$dir/home/state/task.meta" ;;
+      workspace) sed 's/herdr_workspace_id=.*/herdr_workspace_id=w9/' "$dir/home/state/task.meta" > "$dir/meta"; mv "$dir/meta" "$dir/home/state/task.meta" ;;
+      symlink) rm "$dir/home/state/task.meta"; ln -s "$dir/foreign/state/task.meta" "$dir/home/state/task.meta" ;;
+    esac
+    out=$(FM_HOME="$dir/home" OWN_MODE="$mode" OWN_DIR="$dir" OWN_LOG="$log" bash -c '
+      . "$0/bin/backends/herdr.sh"
+      fm_backend_herdr_pane_for_tab() { printf w1:p1; }
+      fm_backend_herdr_tab_is_husk() { [ "$OWN_MODE" != live ]; }
+      fm_backend_herdr_cli() {
+        printf "%s\n" "$*" >> "$OWN_LOG"
+        case "$2 $3" in
+          "tab list")
+            if [ -f "$OWN_DIR/created" ]; then
+              printf "{\"result\":{\"tabs\":[{\"tab_id\":\"w1:t2\",\"label\":\"fm-task\"}]}}"
+            else
+              printf "{\"result\":{\"tabs\":[{\"tab_id\":\"w1:t1\",\"label\":\"fm-task\"}]}}"
+            fi ;;
+          "tab create") touch "$OWN_DIR/created"; printf "{\"result\":{\"tab\":{\"tab_id\":\"w1:t2\"},\"root_pane\":{\"pane_id\":\"w1:p2\"}}}" ;;
+          "tab close") : ;;
+          *) return 1 ;;
+        esac
+      }
+      record="$FM_HOME/state/task.meta"
+      [ "$OWN_MODE" != foreign ] || record="$OWN_DIR/foreign/state/task.meta"
+      fm_backend_herdr_create_task fmtest:w1 fm-task /same-cwd "" preserve-existing "$record"
+    ' "$ROOT" 2>&1); rc=$?
+    if [ "$mode" = own ]; then
+      [ "$rc" = 0 ] && [ "$out" = 'w1:t2 w1:p2' ] || fail "bound own husk did not recover: $out"
+      assert_contains "$(cat "$log")" 'tab close w1:t1' 'owned husk was not retired'
+    else
+      [ "$rc" != 0 ] || fail "$mode duplicate was adopted"
+      assert_not_contains "$(cat "$log")" 'tab create' "$mode refusal created an endpoint"
+      assert_not_contains "$(cat "$log")" 'tab close' "$mode refusal closed an endpoint"
+    fi
+  done
+  pass 'project husks require an exact own record; unbound, foreign, inconsistent and live endpoints survive'
+}
+
+test_project_spaces_exclude_operating_homes_with_same_origin() {
+  local dir mode out rc log resp fb project primary mate candidate
+  dir="$TMP_ROOT/project-home-identity"; mkdir -p "$dir"
+  project="$dir/project"; primary="$dir/primary"; mate="$dir/mate"
+  for out in "$project" "$primary" "$mate"; do
+    git init -q "$out"
+    git -C "$out" remote add origin https://example.invalid/firstmate.git
+  done
+  mkdir -p "$primary/state"; printf 'mate\n' > "$mate/.fm-secondmate-home"
+  mkdir -p "$primary/projects/primary"
+  git init -q "$primary/projects/primary"
+  git -C "$primary/projects/primary" remote add origin https://example.invalid/firstmate.git
+  for mode in reuse absent source; do
+    mkdir -p "$dir/$mode/responses"; resp="$dir/$mode/responses"; log="$dir/$mode/log"; : > "$log"
+    jq -n --arg mode "$mode" '{result:{workspaces:([{workspace_id:"wmain",label:"operator"},{workspace_id:"wmate",label:"companion"}]+if $mode=="reuse" then [{workspace_id:"wproject",label:"custom project"}] else [] end)}}' > "$resp/1.out"
+    jq -n --arg mode "$mode" --arg home "$primary" --arg mate "$mate" --arg project "$project" '{result:{panes:([{workspace_id:"wmain",cwd:$home},{workspace_id:"wmate",cwd:$mate}]+if $mode=="reuse" then [{workspace_id:"wproject",cwd:$project}] else [] end)}}' > "$resp/2.out"
+    printf '{"result":{"workspace":{"workspace_id":"wnew"},"tab":{"tab_id":"seed"}}}\n' > "$resp/3.out"
+    fb=$(make_herdr_fakebin "$dir/$mode")
+    if [ "$mode" = source ]; then candidate=$primary; else candidate=$project; fi
+    out=$(PATH="$fb:$PATH" FM_HOME="$primary" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" bash -c '
+      . "$0/bin/fm-backend.sh"; fm_backend_source herdr; . "$0/bin/fm-wake-lib.sh"
+      fm_backend_herdr_project_workspace_ensure fmtest "$1" || exit
+      printf "%s" "$FM_BACKEND_HERDR_WS_ID"
+    ' "$ROOT" "$candidate" 2> "$dir/$mode/err"); rc=$?
+    if [ "$mode" = reuse ]; then
+      [ "$rc" = 0 ] && [ "$out" = wproject ] || fail "operating homes confused project reuse: $out $(cat "$dir/$mode/err")"
+      assert_not_contains "$(cat "$log")" $'\x1f''create' 'project reuse created a duplicate'
+    else
+      [ "$rc" = 0 ] && [ "$out" = wnew ] || fail "absent project adopted an operating home: $out"
+      if [ "$mode" = source ]; then
+        assert_contains "$(cat "$log")" "$primary/projects/primary" 'source-home placement did not use its registered project copy'
+      fi
+    fi
+  done
+  pass 'same-origin management and secondmate home Spaces do not select or block the project Space'
 }
 
 # --- target parsing, key normalization ---------------------------------------
@@ -5988,22 +5422,9 @@ test_create_task_refuses_when_agent_state_ambiguous
 test_create_task_husk_replacement_creates_before_closing
 test_create_task_creates_and_parses_ids
 test_create_task_creates_with_no_focus_flag
-test_presentation_defaults_on_at_or_above_the_floor
-test_presentation_default_falls_back_below_the_floor
-test_presentation_unreadable_release_falls_back
-test_presentation_explicit_opt_in_survives_the_floor
-test_presentation_explicit_off_opts_out
-test_presentation_unrecognized_value_warns_and_keeps_the_default
-test_presentation_floor_warning_is_one_per_release
-test_presentation_floor_warning_marker_is_atomic_and_symlink_safe
-test_presentation_running_server_release_is_load_bearing
 test_release_floor_verdict_matches_the_measured_releases
 test_release_floor_verdict_survives_losing_either_signal
-test_presentation_preference_reports_three_distinct_states
-test_projection_journal_is_atomic_and_uses_128_bit_token
 test_projection_journal_v2_binds_and_advances_exact_endpoint
-test_projection_create_uses_exact_response_ids_and_leaves_one_task_pane
-test_projection_create_never_closes_a_concurrent_same_label_tab
 test_projection_focus_snapshot_requires_exact_workspace_and_tab
 test_projection_close_restores_exact_prior_focus
 test_projection_close_refuses_active_tab
@@ -6035,25 +5456,16 @@ test_endpoint_confirmed_gone_gates_on_structured_presence
 test_kill_refuses_when_presentation_lock_is_unavailable
 test_projection_seeded_prune_refuses_active_tab
 test_projection_label_builder_uses_corner_and_strips_owner_prefixes
-test_projection_order_moves_only_exact_new_workspace_and_preserves_relative_order
-test_projection_order_secondmate_parent_block
-test_projection_order_foreign_legacy_child_is_read_only
-test_projection_order_allows_intervening_parent_child_block
-test_projection_order_human_spaces_never_move_targets
-test_projection_order_failure_warns_without_cleanup_or_spawn_failure
-test_projection_order_ambiguous_existing_block_is_read_only
-test_projection_order_anchors_the_parent_by_exact_id
-test_projection_order_foreign_new_child_before_parent_is_read_only
-test_projection_order_missing_parent_is_read_only
 test_presentation_session_lock_path_is_shared_across_homes
 test_presentation_session_lock_path_rejects_malformed_socket
-test_projection_order_rejects_malformed_socket
 test_projection_reclaim_refusal_matrix_is_non_mutating
 test_projection_reclaim_replaces_only_exact_husk_and_advances_binding
 test_projection_recovery_is_read_only_and_refuses_live_duplicate_risk
 test_workspace_find_matches_only_this_homes_own_label
 test_list_live_scoped_to_this_homes_workspace_only
 test_project_workspace_path_and_ambiguity_matrix
+test_project_spaces_exclude_operating_homes_with_same_origin
+test_project_task_husk_requires_exact_own_binding
 test_originless_identity_uses_primary_checkout
 test_parse_target
 test_normalize_key
