@@ -8,8 +8,8 @@
 # Only a genuine primary, the native thread id and the existing session lock
 # may park. fm-lock.sh remains the sole writer of the lock and its sidecar.
 # Stop only revalidates the thread already recorded in that sidecar; a free,
-# legacy PID-only or other thread's lock needs an explicit owner claim through
-# fm-lock.sh or SessionStart. fm-turnend-guard.sh keeps its one-block legacy
+# legacy PID-only or other thread's lock is bound only by the native
+# SessionStart hook. fm-turnend-guard.sh keeps its one-block legacy
 # guard for a PID-only lock this app-server holds. The recorded thread attached
 # to another live app-server that holds the lock stays read-only here.
 # The lock verification is bounded to 8s plus 1s termination grace. It is
@@ -57,15 +57,14 @@ owned() { fm_session_lock_owned_by_self "$STATE"; }
 recorded() { [ "$(fm_session_lock_recorded_session_id "$STATE" || true)" = "$session" ]; }
 mine() { recorded && ! fm_session_lock_foreign_owner_live "$STATE"; }
 if ! recorded; then
-  notice 'FIRSTMATE SUPERVISION: the session lock does not record this native thread; Stop never claims it, so no checkpoint was started. The primary claims it explicitly with bin/fm-lock.sh.'
+  notice 'FIRSTMATE SUPERVISION: the session lock does not record this native thread; Stop never claims it, so no checkpoint was started. Only the native SessionStart hook records a primary thread.'
   exit 0
 fi
 if fm_session_lock_foreign_owner_live "$STATE"; then
   notice "FIRSTMATE SUPERVISION: live process $FM_SESSION_LOCK_FOREIGN_OWNER_PID owns the session lock for this thread; this attachment is read-only, so no checkpoint was started."
   exit 0
 fi
-# Revalidate through the existing writer, including a stale PID recorded by a
-# sandboxed tool in another PID namespace. A live foreign owner is never stolen.
+# Revalidate through the existing writer. A live foreign owner is never stolen.
 lock_status=0
 owned || (fm_exec_timed 8 1 "$SCRIPT_DIR/fm-lock.sh") >/dev/null 2>&1 || lock_status=$?
 fm_supervision_status "$STATE"
@@ -78,7 +77,7 @@ continuation() {
   printf 'Drain bin/fm-wake-drain.sh, handle its current wakes and permitted next fleet actions, then run its exact WAKE_ACK_REQUIRED command. Respect real captain/security waits and explicit stops.\n' >&2
   exit 2
 }
-owned || continuation "session-lock verification failed (exit $lock_status); repair this thread's session lock with bin/fm-lock.sh before ending"
+owned || continuation "session-lock verification failed (exit $lock_status); the next native Stop retries it outside the tool sandbox"
 
 bound=${FM_CODEX_STOP_CHECKPOINT:-20}
 case "$bound" in ''|*[!0-9]*|0) bound=20 ;; esac

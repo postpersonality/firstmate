@@ -269,7 +269,7 @@ block_stop() {
     fi
     printf '●  %s\n' "$reason"
     if [ "$LEGACY_CODEX_LOCK" -eq 1 ]; then
-      printf '●  This app-server holds a legacy PID-only session lock that names no thread. If this thread is the firstmate primary, bind it once with bin/fm-lock.sh so later Stops retain its checkpoint; any other thread ends without fleet actions.\n'
+      printf '●  This app-server holds a legacy PID-only session lock that names no thread. Only the native SessionStart hook binds the firstmate primary thread, outside the tool sandbox: restart this app-server and resume the primary thread so later Stops retain its checkpoint; any other thread ends without fleet actions.\n'
     fi
     printf '●%s\n' "$rule"
   } >&2
