@@ -139,8 +139,9 @@ A surviving endpoint remains in its recorded Space; reclaim never migrates other
 
 **Known limitation - a refusal before the record is republished leaves a stray husk pane** (follow-up bead `fm-herdr-rebind-leak-20260913`).
 The rebind registers no abort cleanup, so a refusal in the window between the new tab being created and the record being republished leaves that pane behind while the record still names the old, gone one.
-The stray pane holds a bare shell - the harness is not delivered until after publication - so the next reclaim cleans up after it: the re-created tab carries the same `fm-<id>` label, `tab create` finds it, classifies it a husk, and closes and replaces it.
-That self-heals only when the retry resolves the *same* workspace, which the placement rule above does not guarantee.
+The stray pane holds a bare shell - the harness is not delivered until after publication - but no exact task record binds that new endpoint.
+A retry preserves and refuses that unbound same-label tab; its cwd and label do not prove ownership in a shared project Space.
+The unresolved leak requires an explicit ownership reconciliation and is never swept or silently reclaimed.
 The worktree and the task's records are unaffected either way.
 
 ### Failure and rollback

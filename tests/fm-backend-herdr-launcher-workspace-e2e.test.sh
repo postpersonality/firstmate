@@ -27,22 +27,38 @@ spawn detached "$project_a" || fail 'detached spawn failed'
 [ "$(field detached herdr_workspace_id)" = "$existing_ws" ] || fail 'detached caller used a home or focused Space'
 [ "$(field detached herdr_tab_id)" != "$(field reuse herdr_tab_id)" ] || fail 'workers share a tab'
 pass 'detached caller uses the same project Space and a separate worker tab'
+old_detached=$(field detached herdr_pane_id)
+spawn detached "$project_a" || fail 'own restored husk recovery failed'
+[ "$(field detached herdr_workspace_id)" = "$existing_ws" ] || fail 'own husk recovery moved project Space'
+[ "$(field detached herdr_pane_id)" != "$old_detached" ] || fail 'own husk was not replaced'
+if lab pane get "$old_detached" >/dev/null 2>&1; then fail 'own old husk survived replacement'; fi
+lab pane get "$(field reuse herdr_pane_id)" >/dev/null || fail 'own recovery closed another worker'
+pass 'public spawn replaces only its own exactly recorded shell husk'
 # A source checkout and clone resolve through the established origin identity.
 git clone -q "$project_a.origin.git" "$TMP_ROOT/alpha-clone"
 raw=$(container "$TMP_ROOT/alpha-clone") || fail 'same-origin lookup failed'
 [ "${raw%%$'\t'*}" = "$HERDR_LAB_SESSION:$existing_ws" ] || fail 'source and clone created different project Spaces'
 pass 'source checkout and same-origin clone share project identity'
-# Firstmate is a project too: preserve the main management tab in that Space.
+# The management home shares Firstmate's origin but is not its project Space.
 firstmate="$TMP_ROOT/firstmate"; make_project "$firstmate"
-main=$(lab workspace create --cwd "$firstmate" --label firstmate --no-focus)
+git -C "$FM_HOME" init -q -b main
+git -C "$FM_HOME" remote add origin "$firstmate.origin.git"
+main=$(lab workspace create --cwd "$FM_HOME" --label 'operator desk' --no-focus)
 main_ws=$(printf '%s' "$main" | jq -r '.result.workspace.workspace_id')
 main_tab=$(printf '%s' "$main" | jq -r '.result.tab.tab_id')
 main_pane=$(printf '%s' "$main" | jq -r '.result.root_pane.pane_id')
+before_count=$(lab workspace list | jq '.result.workspaces | length')
 spawn_in_pane "$main_pane" core "$firstmate" || fail 'Firstmate project spawn failed'
-[ "$(field core herdr_workspace_id)" = "$main_ws" ] || fail 'Firstmate worker did not use project Space'
+core_ws=$(field core herdr_workspace_id)
+[ "$core_ws" != "$main_ws" ] || fail 'Firstmate worker entered management Space'
+[ "$(lab workspace list | jq '.result.workspaces | length')" = "$((before_count + 1))" ] || fail 'absent Firstmate project Space was not created once'
 [ "$(field core herdr_tab_id)" != "$main_tab" ] || fail 'Firstmate worker replaced orchestration tab'
+spawn core-detached "$firstmate" || fail 'detached Firstmate spawn failed'
+[ "$(field core-detached herdr_workspace_id)" = "$core_ws" ] || fail 'detached Firstmate caller did not reuse project Space'
+[ "$(field core-detached herdr_tab_id)" != "$(field core herdr_tab_id)" ] || fail 'Firstmate workers shared a tab'
 lab pane get "$main_pane" >/dev/null || fail 'Firstmate orchestration pane was closed'
-pass 'Firstmate worker gets its own tab; orchestration tab and existing workers survive'
+lab pane get "$(field core herdr_pane_id)" >/dev/null || fail 'detached spawn replaced existing Firstmate worker'
+pass 'same-origin management Space stays separate; pane-bound creation and detached project reuse get their own worker tabs'
 # Simultaneous public backend calls in separate homes share the session lock.
 project_c="$TMP_ROOT/gamma"; make_project "$project_c"
 mkdir -p "$TMP_ROOT/home-two/state"

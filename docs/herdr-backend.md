@@ -37,7 +37,7 @@ Prerequisites:
 - Herdr protocol 14 or newer, installed from [herdr.dev](https://herdr.dev).
 - `jq` for JSON responses.
 - The universal harness and toolchain requirements in [`configuration.md`](configuration.md#toolchain).
-- `python3` only for optional protocol-16 presentation-space ordering and native event subscription.
+- `python3` for optional legacy presentation cleanup safeguards and native event subscription.
 
 Herdr is dual-licensed AGPL-3.0-or-later or commercial.
 Firstmate invokes its CLI as a separate process.
@@ -97,7 +97,7 @@ Removing or upgrading the shadowing client is the durable fix.
 ## Watching and task containers
 
 Each new worker gets a separate tab in the Space for its logical project.
-This includes workers changing Firstmate itself: their tab is separate from the main orchestration tab even when both use the same project Space.
+Workers changing Firstmate itself also use their own project tabs, separate from the main orchestration Space.
 A persistent secondmate agent keeps its own `2ndmate-<id>` home container; workers launched from that home still use project Spaces.
 
 ### Watching tasks
@@ -123,7 +123,13 @@ A uniquely identified existing project Space is reused; an absent Space is creat
 Find/create is serialized across homes by the existing session-and-socket lock.
 No additional project registry or global Herdr setting is introduced.
 
-Multiple matching Spaces, conflicting project paths in one candidate, or a same-name Space with no usable path identity refuse with concrete candidate IDs.
+Operating-home paths, including same-origin secondmate homes identified by the existing home marker, are excluded from project candidates.
+This keeps Firstmate workers out of the main management Space while giving each worker its own project tab.
+When an operating source home is passed as the project, creation uses its distinct same-origin copy at the ordinary `projects/<name>` location; if that copy is unavailable, placement reports the concrete missing identity instead of creating an indistinguishable home Space.
+Mixed old home containers are passed over without moving or draining their workers.
+A disposable legacy Space is excluded through this home's matching task metadata, version 2 journal and live IDs; an unverified projection-shaped candidate remains explicit ambiguity.
+
+Multiple remaining project Spaces or a same-name Space with no usable path identity refuse with concrete candidate IDs.
 The conservative same-name check also recognizes the automatic-rename plugin's documented `[1-9] ` jump-key prefix, including a stale index; it grants no adoption authority.
 Labels alone never authorize placement, and unknown candidates are preserved.
 If several Spaces represent the same project, identify the intended layout before retrying rather than letting focus break the tie.
@@ -139,7 +145,9 @@ A detached caller with no pane claim uses the same project resolver without borr
 
 Existing task operations use their recorded endpoint IDs and do not move live workers into project Spaces.
 Recovery lists only this home's recorded, live-confirmed endpoints, including when another home has workers in the same Space.
-A same-label tab in a project Space is preserved rather than treated as an unowned husk that a new worker may replace.
+A same-label tab in a project Space can be replaced only when this home's exact task metadata binds its session, workspace, tab and pane, and the existing liveness classifier proves it dead or agent-free.
+A same-name label, matching cwd, another home's record or a symlinked record does not authorize replacement.
+An unbound or ambiguous tab is preserved and refused.
 A destroyed endpoint is re-created using the recorded session and logical project; a surviving endpoint stays where its record places it.
 Existing exact presentation bindings retain the recovery path below.
 Closing a Space's final tab can remove it, and a later spawn recreates it when no candidate remains.
@@ -148,7 +156,8 @@ Closing a Space's final tab can remove it, and a later spawn recreates it when n
 
 Older tasks may have a disposable one-task workspace, called a projection, with a `state/<id>.herdr-presentation` journal.
 New workers use [project Spaces](#project-space-identity) regardless of the retained `config/herdr-presentation-spaces` value.
-That compatibility file may still be inherited into secondmate homes, but it cannot create new projections or migrate existing workers.
+That retired preference is ignored and no longer inherited into secondmate homes.
+Production projection creation and ordering entrypoints have been removed; old journal recovery and cleanup remain supported.
 
 ### Presentation journal
 
@@ -240,7 +249,7 @@ Once the exact pane is confirmed gone, teardown retires the task's own journal w
 ### Restart recovery
 
 Recovery is deliberately conservative and presentation-only.
-An existing journal suppresses another projected create.
+An existing journal is reconciled before a replacement endpoint is created.
 Before any recovery mutation, Firstmate holds both the task spawn lock and the named-session presentation lock.
 That presentation lock lives in a namespace private to the OS account, so another account on the same host running its own Firstmate on Herdr cannot block this account's spawn, recovery, or teardown.
 A namespace at this account's name that another account owns, or that is not mode 700, is still refused and is never adopted, chowned, or removed.
@@ -538,7 +547,8 @@ Stopping and restarting a named Herdr server preserves workspace, tab, pane, and
 The underlying harness processes and live agent registrations do not survive.
 A restored same-labeled tab with a missing pane or no registered agent is a husk.
 
-Create replaces only a confidently dead or no-agent husk, creates the replacement before closing the old tab, and refuses live or unknown states.
+In a shared project Space, create replaces only a confidently dead or no-agent husk bound by this home's exact task metadata, creates the replacement before closing the old tab, and refuses live, unknown or unbound states.
+Persistent secondmate home containers retain their existing recovery path.
 This prevents closing the workspace's last tab before a replacement exists.
 
 ### Stale agent registrations
@@ -699,7 +709,7 @@ Tests use thin compatibility wrappers in `tests/herdr-test-safety.sh` and never 
 
 ## Active limits
 
-- Presentation ordering needs protocol 16 and Python and is best-effort only.
+- Legacy cleanup workspace moves require protocol 16 and Python; the existing cleanup guards decide whether a fallback is safe.
 - Mutable labels can collide; they are never placement or destructive authority.
 - A project with multiple matching Spaces or unknown same-name candidates refuses new placement until its identity is unambiguous.
 - Ghost and placeholder recognition uses ANSI de-emphasis when available; an unstyled glyph row carrying trailing non-idle text fails safely to `unknown`.
