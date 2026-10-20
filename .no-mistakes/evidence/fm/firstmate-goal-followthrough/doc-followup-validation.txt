@@ -1,0 +1,153 @@
+# Document-phase supplemental validation (DOC-F1 / TEST-FOLLOWUP-1), run 01M5CB1FM3S4GJGSJ45M4DMDBH
+# Owned scratch: /tmp/claude-1000/fm-docf1-validate.zyTrWV (dev:inode 43:3709985, mode 700, created empty by mktemp -d in this invocation; removed afterwards)
+# Driver: validate.sh run as: TMPDIR=$OWN timeout 300 taskset -c 0,1 validate.sh <worktree> $OWN -> driver_exit=1
+# The one FAIL is the driver's own follow-up assertion: teardown exited 3 at 'no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)' before reaching the completion gate, so the teardown outcome-gate branch is UNEXERCISED here, not a product failure.
+# tests/lib.sh probe: TMPDIR=$OWN bash -c '. tests/lib.sh' -> source_rc=1 (fm_test_pid_identity: namespace PID not visible in host /proc).
+
+==== A. DOC-F1: generated scout brief ====
+$ env FM_HOME=/tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home FM_ROOT_OVERRIDE=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/bin/fm-brief.sh sample-investigation sample --scout
+  | scaffolded: /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+PASS [exit 0]: fm-brief.sh scaffolds a scout brief
+
+$ grep_out /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/.agents/skills/captain-hold-lifecycle/SKILL.md /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
+  | Before reporting done, read `/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
+PASS [exit 0]: brief names the lifecycle skill (tests/fm-brief.test.sh assertion 1)
+
+$ grep_out pass its shared completion gate for the report and any visual review /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
+  | Never run its `complete` or declare this task's outcome yourself: firstmate must review the report against the original ask and pass its shared completion gate for the report and any visual review.
+PASS [exit 0]: brief keeps the visual-review cross-reference (tests/fm-brief.test.sh assertion 2)
+
+$ grep_out through its `hold` with `--origin sample-investigation` /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
+  | Before reporting done, read `/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
+PASS [exit 0]: brief tells the worker to hold captain calls against its own origin
+
+$ grep_out Never run its `complete` or declare this task's outcome yourself: firstmate must review the report /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
+  | Never run its `complete` or declare this task's outcome yourself: firstmate must review the report against the original ask and pass its shared completion gate for the report and any visual review.
+PASS [exit 0]: brief forbids worker self-attestation and hands the gate to firstmate
+
+$ grep_out read and follow /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
+PASS [exit 1]: brief no longer tells the worker to pass the gate itself
+
+  > # Definition of done
+  > Write your findings to `/tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/report.md`.
+  > The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.
+  > If your deliverable is a visual artifact the captain will review and iterate on, use the lavish-axi rule: arm your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled <source-id> <sequence> to conclude and retire your board.
+  > Before reporting done, read `/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
+  > Never run its `complete` or declare this task's outcome yourself: firstmate must review the report against the original ask and pass its shared completion gate for the report and any visual review.
+  > When the report is complete, append `done [at=<epoch>]: {one-line conclusion}` to the status file and stop.
+  > If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
+
+==== B. Division of labor the brief now describes (completion_required=1 scout) ====
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/split complete sample-outcome --none
+  | fm-captain-hold: review the requested outcome: use --fulfilled or name authorized --remaining / --firstmate-action tasks
+PASS [exit 1]: worker-style complete --none without an outcome flag is refused
+
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/split hold sample-call --title Sample captain call --reason Choose option A or B --origin sample-outcome
+  | sample-call
+PASS [exit 0]: worker-style hold of a captain call with --origin succeeds
+
+$ tdn /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/split sample-outcome
+  | error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+PASS [exit 3]: teardown refuses before firstmate's outcome review
+
+FAIL: teardown refusal came from another gate
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/split complete sample-outcome sample-call --fulfilled
+  | complete: sample-outcome captain-call inventory reviewed (sample-call)
+PASS [exit 0]: firstmate records the outcome review with the held inventory
+
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/split verify sample-outcome
+  | verified: sample-outcome captain-call inventory
+PASS [exit 0]: verify passes after firstmate's review
+
+==== C. S8 downstream: seal is bound to kind and spawn generation ====
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/seal complete sample-outcome --none --fulfilled
+  | complete: sample-outcome captain-call inventory reviewed
+PASS [exit 0]: scout fulfilled review
+
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/seal verify sample-outcome
+  | verified: sample-outcome captain-call inventory
+PASS [exit 0]: verify passes for the reviewed incarnation
+
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/seal verify sample-outcome
+  | fm-captain-hold: origin sample-outcome has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+PASS [exit 1]: verify refuses after a new spawn_gen (what relaunch records)
+
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/seal complete sample-outcome --none --fulfilled
+  | complete: sample-outcome captain-call inventory reviewed
+PASS [exit 0]: fresh review re-attests the replacement
+
+$ cap /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/seal verify sample-outcome
+  | fm-captain-hold: origin sample-outcome has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+PASS [exit 1]: verify refuses after scout promotion to ship
+
+checks=16 failed=1
+
+===== driver source =====
+#!/usr/bin/env bash
+# Bounded offline checks; every fixture path stays under $OWN/fx.
+set -u
+ROOT=$1 OWN=$2
+FX="$OWN/fx"; mkdir "$FX" || exit 1
+TASKS_AXI_BIN=$(command -v tasks-axi)
+checks=0 failed=0
+check() { # <label> <expected: ok|refuse> <cmd...>
+  local label=$1 want=$2 rc; shift 2
+  checks=$((checks+1))
+  printf '$ %s\n' "$*"
+  "$@" > "$FX/last.out" 2>&1; rc=$?
+  sed 's/^/  | /' "$FX/last.out" | head -6
+  if { [ "$want" = ok ] && [ "$rc" = 0 ]; } || { [ "$want" = refuse ] && [ "$rc" != 0 ]; }; then
+    printf 'PASS [exit %s]: %s\n\n' "$rc" "$label"
+  else
+    failed=$((failed+1)); printf 'FAIL [exit %s]: %s\n\n' "$rc" "$label"
+  fi
+}
+make_home() { # <name> <kind>
+  local home="$FX/$1" id=sample-outcome
+  mkdir -p "$home/data/$id" "$home/state" "$home/config" "$home/projects" "$home/fakebin"
+  cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$home/data/backlog.md"
+  for t in tmux treehouse no-mistakes gh gh-axi; do printf '#!/usr/bin/env bash\nexit 0\n' > "$home/fakebin/$t"; chmod +x "$home/fakebin/$t"; done
+  (cd "$home" && tasks-axi add "$id" "Working evaluator on the saved corpus" >/dev/null && tasks-axi start "$id" >/dev/null)
+  printf '%s\n' "window=firstmate:fm-$id" "worktree=$home/projects/missing-$id" "project=$home/projects/sample" \
+    harness=codex "kind=$2" "mode=$2" "spawn_gen=fixture-$id" completion_required=1 > "$home/state/$id.meta"
+  printf '# Corpus and calibration plan\n' > "$home/data/$id/report.md"
+  printf 'done: bounded milestone saved\n' > "$home/state/$id.status"
+  printf '%s\n' "$home"
+}
+cap() { local home=$1; shift; PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-captain-hold.sh" "$@"; }
+tdn() { local home=$1; PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-teardown.sh" "$2"; }
+grep_out() { grep -F -- "$1" "$2"; }
+
+echo "==== A. DOC-F1: generated scout brief ===="
+mkdir -p "$FX/brief-home/data"
+check "fm-brief.sh scaffolds a scout brief" ok env FM_HOME="$FX/brief-home" FM_ROOT_OVERRIDE="$ROOT" "$ROOT/bin/fm-brief.sh" sample-investigation sample --scout
+B="$FX/brief-home/data/sample-investigation/brief.md"
+check "brief names the lifecycle skill (tests/fm-brief.test.sh assertion 1)" ok grep_out "$ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md" "$B"
+check "brief keeps the visual-review cross-reference (tests/fm-brief.test.sh assertion 2)" ok grep_out "pass its shared completion gate for the report and any visual review" "$B"
+check "brief tells the worker to hold captain calls against its own origin" ok grep_out 'through its `hold` with `--origin sample-investigation`' "$B"
+check "brief forbids worker self-attestation and hands the gate to firstmate" ok grep_out 'Never run its `complete` or declare this task'"'"'s outcome yourself: firstmate must review the report' "$B"
+check "brief no longer tells the worker to pass the gate itself" refuse grep_out "read and follow" "$B"
+sed -n '/^# Definition of done/,/^If your findings/p' "$B" | sed 's/^/  > /'; echo
+
+echo "==== B. Division of labor the brief now describes (completion_required=1 scout) ===="
+H=$(make_home split scout)
+check "worker-style complete --none without an outcome flag is refused" refuse cap "$H" complete sample-outcome --none
+check "worker-style hold of a captain call with --origin succeeds" ok cap "$H" hold sample-call --title "Sample captain call" --reason "Choose option A or B" --origin sample-outcome
+check "teardown refuses before firstmate's outcome review" refuse tdn "$H" sample-outcome
+grep -q 'completion gate' "$FX/last.out" && echo "  (refusal names the completion gate)" || { failed=$((failed+1)); echo "FAIL: teardown refusal came from another gate"; }
+check "firstmate records the outcome review with the held inventory" ok cap "$H" complete sample-outcome sample-call --fulfilled
+check "verify passes after firstmate's review" ok cap "$H" verify sample-outcome
+
+echo "==== C. S8 downstream: seal is bound to kind and spawn generation ===="
+H=$(make_home seal scout)
+check "scout fulfilled review" ok cap "$H" complete sample-outcome --none --fulfilled
+check "verify passes for the reviewed incarnation" ok cap "$H" verify sample-outcome
+printf 'spawn_gen=replacement\n' >> "$H/state/sample-outcome.meta"
+check "verify refuses after a new spawn_gen (what relaunch records)" refuse cap "$H" verify sample-outcome
+check "fresh review re-attests the replacement" ok cap "$H" complete sample-outcome --none --fulfilled
+printf 'kind=ship\n' >> "$H/state/sample-outcome.meta"
+check "verify refuses after scout promotion to ship" refuse cap "$H" verify sample-outcome
+
+echo "checks=$checks failed=$failed"
+[ "$failed" = 0 ]

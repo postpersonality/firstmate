@@ -1,0 +1,519 @@
+
+
+==== S0 setup: real spawn of automatic-backlog scouts and a ship in the lab home ====
+
+$ timeout 170 bin/fm-spawn.sh corpus-scout $LAB/projects/sample --scout --harness sleep\ 900 
+spawned corpus-scout harness=sleep kind=scout window=firstmate:fm-corpus-scout worktree=$LAB/projects/sample-wt1
+[exit 0]
+CHECK PASS: fm-spawn launches scout corpus-scout
+
+$ timeout 170 bin/fm-spawn.sh gate-scout $LAB/projects/sample --scout --harness sleep\ 900 
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+spawned gate-scout harness=sleep kind=scout window=firstmate:fm-gate-scout worktree=$LAB/projects/sample-wt2
+[exit 0]
+CHECK PASS: fm-spawn launches scout gate-scout
+
+$ timeout 170 bin/fm-spawn.sh promo-scout $LAB/projects/sample --scout --harness sleep\ 900 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+spawned promo-scout harness=sleep kind=scout window=firstmate:fm-promo-scout worktree=$LAB/projects/sample-wt3
+[exit 0]
+CHECK PASS: fm-spawn launches scout promo-scout
+
+$ timeout 170 bin/fm-spawn.sh collect-ship $LAB/projects/sample --mode local-only --yolo off --harness sleep\ 900 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+notice: collect-ship ships mode=local-only while the standing posture for sample is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned collect-ship harness=sleep kind=ship mode=local-only yolo=off window=firstmate:fm-collect-ship worktree=$LAB/projects/sample-wt4
+[exit 0]
+CHECK PASS: fm-spawn launches ship collect-ship
+
+$ grep -E \^\(kind\|spawn_gen\|completion_required\)= $LAB/state/corpus-scout.meta 
+kind=scout
+spawn_gen=s1792490959.1914.6733
+completion_required=1
+CHECK PASS: spawn recorded completion_required=1 for corpus-scout
+
+$ grep -E \^\(kind\|spawn_gen\|completion_required\)= $LAB/state/collect-ship.meta 
+kind=ship
+spawn_gen=s1792490971.8239.29916
+completion_required=1
+CHECK PASS: spawn recorded completion_required=1 for collect-ship
+
+$ fields corpus-scout 
+  id: corpus-scout
+  state: in_flight
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_kind: "-"
+  hold_until: "-"
+  kind: scout
+CHECK PASS: spawned rows are In flight
+window: bash
+window: fm-corpus-scout
+window: fm-gate-scout
+window: fm-promo-scout
+window: fm-collect-ship
+
+
+==== S1 milestone-only acceptance is refused (saved corpus + plan is not the working evaluator) ====
+
+$ bin/fm-captain-hold.sh complete corpus-scout --none 
+fm-captain-hold: review the requested outcome: use --fulfilled or name authorized --remaining / --firstmate-action tasks
+[exit 1]
+CHECK PASS: captain-call-only complete is refused
+
+$ bin/fm-teardown.sh corpus-scout 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-captain-hold: origin corpus-scout has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+REFUSED: task corpus-scout has not passed its outcome and captain-call completion gate.
+Review the requested outcome and its remaining work through bin/fm-captain-hold.sh before teardown.
+[exit 1]
+CHECK PASS: unforced teardown refuses the unreviewed milestone
+
+$ bin/fm-tasks-axi.sh done corpus-scout 
+fm-captain-hold: origin corpus-scout has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+fm-tasks-axi: task corpus-scout must pass its outcome review before closing
+[exit 2]
+CHECK PASS: done refuses before review
+
+$ bin/fm-tasks-axi.sh done --keep 0 --note flags\ first corpus-scout 
+fm-captain-hold: origin corpus-scout has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+fm-tasks-axi: task corpus-scout must pass its outcome review before closing
+[exit 2]
+CHECK PASS: done with value flags before the id refuses
+
+$ bin/fm-tasks-axi.sh task done --note noun\ first corpus-scout 
+fm-captain-hold: origin corpus-scout has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+fm-tasks-axi: task corpus-scout must pass its outcome review before closing
+[exit 2]
+CHECK PASS: task-noun done refuses
+
+$ bin/fm-tasks-axi.sh close --report data/corpus-scout/report.md corpus-scout 
+fm-captain-hold: origin corpus-scout has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+fm-tasks-axi: task corpus-scout must pass its outcome review before closing
+[exit 2]
+CHECK PASS: close with --report before the id refuses
+
+$ fields corpus-scout 
+  id: corpus-scout
+  state: in_flight
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_kind: "-"
+  hold_until: "-"
+  kind: scout
+CHECK PASS: refusals left the origin In flight
+CHECK PASS: refusals kept task record and worktree
+
+
+==== S2 remaining executable work is filed as an ordinary task and survives cleanup ====
+
+$ bin/fm-captain-hold.sh complete corpus-scout --none --remaining corpus-missing 
+fm-captain-hold: remaining task corpus-missing is absent or unreadable in this home's backlog and archive
+[exit 1]
+CHECK PASS: a missing remaining task is refused
+
+$ bin/fm-captain-hold.sh complete corpus-scout --none --remaining corpus-scout 
+fm-captain-hold: origin corpus-scout cannot be its own remaining work
+[exit 1]
+CHECK PASS: the origin cannot vouch for itself
+
+$ bin/fm-captain-hold.sh complete corpus-scout --none --remaining corpus-implement 
+complete: corpus-scout captain-call inventory reviewed
+[exit 0]
+CHECK PASS: complete --remaining corpus-implement is accepted
+
+$ grep -E \^completion_\(work\|reviewed\)= $LAB/state/corpus-scout.meta 
+completion_work=worker:corpus-implement
+completion_reviewed=scout:s1792490959.1914.6733
+CHECK PASS: the reference and seal are recorded on the origin
+
+$ bin/fm-captain-hold.sh verify corpus-scout 
+verified: corpus-scout captain-call inventory
+[exit 0]
+CHECK PASS: verify passes
+(lab: ended the corpus-scout worker pane through its tty)
+
+$ bin/fm-teardown.sh corpus-scout 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-remote-job-reap-orphans: cannot scan this account's processes for remote job workers
+teardown corpus-scout complete (window firstmate:fm-corpus-scout, worktree $LAB/projects/sample-wt1)
+Backlog: corpus-scout is closed in $LAB/data/backlog.md. Run bin/fm-tasks-axi.sh ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due.
+[exit 0]
+CHECK PASS: unforced teardown now proceeds
+
+$ fields corpus-scout 
+  id: corpus-scout
+  state: done
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_kind: "-"
+  hold_until: "-"
+  kind: scout
+CHECK PASS: origin closed Done
+
+$ bin/fm-tasks-axi.sh ready 
+count: 1
+ready[1]{id,state,kind,repo,title}:
+  corpus-implement,queued,ship,"-",Implement and assess the authorized evaluator on the labelled corpus
+ready_public_followups: 0 delivery-ready obligations
+help[1]:
+  - Run `tasks-axi start <id>` to dispatch one of these
+CHECK PASS: remaining work is still queued and visible to ready
+
+$ fields corpus-implement 
+  id: corpus-implement
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_kind: "-"
+  hold_until: "-"
+  kind: ship
+CHECK PASS: remaining work stays queued
+CHECK PASS: teardown removed the origin task record ($LAB/state/corpus-scout.meta absent)
+
+
+==== S3 a prepared firstmate-owned action must be handled, not parked for firstmate's own next move ====
+
+$ bin/fm-captain-hold.sh complete collect-ship --none --firstmate-action collect-run 
+fm-captain-hold: firstmate action collect-run is actionable now; handle it before accepting collect-ship, or record its real external gate
+[exit 1]
+CHECK PASS: a ready firstmate action blocks acceptance
+
+$ fields collect-run 
+  id: collect-run
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_kind: "-"
+  hold_until: "-"
+  kind: firstmate
+CHECK PASS: the refused handoff kept its owner on the row
+
+$ grep -E \^completion_work= $LAB/state/collect-ship.meta 
+completion_work=firstmate:collect-run
+CHECK PASS: the refused handoff kept its reference on the origin
+
+$ bin/fm-captain-hold.sh complete collect-ship --none --fulfilled 
+fm-captain-hold: outcome collect-ship still owes remaining task collect-run
+[exit 1]
+CHECK PASS: --fulfilled cannot erase the outstanding action
+
+$ bin/fm-teardown.sh collect-ship 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-captain-hold: origin collect-ship has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+REFUSED: task collect-ship has not passed its outcome and captain-call completion gate.
+Review the requested outcome and its remaining work through bin/fm-captain-hold.sh before teardown.
+[exit 1]
+CHECK PASS: ship teardown refuses while the action is owed
+
+$ bin/fm-tasks-axi.sh hold collect-run --kind future --reason my\ own\ next\ step\ later 
+fm-tasks-axi: firstmate action collect-run needs a real captain, external, date or dependency gate; an undated future wait cannot hide its next action
+[exit 2]
+CHECK PASS: undated future wait cannot hide the action
+
+$ bin/fm-tasks-axi.sh hold --kind parked --reason my\ own\ next\ step\ later collect-run 
+fm-tasks-axi: firstmate action collect-run needs a real captain, external, date or dependency gate; an undated parked wait cannot hide its next action
+[exit 2]
+CHECK PASS: flags-first parked wait cannot hide the action
+
+$ bin/fm-tasks-axi.sh task hold --reason my\ own\ next\ step\ later --kind load collect-run 
+fm-tasks-axi: firstmate action collect-run needs a real captain, external, date or dependency gate; an undated load wait cannot hide its next action
+[exit 2]
+CHECK PASS: task-noun load wait cannot hide the action
+
+$ bin/fm-tasks-axi.sh hold collect-run --reason later 
+fm-tasks-axi: firstmate action collect-run needs a real captain, external, date or dependency gate; an undated untyped wait cannot hide its next action
+[exit 2]
+CHECK PASS: an untyped hold cannot hide the action
+CHECK PASS: refused holds left the backlog byte-identical
+
+$ timeout 170 bin/fm-spawn.sh collect-run $LAB/projects/sample --mode local-only --yolo off --harness sleep\ 900 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+notice: collect-run ships mode=local-only while the standing posture for sample is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+backlog item collect-run is a firstmate row, which is never handed to a worker
+error: this home's backlog item collect-run is not dispatchable in state queued no no; refusing before creating its endpoint or local copy
+[exit 1]
+CHECK PASS: a firstmate row is never dispatched to a worker
+CHECK PASS: dispatch refusal published no task record ($LAB/state/collect-run.meta absent)
+CHECK PASS: dispatch refusal created no endpoint (bash fm-collect-ship fm-gate-scout fm-promo-scout )
+
+$ bin/fm-captain-hold.sh complete collect-ship --none --firstmate-action collect-run 
+fm-captain-hold: firstmate action collect-run is actionable now; handle it before accepting collect-ship, or record its real external gate
+[exit 1]
+CHECK PASS: marking the action In flight is not handling it
+
+$ bin/fm-tasks-axi.sh done collect-run 
+ok: done collect-run -> Done
+help[1]:
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+[exit 0]
+CHECK PASS: firstmate performs the action and closes its row
+
+$ bin/fm-captain-hold.sh complete collect-ship --none --firstmate-action collect-run 
+complete: collect-ship captain-call inventory reviewed
+[exit 0]
+CHECK PASS: handled action clears the gate
+
+$ bin/fm-captain-hold.sh complete collect-ship --none --firstmate-action collect-run 
+complete: collect-ship captain-call inventory reviewed
+[exit 0]
+CHECK PASS: replaying complete converges
+CHECK PASS: replay did not rewrite metadata
+
+$ bin/fm-captain-hold.sh verify collect-ship 
+verified: collect-ship captain-call inventory
+[exit 0]
+CHECK PASS: verify passes after the action is Done
+(lab: ended the collect-ship worker pane through its tty)
+
+$ bin/fm-teardown.sh collect-ship 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-remote-job-reap-orphans: cannot scan this account's processes for remote job workers
+teardown collect-ship complete (window firstmate:fm-collect-ship, worktree $LAB/projects/sample-wt4)
+Backlog: collect-ship is closed in $LAB/data/backlog.md. Run bin/fm-tasks-axi.sh ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due.
+[exit 0]
+CHECK PASS: unforced ship teardown proceeds past the outcome gate
+
+$ fields collect-ship 
+  id: collect-ship
+  state: done
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_kind: "-"
+  hold_until: "-"
+  kind: ship
+CHECK PASS: ship origin closed Done
+
+
+==== S4 genuine gates stay valid; an origin-only blocker and a cleared gate do not ====
+
+$ bin/fm-captain-hold.sh hold gate-captain --reason Explicit\ user\ stop:\ do\ not\ collect\ until\ told 
+gate-captain
+[exit 0]
+CHECK PASS: captain hold for an explicit stop
+
+$ bin/fm-tasks-axi.sh hold gate-external --kind external --reason Executing\ job\ completion\ receipt 
+ok: hold gate-external -> held (external)
+task:
+  id: gate-external
+  title: Continuation external
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: Executing job completion receipt
+  hold_kind: external
+  hold_until: "-"
+  kind: task
+  repo: "-"
+  priority: "-"
+[exit 0]
+CHECK PASS: external hold for an executing job
+
+$ bin/fm-tasks-axi.sh hold gate-dated --kind future --until 2099-01-01 --reason External\ release\ window 
+ok: hold gate-dated -> held (future, until 2099-01-01)
+task:
+  id: gate-dated
+  title: Continuation dated
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: External release window
+  hold_kind: future
+  hold_until: 2099-01-01
+  kind: task
+  repo: "-"
+  priority: "-"
+[exit 0]
+CHECK PASS: dated hold
+
+$ bin/fm-captain-hold.sh complete gate-scout --none --firstmate-action gate-captain --firstmate-action gate-external --firstmate-action gate-dated --firstmate-action gate-dependency --remaining gate-running 
+complete: gate-scout captain-call inventory reviewed
+[exit 0]
+CHECK PASS: real captain/external/date/dependency gates and running worker work are accepted
+
+$ bin/fm-captain-hold.sh verify gate-scout 
+verified: gate-scout captain-call inventory
+[exit 0]
+CHECK PASS: verify passes with real gates
+
+$ bin/fm-captain-hold.sh verify gate-scout 
+fm-captain-hold: firstmate action gate-external is actionable now; handle it before accepting gate-scout, or record its real external gate
+[exit 1]
+CHECK PASS: a cleared external condition makes the action owed again
+
+$ bin/fm-tasks-axi.sh hold gate-external --kind future --reason later 
+fm-tasks-axi: firstmate action gate-external needs a real captain, external, date or dependency gate; an undated future wait cannot hide its next action
+[exit 2]
+CHECK PASS: the cleared action cannot be parked behind an undated wait
+
+$ bin/fm-tasks-axi.sh hold gate-external --kind external --reason Second\ job\ completion\ receipt 
+ok: hold gate-external -> held (external)
+task:
+  id: gate-external
+  title: Continuation external
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: Second job completion receipt
+  hold_kind: external
+  hold_until: "-"
+  kind: firstmate
+  repo: "-"
+  priority: "-"
+[exit 0]
+CHECK PASS: the action can be re-held behind a real external condition
+
+$ bin/fm-captain-hold.sh verify gate-scout 
+verified: gate-scout captain-call inventory
+[exit 0]
+CHECK PASS: verify passes again
+
+$ fields gate-after 
+  id: gate-after
+  state: queued
+  blocked: yes
+  blocked_by: gate-scout
+  held: no
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+CHECK PASS: gate-after is blocked only by its origin
+
+$ bin/fm-captain-hold.sh complete gate-scout --none --firstmate-action gate-after 
+fm-captain-hold: firstmate action gate-after is actionable now; handle it before accepting gate-scout, or record its real external gate
+[exit 1]
+CHECK PASS: an origin-only blocker is not a dependency gate
+
+$ bin/fm-captain-hold.sh complete gate-scout --none --firstmate-action gate-after 
+complete: gate-scout captain-call inventory reviewed
+[exit 0]
+CHECK PASS: an independent active blocker is a real dependency gate
+
+$ bin/fm-captain-hold.sh verify gate-scout 
+fm-captain-hold: firstmate action gate-after is actionable now; handle it before accepting gate-scout, or record its real external gate
+[exit 1]
+CHECK PASS: once the independent blocker is Done the origin cannot vouch
+
+$ bin/fm-teardown.sh gate-scout 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-captain-hold: firstmate action gate-after is actionable now; handle it before accepting gate-scout, or record its real external gate
+REFUSED: task gate-scout has not passed its outcome and captain-call completion gate.
+Review the requested outcome and its remaining work through bin/fm-captain-hold.sh before teardown.
+[exit 1]
+CHECK PASS: teardown refuses the origin that would unblock its own owed action
+
+$ bin/fm-captain-hold.sh complete gate-scout --none --remaining gate-after 
+fm-captain-hold: remaining task gate-after has conflicting owners
+[exit 1]
+CHECK PASS: conflicting owners for one task are refused
+
+
+==== S5 scout promotion invalidates the outcome attestation ====
+
+$ bin/fm-captain-hold.sh complete promo-scout --none --fulfilled 
+complete: promo-scout captain-call inventory reviewed
+[exit 0]
+CHECK PASS: explicit archive-only deliverable can be declared fulfilled
+
+$ bin/fm-captain-hold.sh verify promo-scout 
+verified: promo-scout captain-call inventory
+[exit 0]
+CHECK PASS: verify passes for the scout
+
+$ bin/fm-promote.sh promo-scout --mode local-only --yolo off 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+warn: no registry at $LAB/data/projects.md; defaulting sample to no-mistakes off
+promoted promo-scout to ship mode=local-only yolo=off (teardown protection restored)
+wrote ship instructions for mode=local-only: $LAB/data/promo-scout/ship-instructions.md
+next: FM_HOME=$LAB bin/fm-send.sh fm-promo-scout "$(cat $LAB/data/promo-scout/ship-instructions.md)"
+[exit 0]
+CHECK PASS: promote the scout to a ship
+
+$ bin/fm-captain-hold.sh verify promo-scout 
+fm-captain-hold: origin promo-scout has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work
+[exit 1]
+CHECK PASS: the promoted ship needs a fresh outcome review
+
+$ bin/fm-captain-hold.sh complete promo-scout --none --fulfilled 
+complete: promo-scout captain-call inventory reviewed
+[exit 0]
+CHECK PASS: fresh review for the promoted ship
+
+$ bin/fm-captain-hold.sh verify promo-scout 
+verified: promo-scout captain-call inventory
+[exit 0]
+CHECK PASS: verify passes after re-review
+
+
+==== S6 an older in-flight ship record keeps compatibility ====
+(emulated pre-change record: a copy of a spawned meta without completion_required)
+
+$ bin/fm-captain-hold.sh complete legacy-ship --none 
+complete: legacy-ship captain-call inventory reviewed
+[exit 0]
+CHECK PASS: captain-call-only complete still works without completion_required
+
+$ bin/fm-tasks-axi.sh done legacy-ship 
+ok: done legacy-ship -> Done
+help[1]:
+  - Run `tasks-axi ready` to dispatch work unblocked by this
+[exit 0]
+CHECK PASS: done is not blocked for a record without completion_required
+
+
+==== S7 branch supervision prompt routes landed cleanup through the outcome review ====
+
+$ grep -F perform\ the\ outcome\ review $LAB/branch-prompt.txt 
+Claim the task's lease, perform the outcome review in `.agents/skills/captain-hold-lifecycle/SKILL.md` against the task's brief and backlog item, record it with `bin/fm-captain-hold.sh complete <task>`, and then run `bin/fm-teardown.sh <task>` with no flags: the script proves the work landed and its required review passed and refuses otherwise, so a refusal is reported with its exact reason and never forced, worked around, or repaired by hand.
+CHECK PASS: branch prompt names the outcome review before teardown
+
+$ grep -F Your\ role\ limits\ and\ posture\ still\ bound\ that\ review $LAB/branch-prompt.txt 
+Your role limits and posture still bound that review: owed work it finds beyond them is reported with verdict captain, and that task's teardown waits.
+CHECK PASS: branch prompt keeps role limits on owed work
+
+
+==== S8 relaunch invalidates the outcome attestation (best effort in this sandbox) ====
+before: spawn_gen=s1792490967.5994.27417
+after C-c:
+
+$ timeout 170 bin/fm-spawn.sh promo-scout --relaunch --harness sleep\ 900 
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: task promo-scout's endpoint reads 'ambiguous'; a relaunch requires a positively agent-free endpoint (stop the agent first with bin/fm-control.sh promo-scout exit)
+[exit 1]
+CHECK FAIL: fm-spawn --relaunch replaces the promoted worker
+after: spawn_gen=s1792490967.5994.27417
+CHECK FAIL: spawn_gen unchanged
+
+$ bin/fm-captain-hold.sh verify promo-scout 
+verified: promo-scout captain-call inventory
+[exit 0]
+CHECK FAIL: verify after relaunch requires a fresh review
+
+
+==== external-tool stub calls ====
+treehouse get
+treehouse get
+treehouse get
+treehouse get
+treehouse return --force $LAB/projects/sample-wt1
+no-mistakes axi status
+treehouse return --force $LAB/projects/sample-wt4
+
+
+==== summary ====
+checks=74 failed=3

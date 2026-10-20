@@ -1,0 +1,92 @@
+FM_TEST_BEGIN 2026-10-20T10:12:05Z tests/fm-captain-hold-lifecycle.test.sh family=pure-contract-unit expected_gate_skip=none
+tests/fm-captain-hold-lifecycle.test.sh: line 16: fm_test_tmproot: command not found
+mkdir: cannot create directory ‘/.probe’: Read-only file system
+mkdir: cannot create directory ‘/.probe-fm’: Read-only file system
+fatal: cannot change to '/.probe-fm': No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 275: cd: /.probe-fm: No such file or directory
+mkdir: cannot create directory ‘/outcome-required’: Read-only file system
+mkdir: cannot create directory ‘/outcome-required’: Read-only file system
+mkdir: cannot create directory ‘/outcome-required’: Read-only file system
+mkdir: cannot create directory ‘/outcome-required’: Read-only file system
+cp: cannot create regular file '/outcome-required/.tasks.toml': No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 26: /outcome-required/data/backlog.md: No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 33: fm_fakebin: command not found
+tests/fm-captain-hold-lifecycle.test.sh: line 34: fm_fake_exit0: command not found
+tests/fm-captain-hold-lifecycle.test.sh: line 80: cd: /outcome-required: No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 80: cd: /outcome-required: No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 209: fm_write_meta: command not found
+tests/fm-captain-hold-lifecycle.test.sh: line 4677: /outcome-required/state/sample-outcome.meta: No such file or directory
+mkdir: cannot create directory ‘/outcome-required’: Read-only file system
+tests/fm-captain-hold-lifecycle.test.sh: line 4679: /outcome-required/data/sample-outcome/report.md: No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 4680: /outcome-required/state/sample-outcome.status: No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 4687: /outcome-required/review.out: No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 4690: /outcome-required/teardown.out: No such file or directory
+tests/fm-captain-hold-lifecycle.test.sh: line 4693: assert_present: command not found
+tests/fm-captain-hold-lifecycle.test.sh: line 80: cd: /outcome-required: No such file or directory
+mkdir: cannot create directory ‘/outcome-required’: Read-only file system
+not ok - a durable executable continuation was not accepted
+FM_TEST_END 2026-10-20T10:12:05Z tests/fm-captain-hold-lifecycle.test.sh exit=1 duration_ms=294 gate_skip=false
+FM_TEST_BEGIN 2026-10-20T10:12:06Z tests/fm-backlog-atomicity.test.sh family=session-bootstrap expected_gate_skip=none
+tests/fm-backlog-atomicity.test.sh: line 38: fm_test_tmproot: command not found
+mkdir: cannot create directory ‘/backend-resolution-errors’: Read-only file system
+mkdir: cannot create directory ‘/backend-resolution-errors’: Read-only file system
+tests/fm-backlog-atomicity.test.sh: line 647: /backend-resolution-errors/user-home/.tasks-axi/config.toml: No such file or directory
+tests/fm-backlog-atomicity.test.sh: line 648: /backend-resolution-errors/home/.tasks.toml: No such file or directory
+chmod: cannot access '/backend-resolution-errors/home/.tasks.toml': No such file or directory
+tests/fm-backlog-atomicity.test.sh: line 655: /backend-resolution-errors/stderr: No such file or directory
+not ok - fm_tasks_axi_backend concealed an unreadable configuration: /backend-resolution-errors/home/.tasks.toml (exit 1)
+FM_TEST_END 2026-10-20T10:12:06Z tests/fm-backlog-atomicity.test.sh exit=1 duration_ms=117 gate_skip=false
+FM_TEST_BEGIN 2026-10-20T10:12:06Z tests/fm-tasks-axi.test.sh family=unclassified expected_gate_skip=none
+tests/fm-tasks-axi.test.sh: line 22: fm_test_tmproot: command not found
+mkdir: cannot create directory ‘/guard-regular’: Read-only file system
+mkdir: cannot create directory ‘/guard-regular’: Read-only file system
+mkdir: cannot create directory ‘/guard-regular’: Read-only file system
+mkdir: cannot create directory ‘/guard-regular’: Read-only file system
+cp: cannot create regular file '/guard-regular/code/.tasks.toml': No such file or directory
+tests/fm-tasks-axi.test.sh: line 33: /guard-regular/home/data/backlog.md: No such file or directory
+ln: failed to create symbolic link '/guard-regular/code/data/backlog.md': No such file or directory
+tests/fm-tasks-axi.test.sh: line 73: assert_equals: command not found
+rm: cannot remove '/guard-regular/code/data/backlog.md': No such file or directory
+tests/fm-tasks-axi.test.sh: line 77: assert_equals: command not found
+tests/fm-tasks-axi.test.sh: line 79: /guard-regular/code/data/backlog.md: No such file or directory
+tests/fm-tasks-axi.test.sh: line 82: assert_contains: command not found
+tests/fm-tasks-axi.test.sh: line 84: assert_not_contains: command not found
+ok - bootstrap reports a regular code-root backlog and stays silent for a link into the home or no copy
+mkdir: cannot create directory ‘/guard-foreign’: Read-only file system
+mkdir: cannot create directory ‘/guard-foreign’: Read-only file system
+mkdir: cannot create directory ‘/guard-foreign’: Read-only file system
+mkdir: cannot create directory ‘/guard-foreign’: Read-only file system
+cp: cannot create regular file '/guard-foreign/code/.tasks.toml': No such file or directory
+tests/fm-tasks-axi.test.sh: line 33: /guard-foreign/home/data/backlog.md: No such file or directory
+ln: failed to create symbolic link '/guard-foreign/code/data/backlog.md': No such file or directory
+tests/fm-tasks-axi.test.sh: line 33: /guard-foreign/elsewhere.md: No such file or directory
+rm: cannot remove '/guard-foreign/code/data/backlog.md': No such file or directory
+ln: failed to create symbolic link '/guard-foreign/code/data/backlog.md': No such file or directory
+tests/fm-tasks-axi.test.sh: line 94: /guard-foreign/code/data/done-archive.md: No such file or directory
+tests/fm-tasks-axi.test.sh: line 96: assert_contains: command not found
+tests/fm-tasks-axi.test.sh: line 98: assert_contains: command not found
+ok - bootstrap reports a code-root backlog linked elsewhere and a forked archive
+mkdir: cannot create directory ‘/single-guard’: Read-only file system
+cp: cannot create regular file '/single-guard/.tasks.toml': No such file or directory
+tests/fm-tasks-axi.test.sh: line 33: /single-guard/data/backlog.md: No such file or directory
+tests/fm-tasks-axi.test.sh: line 109: /single-guard/data/done-archive.md: No such file or directory
+tests/fm-tasks-axi.test.sh: line 111: assert_equals: command not found
+tests/fm-tasks-axi.test.sh: line 113: assert_equals: command not found
+ok - bootstrap stays silent when the code root is the home
+mkdir: cannot create directory ‘/bare-fork’: Read-only file system
+mkdir: cannot create directory ‘/bare-fork’: Read-only file system
+mkdir: cannot create directory ‘/bare-fork’: Read-only file system
+mkdir: cannot create directory ‘/bare-fork’: Read-only file system
+cp: cannot create regular file '/bare-fork/code/.tasks.toml': No such file or directory
+tests/fm-tasks-axi.test.sh: line 33: /bare-fork/home/data/backlog.md: No such file or directory
+ln: failed to create symbolic link '/bare-fork/code/data/backlog.md': No such file or directory
+tests/fm-tasks-axi.test.sh: line 123: cd: /bare-fork/code: No such file or directory
+not ok - bare tasks-axi add failed in the code root
+FM_TEST_END 2026-10-20T10:12:07Z tests/fm-tasks-axi.test.sh exit=1 duration_ms=1078 gate_skip=false
+FM_TEST_SUMMARY total=3 failed=3 skipped_gate=0 duration_ms=1971
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=294 failed=1
+FM_TEST_SUMMARY_FAMILY family=session-bootstrap count=1 duration_ms=117 failed=1
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=1078 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-tasks-axi.test.sh duration_ms=1078
+FM_TEST_SLOWEST rank=2 script=tests/fm-captain-hold-lifecycle.test.sh duration_ms=294
+FM_TEST_SLOWEST rank=3 script=tests/fm-backlog-atomicity.test.sh duration_ms=117
