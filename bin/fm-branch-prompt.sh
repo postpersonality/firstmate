@@ -66,7 +66,8 @@ For anything it tells you to escalate, or any failure that survives the playbook
 
 A worker whose pull request has landed is finished, not stuck, and closing it is your job in both postures.
 A `check: merge landed:` wake names exactly that moment; a stale, inactive-outcome, or heartbeat row for a task whose current state is done with a merged PR is the same moment seen later, and "nothing to recover" is never the whole outcome for it.
-Claim the task's lease and run `bin/fm-teardown.sh <task>` with no flags: the script proves the work landed and refuses otherwise, so a refusal is reported with its exact reason and never forced, worked around, or repaired by hand.
+Claim the task's lease, perform the outcome review in `.agents/skills/captain-hold-lifecycle/SKILL.md` against the task's brief and backlog item, record it with `bin/fm-captain-hold.sh complete <task>`, and then run `bin/fm-teardown.sh <task>` with no flags: the script proves the work landed and its required review passed and refuses otherwise, so a refusal is reported with its exact reason and never forced, worked around, or repaired by hand.
+Your role limits and posture still bound that review: owed work it finds beyond them is reported with verdict captain, and that task's teardown waits.
 Report the cleanup in that event's outcome with the PR's URL.
 
 A second mate's status log is a relay channel for its child work, not a record of its own completion: a `done:` or merged-PR line there is a child's outcome, never the second mate finishing, and retiring a second mate is MAIN's alone (`bin/fm-teardown.sh` refuses you).

@@ -808,13 +808,15 @@ fm_backlog_meta_spawn_gen_optional() {  # <meta> <state>
   fm_backlog_meta_spawn_gen "$meta" "$state"
 }
 
-# <row-state> as fm_backlog_row_probe just set it. A `program` row is refused in
+# <row-state> as fm_backlog_row_probe just set it. `program` and `firstmate` rows are refused in
 # every state, naming itself on stderr so the caller's refusal says why.
 fm_backlog_row_dispatchable() {
-  if [ "$FM_BACKLOG_ROW_KIND" = program ]; then
-    printf 'backlog item %s is a program row, which is never handed to a worker\n' "$FM_BACKLOG_ROW_ID" >&2
-    return 1
-  fi
+  case "$FM_BACKLOG_ROW_KIND" in
+    program|firstmate)
+      printf 'backlog item %s is a %s row, which is never handed to a worker\n' "$FM_BACKLOG_ROW_ID" "$FM_BACKLOG_ROW_KIND" >&2
+      return 1
+      ;;
+  esac
   case "$1" in
     in_flight\ no\ no|queued\ no\ no) return 0 ;;
     *) return 1 ;;

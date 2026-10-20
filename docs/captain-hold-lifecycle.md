@@ -35,8 +35,8 @@ It never reads report bodies, review artifacts, terminal output, or chat.
 | --- | --- | --- |
 | `hold` | Creates or reuses a task and holds it for the captain. | [Creating a hold](#creating-a-hold-hold) |
 | `answer` | Records the captain's exact words and resolves the call. | [Answering a call](#answering-a-call-answer) |
-| `complete` | Records the reviewed captain-held task ids in the originating task's metadata. | [Recording a reviewed inventory](#recording-a-reviewed-inventory-complete) |
-| `verify` | Read-only check that scout teardown runs before removing source state. | [Checking before scout teardown](#checking-before-scout-teardown-verify) |
+| `complete` | Records the outcome disposition and reviewed captain-held task ids. | [Recording a reviewed inventory](#recording-a-reviewed-inventory-complete) |
+| `verify` | Read-only completion check before teardown removes source state. | [Checking before teardown](#checking-before-teardown-verify) |
 | `open` | Read-only check of whether a row is still an open captain call. | [Cleanup never closes a captain call](#cleanup-never-closes-a-captain-call) |
 | `answers` | Channel-agnostic entry point for keyed answers. | [Answer-time resolution](#answer-time-resolution) |
 | `bind`, `unbind`, `binding` | Record that a captured-answer source feeds the keyed-answer intake. | [Source bindings](#source-bindings) |
@@ -117,11 +117,13 @@ With a non-empty inventory, `complete` appends a `captain-held [key=<key>]` tran
 The event names the reviewed inventory.
 `bin/fm-classify-lib.sh` recognizes it as closing the live status copy without claiming that the captain has answered it.
 
-### Checking before scout teardown (`verify`)
+### Checking before teardown (`verify`)
 
-Scout teardown calls the read-only `verify` subcommand after checking for the report and before removing any source state.
-`verify` checks three things:
+Scout teardown and new ship teardown call the read-only `verify` subcommand before removing source state.
+The outcome review and continuation record are owned by `bin/fm-captain-hold.sh --help`; the procedure is owned by the [lifecycle skill](../.agents/skills/captain-hold-lifecycle/SKILL.md#outcome-review).
+`verify` checks:
 
+- For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by an unfinished task other than its origin, held for the captain, an external condition, or a date, or, for worker work only, queued or running.
 - The recorded attestation exists.
 - Every recorded inventory entry still passes the [completion inventory checks](#recording-a-reviewed-inventory-complete).
 - No keyed status decision opened after the last `complete`.
@@ -524,6 +526,8 @@ The suite does not test the accepted merge-to-cleanup re-hold window or asynchro
 
 - A report-only unresolved captain call refuses `--none` completion before teardown can erase the source.
 - Non-forced scout teardown always requires the durable inventory verification.
+- The outcome-review cases cover milestone continuation, firstmate-owned action acceptance, retained ownership, genuine gates, archive retention, replay and worker replacement.
+  `tests/fm-backlog-atomicity.test.sh` checks that firstmate-owned tasks refuse worker dispatch before resources are created.
 - The recorded-answer guard holds: a bare `tasks-axi done` close fails `verify` until `answer` records the captain's word, and an ordinary finished task cannot be dressed up as an answered call.
 
 ### Answers, stamps, and deferral

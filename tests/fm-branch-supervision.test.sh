@@ -62,7 +62,7 @@ test_branch_prompt_is_byte_stable_and_above_cache_floor() {
   # moment or the command, so the stale wake ended in the recovery playbook's
   # "nothing to recover".
   case "$out_a" in
-    *"A worker whose pull request has landed is finished, not stuck"*"\`check: merge landed:\` wake names exactly that moment"*"\`bin/fm-teardown.sh <task>\` with no flags"*"never forced, worked around, or repaired by hand"*) ;;
+    *"A worker whose pull request has landed is finished, not stuck"*"\`check: merge landed:\` wake names exactly that moment"*"outcome review in \`.agents/skills/captain-hold-lifecycle/SKILL.md\`"*"\`bin/fm-captain-hold.sh complete <task>\`"*"\`bin/fm-teardown.sh <task>\` with no flags"*"never forced, worked around, or repaired by hand"*"owed work it finds beyond them is reported with verdict captain"*) ;;
     *) fail "branch prompt lost the landed-work cleanup rule" ;;
   esac
   case "$out_a" in

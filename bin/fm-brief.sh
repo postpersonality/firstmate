@@ -640,7 +640,8 @@ $WAIT_BLOCK$INBOX_SECTION
 Write your findings to \`$DATA/$ID/report.md\`.
 The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.
 $LAVISH_LINE
-Before reporting done, read and follow \`$FM_ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md\` and pass its shared completion gate for the report and any visual review.
+Before reporting done, read \`$FM_ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md\`, hold each unresolved captain call your report or any visual review leaves through its \`hold\` with \`--origin $ID\`, and name the held task ids in the report.
+Never run its \`complete\` or declare this task's outcome yourself: firstmate must review the report against the original ask and pass its shared completion gate for the report and any visual review.
 When the report is complete, append \`done [at=<epoch>]: {one-line conclusion}\` to the status file and stop.
 If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
 EOF

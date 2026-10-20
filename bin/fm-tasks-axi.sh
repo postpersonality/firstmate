@@ -7,13 +7,14 @@
 #
 # Every routine firstmate backlog read or mutation goes through this command
 # rather than a bare `tasks-axi`; `fm-tasks-axi.sh <command> --help` prints
-# tasks-axi's own help. Arguments reach tasks-axi as given, apart from one
-# rewrite that keeps file arguments meaning what the caller meant: a relative
-# value of `--to` or any `--*-file` flag (`--body-file`, `--relation-file`, ...)
-# is made absolute against the caller's working directory, because tasks-axi
-# starts from the backlog root instead. `--report` stays as given: tasks-axi
-# stores it verbatim as a link, which lifecycle transitions record relative to
-# that same root.
+# tasks-axi's own help. Arguments reach tasks-axi as given, apart from
+# tasks-axi's optional leading `task` noun, which this command drops before
+# reading the command, and one rewrite that keeps file arguments meaning what
+# the caller meant: a relative value of `--to` or any `--*-file` flag
+# (`--body-file`, `--relation-file`, ...) is made absolute against the caller's
+# working directory, because tasks-axi starts from the backlog root instead.
+# `--report` stays as given: tasks-axi stores it verbatim as a link, which
+# lifecycle transitions record relative to that same root.
 #
 # `show` (including `view`) and `list` decode stored captain-hold reasons
 # through bin/fm-hold-reason-lib.sh, which owns the field-only decoding contract.
@@ -56,6 +57,9 @@
 #     the task record, status file, and inbox that go with the row - which such
 #     a row would lack, counting as live work nobody is doing that nothing
 #     later would notice (`start <id>` stays a documented direct transition);
+#   - closing a live completion_required=1 task before its outcome review;
+#   - holding a kind=firstmate action behind an undated future/parked/load
+#     wait instead of a captain, external, date or dependency gate;
 #   - `archive` with any command but `list` or `show`, or on a home whose
 #     backlog is not markdown;
 #   - a data directory that cannot be resolved, or whose backend configuration
@@ -91,6 +95,7 @@ fail() {
   exit 2
 }
 
+[ "${1:-}" != task ] || shift
 case "${1:-}" in
   -h|--help)
     usage
@@ -166,6 +171,10 @@ else
   unset TASKS_AXI_FILE
 fi
 
+# Lifecycle checks below run after this cd; freeze caller-relative roots first.
+DATA=$(fm_backlog_data_absolute "$DATA") || fail "cannot resolve data directory $DATA"
+TASK_STATE=${FM_STATE_OVERRIDE:-$FM_HOME/state}
+case "$TASK_STATE" in /*) ;; *) TASK_STATE="$CALLER_DIR/$TASK_STATE" ;; esac
 cd "$FM_BACKLOG_AXI_ROOT" || fail "cannot enter the backlog root $FM_BACKLOG_AXI_ROOT"
 
 # shortcut: reads only the root .tasks.toml, not ~/.tasks-axi/config.toml; extend if a home sets its archive there.
@@ -212,4 +221,55 @@ case "${1:-}" in
     exit $?
     ;;
 esac
+# tasks-axi takes these commands' flags on either side of their one task id.
+task_id=''
+hold_kind=untyped
+hold_until=''
+case "${1:-}" in
+  done|close|hold)
+    for ((i=1; i<${#ARGS[@]}; i++)); do
+      case "${ARGS[i]}" in
+        --kind) i=$((i + 1)); hold_kind=${ARGS[i]-} ;;
+        --kind=*) hold_kind=${ARGS[i]#*=} ;;
+        --until) i=$((i + 1)); hold_until=${ARGS[i]-} ;;
+        --until=*) hold_until=${ARGS[i]#*=} ;;
+        --reason|--pr|--report|--note|--keep|--backend) i=$((i + 1)) ;;
+        -*) ;;
+        *) [ -n "$task_id" ] || task_id=${ARGS[i]} ;;
+      esac
+    done
+    ;;
+esac
+case "${1:-}" in
+  done|close)
+    case "$task_id" in
+      ''|*[!A-Za-z0-9._-]*) ;;
+      *)
+        task_meta="$TASK_STATE/$task_id.meta"
+        if [ -e "$task_meta" ] || [ -L "$task_meta" ]; then
+          fm_backlog_record_present "$task_meta" "task record" "$TASK_STATE" \
+            || fail "cannot read task $task_id: $FM_BACKLOG_TRANSITION_ERROR"
+          if grep -qx 'completion_required=1' "$task_meta"; then
+            FM_DATA_OVERRIDE="$DATA" FM_STATE_OVERRIDE="$TASK_STATE" \
+              "$SCRIPT_DIR/fm-captain-hold.sh" verify "$task_id" >/dev/null \
+              || fail "task $task_id must pass its outcome review before closing"
+          else
+            [ "$?" = 1 ] || fail "cannot read outcome requirement for task $task_id"
+          fi
+        fi
+        ;;
+    esac
+    ;;
+esac
+# A coordinator action retains its owner after the originating milestone is
+# cleaned up. Do not hide that ready action behind an undated generic wait.
+if [ "${1:-}" = hold ] && [ -n "$task_id" ]; then
+  fm_backlog_row_probe "$DATA" "$task_id" || fail "cannot read task $task_id before holding it"
+  if [ "$FM_BACKLOG_ROW_KIND" = firstmate ]; then
+    case "$hold_kind" in
+      captain|external) ;;
+      *) [ -n "$hold_until" ] || fail "firstmate action $task_id needs a real captain, external, date or dependency gate; an undated $hold_kind wait cannot hide its next action" ;;
+    esac
+  fi
+fi
 exec tasks-axi ${ARGS[@]+"${ARGS[@]}"}
