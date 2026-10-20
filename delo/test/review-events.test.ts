@@ -8,7 +8,7 @@ test('captured compact console transcript preserves observed durations, partial 
   // Provenance: actual sa-review console supplied by user 2026-10-20, replay of runs/152530202-20261019162826/.ralph/events-20261019-141119.jsonl.
   const p: ReviewProgress = {status:'running',current:'unknown',startedAt:'now',elapsedMs:0,phases:[]};
   const parser = new CompactReviewEvents(p);
-  for (const line of readFileSync(new URL('./fixtures/sa-review-console.txt', import.meta.url),'utf8').trim().split('\n')) assert.equal(parser.consume(line), true);
+  for (const line of readFileSync(new URL('./fixtures/sa-review-console.log', import.meta.url),'utf8').trim().split('\n')) assert.equal(parser.consume(line), true);
   assert.equal(p.phases[0].elapsedMs, null, 'first incomplete stage has no invented start');
   assert.equal(p.phases.find(p=>p.name==='audit_review')?.elapsedMs, 500000);
   assert.equal(p.phases.find(p=>p.name==='audit_revision')?.elapsedMs, 421000);

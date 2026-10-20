@@ -7,6 +7,12 @@ const phases: Record<string, string> = {
   'comments.drafted': 'finalize', 'comments.rewrite': 'comment_rewrite', 'comments.rewritten': 'finalize',
   'comments.review': 'comment_review', 'comments.reviewed': 'finalize',
 };
+const orchestrators: Record<string, string> = { 'Auditor': 'audit', 'Audit reviewer': 'audit_review', 'Audit defender': 'audit_revision', 'Finish': 'finalize', 'Comment writer': 'comment_draft', 'Comment rewriter': 'comment_rewrite', 'Comment reviewer': 'comment_review' };
+const terminalTopics = ['FACTORY_STOP', 'loop.terminate', 'audit.blocked', 'audit_defender.exhausted'];
+export const eventPhase = (topic: string) => terminalTopics.includes(topic) ? 'unknown' : phases[topic];
+export function eventFailure(topic: string, payload: string) {
+  return ['audit.blocked', 'audit_defender.exhausted'].includes(topic) || terminalTopics.includes(topic) && /status=(?:failed|blocked|cancelled|incomplete|exhausted)\b|\bcancelled\b|\bconsecutive_failures\b|\bmax_iterations\b|\bmax_runtime\b|\btimeout\b|\bfailed\b/i.test(payload);
+}
 
 export class CompactReviewEvents {
   private clock?: number;
@@ -42,14 +48,16 @@ export class CompactReviewEvents {
     }
     this.clock = time;
     if (backwards) (p.warnings ??= []).push('Console clock moved backwards; transition duration unknown');
-    const terminal = ['FACTORY_STOP', 'loop.terminate', 'audit.blocked', 'audit_defender.exhausted'].includes(topic);
-    if (terminal && /status=(?:failed|blocked|cancelled|incomplete|exhausted)|cancelled|consecutive_failures|timeout|error|failed/i.test(payload)) p.terminalFailure = raw;
+    const terminal = terminalTopics.includes(topic);
+    if (eventFailure(topic, payload)) p.terminalFailure = raw;
     if (topic === 'loop.terminate') p.reportedTotal = /Duration:\s*(.*?)\s*(?:- Exit code:|$)/i.exec(payload)?.[1];
-    p.current = terminal ? 'unknown' : phases[topic] ?? 'unknown';
+    const next = / → (.+)$/.exec(payload)?.[1];
+    p.current = terminal || !phases[topic] ? 'unknown' : next ? orchestrators[next] ?? 'unknown' : phases[topic] ?? 'unknown';
     if (!terminal) {
       p.phases.push({ name: p.current, startedAt: at, elapsedMs: null, source: 'console' });
       this.changed(`${p.current} start=${at}; elapsed=unknown; event=${topic}`);
       if (!phases[topic]) (p.warnings ??= []).push(`Unsupported event ${topic}; raw transition retained, phase unknown`);
+      if (next && !orchestrators[next]) (p.warnings ??= []).push(`Unsupported orchestrator ${next}; raw transition retained, phase unknown`);
     }
     return true;
   }

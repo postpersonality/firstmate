@@ -163,7 +163,7 @@ export class Store {
     const tasks = this.firstmate.list().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t)));
     const earlier = this.firstmate.archive().filter(t => caseOf(t.body) === caseId).map(t => entry(this.whole(t, true)));
     const sources = goal.body.split('\n').filter(l => l.startsWith(sourceLine)).map(l => l.slice(sourceLine.length).trim());
-    return { ...goal, archived, sources, tasks, earlier, links: [...new Set([...sources, ...goal.links, ...[...tasks, ...earlier].flatMap(t => t.links)])] };
+    return { ...goal, reviewProgress: goal.review ? [...tasks, ...earlier].find(t => t.review)?.reviewProgress : undefined, archived, sources, tasks, earlier, links: [...new Set([...sources, ...goal.links, ...[...tasks, ...earlier].flatMap(t => t.links)])] };
   }
 
   // Q40В: open tasks close only after the warning that lists them is confirmed; each gets the task «Закрыть» note for firstmate.
@@ -217,3 +217,145 @@ export class Store {
     const records = new Map((dependencies ? this.firstmate.list() : []).map(t => [t.id, t]));
     const review = reviewOf(body);
     const reviewReport = !!review && existsSync(join(this.firstmate.home, reportPath(task.id)));
+    return {
+      id: task.id, title: task.title, state: task.state === 'done' ? 'done' : held(task) ? 'paused' : 'active',
+      body, managedBrief: managed, prUrl: field(task.pr_url) ?? linkEntries(task.links).find((ref): ref is string => typeof ref === 'string' && ref.startsWith('pr:'))?.slice(3), reason: field(task.hold_reason), blockers: taskBlockers(task, records), kind: field(task.kind), repo: field(task.repo), personal: isPersonal(body), actions: actions(task),
+      holdKind: field(task.hold_kind), inFlight: task.state === 'in_flight',
+      why: managed ? section(body, 'Зачем') : '', doneWhen: managed ? section(body, 'Критерий готовности') : '', context: managed ? section(body, 'Контекст') : body,
+      constraints: managed ? section(body, 'Ограничения').split('\n').filter(s => s.startsWith('- ')).map(s => s.slice(2)) : [],
+      review, reviewProgress: review ? readReviewProgress(this.firstmate.home, task.id) : undefined,
+      links: [...new Set([...nativeLinks(task), ...(reviewReport ? [reportPath(task.id)] : [])])], report: hasReport(task) || reviewReport, folder: folderOf(body), harness: harnessOf(body),
+    };
+  }
+
+  list(): Goal[] {
+    const seen = new Set<string>();
+    return this.firstmate.list().filter(task => task.id && !seen.has(task.id) && seen.add(task.id))
+      .map(task => this.get(task.id, task));
+  }
+
+  update(goalId: string, input: unknown): Goal {
+    this.invalidateOverview();
+    const { title: newTitle, body, personal, folder, state: nextState } = goalPatch.parse(input);
+    if (newTitle !== undefined || body !== undefined || personal !== undefined || folder !== undefined) {
+      const g = this.get(goalId);
+      if (g.state === 'done') throw new Error('Бриф закрытой цели заморожен');
+      const { title, sources } = newTitle === undefined ? { title: g.title, sources: [] } : titleSources(newTitle);
+      const next = composeBody(body ?? g.body, sources, personal ?? g.personal, folder === undefined ? g.folder : checkFolder(folder));
+      this.firstmate.update(goalId, { title, ...(next !== g.body ? { body: next, archiveBody: true } : {}) });
+    }
+    if (nextState === undefined) return this.get(goalId);
+    const g = this.get(goalId);
+    if (nextState === g.state || nextState === 'dropped' && g.state === 'done') return g;
+    if (g.holdKind === 'captain') throw new Error('Вопрос капитану закрывается только ответом в Firstmate');
+    if (g.inFlight) throw new Error('Состояние задачи в работе меняет Firstmate');
+    // tasks-axi reports held: no on a Done row that still carries a hold, so ask the reopened row.
+    if (nextState === 'active' && g.state === 'done') { if (this.firstmate.reopen(goalId).held) this.firstmate.unhold(goalId); }
+    else if (nextState === 'paused') { if (g.state === 'done') this.firstmate.reopen(goalId); this.firstmate.hold(goalId, 'Приостановлено в Деле'); }
+    else if (nextState === 'active') this.firstmate.unhold(goalId);
+    else this.firstmate.done(goalId);
+    return this.get(goalId);
+  }
+
+  // A card button. Starting and closing a row in flight are notes for firstmate, which owns dispatch.
+  act(taskId: string, action: Action, input: unknown) {
+    this.invalidateOverview();
+    const data = actionInput.parse(input);
+    const task = this.firstmate.show(taskId);
+    if (!actions(task).includes(action)) throw new Error('Это действие недоступно для задачи в её состоянии');
+    const need = <T>(value: T | undefined, what: string) => { if (!value) throw new Error(`Укажите ${what}`); return value; };
+    if (action === 'start' || action === 'stop' || action === 'close' && task.state === 'in_flight') {
+      const kind = action === 'start' ? 'start' : action === 'stop' ? 'stop' : 'close';
+      const text = kind === 'start' ? `Дело: возьми в работу задачу ${task.id}` : kind === 'stop' ? `Дело: останови работу по задаче ${task.id}, сохрани сделанное, задачу не закрывай` : `Дело: закрой задачу ${task.id}`;
+      const note = this.firstmate.note(text, this.requestId(kind, task.id), kind === 'start' ? task.id : undefined);
+      return { note, ready: this.firstmate.ready() };
+    }
+    if (action === 'close' && task.hold_kind === 'captain') {
+      const output = this.firstmate.answer(task.id, 'Закрыть как неактуальную', 'Закрыть как неактуальную', 'done');
+      if (/^skipped:/m.test(output)) throw new Error(output);
+      return { output };
+    }
+    if (action === 'answer' || action === 'release') {
+      const answer = action === 'answer' ? need(data.answer, 'ответ') : data.answer || 'Разрешаю работу';
+      const output = this.firstmate.answer(task.id, answer, action === 'answer' ? 'Ответить' : 'Разрешить работу', action === 'answer' ? 'done' : 'release');
+      if (/^skipped:/m.test(output)) throw new Error(output);
+      return { output };
+    }
+    if (action === 'later') return { output: this.firstmate.captainLater(task.id, need(data.reason, 'причину'), need(data.until, 'дату')) };
+    if (action === 'pause') return { task: this.firstmate.hold(task.id, data.reason || 'Приостановлено в Деле') };
+    if (action === 'unhold') return { task: this.firstmate.unhold(task.id) };
+    if (action === 'close') return { task: this.firstmate.done(task.id) };
+    if (action === 'decline') return { task: this.firstmate.done(task.id, `Отказ: ${need(data.reason, 'причину отказа')}`) };
+    return { task: this.firstmate.reopen(task.id) };
+  }
+
+  // A repeated click on a request firstmate has not acknowledged reuses its id, so fm-inbox replays it.
+  private requestId(kind: 'start' | 'close' | 'stop', taskId: string) {
+    const prefix = `delo-${kind}-${taskId}-`;
+    const { pending = [], handled = [] } = this.firstmate.receipts();
+    const ours = [...pending, ...handled].filter((r: any) => typeof r.request_id === 'string' && r.request_id.startsWith(prefix) && /^\d+$/.test(r.request_id.slice(prefix.length)));
+    const waiting = ours.find((r: any) => pending.includes(r) && !r.acknowledged);
+    if (waiting) return waiting.request_id;
+    return `${prefix}${Math.max(0, ...ours.map((r: any) => Number(r.request_id.slice(prefix.length)))) + 1}`;
+  }
+
+  // Delo's own notes about this row with their receipt state, and whether firstmate can take a note now.
+  inbox(taskId: string) {
+    const { pending = [], handled = [] } = this.firstmate.receipts();
+    const requests = [...pending.map((r: any) => ({ ...r, state: 'pending' })), ...handled.map((r: any) => ({ ...r, state: 'handled' }))]
+      .filter(r => [`delo-start-${taskId}-`, `delo-close-${taskId}-`, `delo-stop-${taskId}-`].some(p => r.request_id?.startsWith(p)))
+      .map(r => ({ requestId: r.request_id, at: r.at, state: r.state, acknowledged: !!r.acknowledged, reply: r.reply ?? null }));
+    return { requests, ready: requests.some(r => r.state === 'pending') ? this.firstmate.ready() : undefined };
+  }
+
+  // Q34А: a backlog or archived task's own report, read-only; the path comes from the validated id, never from the link text.
+  report(taskId: string) {
+    const missing = () => new Error('Отчёт не найден');
+    if (!id.safeParse(taskId).success) throw missing();
+    const task = [...this.firstmate.list(), ...this.firstmate.archive()].find(t => t.id === taskId);
+    if (!task || !hasReport(task) && !reviewOf(this.whole(task).body ?? '')) throw missing();
+    const path = join(this.firstmate.home, reportPath(taskId));
+    try { return { path, title: task.title, text: readFileSync(path, 'utf8') }; } catch { throw missing(); }
+  }
+
+  // The executor actually running a task, from the fleet snapshot's worker record.
+  async worker(taskId: string) {
+    const record = ((await this.firstmate.snapshot('fm-fleet-snapshot.sh')).tasks ?? []).find((t: any) => t.id === taskId);
+    const current = workerState(record);
+    return { harness: field(record?.harness) ?? '', current, reason: ['Вопрос исполнителя', 'Работа заблокирована', 'Исполнитель на паузе', 'Работа завершилась с ошибкой'].includes(current) ? field(record?.current_state?.detail) : undefined, prUrl: field(record?.pr?.url) };
+  }
+
+  // Suggestions for the folder field: every folder an open backlog task names.
+  folders() { return [...new Set(this.list().map(g => g.folder).filter(Boolean))].sort(); }
+
+  reviewProjects() { return reviewProjects(this.firstmate.home); }
+
+  overview(): Promise<Overview> {
+    if (this.overviewRead && this.overviewRead.expires > Date.now()) return this.overviewRead.promise;
+    const read: { promise: Promise<Overview>; expires: number } = {
+      expires: Infinity,
+      promise: Promise.all([this.firstmate.snapshot('fm-bearings-snapshot.sh'), this.firstmate.snapshot('fm-fleet-snapshot.sh')]).then(([bearings, fleet]) => {
+        // A mutation during the read also invalidates requests already in flight.
+        if (this.overviewRead !== read) return this.overview();
+        const result = overview(bearings, fleet, this.firstmate.archive(), this.firstmate.list());
+        read.expires = Date.now() + 2000;
+        return result;
+      }).catch(error => { if (this.overviewRead === read) this.overviewRead = undefined; throw error; }),
+    };
+    this.overviewRead = read;
+    return read.promise;
+  }
+
+  // Pinning is the backlog row's priority: 0 puts it in focus, 2 is the backlog default.
+  async pin(taskId: string, on: boolean): Promise<{ ok: true }> {
+    if (on) {
+      let version: number; let fleet: any;
+      do { version = this.revision; fleet = await this.firstmate.snapshot('fm-fleet-snapshot.sh'); } while (version !== this.revision);
+      const refusal = pinRefusal(fleet, taskId);
+      if (refusal) throw new Error(refusal);
+    }
+    this.invalidateOverview();
+    this.firstmate.priority(taskId, on ? 0 : 2);
+    return { ok: true };
+  }
+}

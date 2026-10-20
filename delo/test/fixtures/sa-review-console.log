@@ -1,0 +1,9 @@
+12:00:00  audit.done Confluence page: https://confluence.example.invalid/pages/1 Source code directories: - /tmp/example-project → Audit reviewer
+  12:08:20  review.findings round=1 remarks=3 → Audit defender
+  12:15:21  audit.revised round=1 accepted=3 rejected=0 → Audit reviewer
+  12:17:06  review.clean round=2 verdict=ready → Finish
+  12:17:23  comments.prepare status=preparing_comments → Comment writer
+  12:19:12  comments.drafted drafted=true → Finish
+  12:19:59  FACTORY_STOP status=failed
+  12:19:59  loop.terminate ## Reason cancelled ## Status Cancelled gracefully (human rejection or timeout). ## Summary - Iterations: 6 - Duration: 19m 59s - Exit code: 0
+  

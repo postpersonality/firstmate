@@ -6,13 +6,14 @@ import { codeReviewInput, codeReviewInstructions } from './code-review.ts';
 const http = z.string().max(2000).url().refine(value => /^https?:\/\//i.test(value), 'Нужна HTTP(S) ссылка на документ');
 export const reviewInput = z.discriminatedUnion('kind', [z.object({ kind: z.literal('sa'), document: http, repo: z.string().trim().min(1).max(500) }), codeReviewInput]);
 export type Review = z.infer<typeof reviewInput>;
-export type ReviewProgress = {
-  status: 'running' | 'done' | 'failed'; current: string; startedAt: string; endedAt?: string; elapsedMs: number;
-  phases: { name: string; startedAt: string; endedAt?: string; elapsedMs: number | null; source: string }[];
-  runDirectory?: string; exitCode?: number; result?: string; error?: string;
-  protocol?: string; warnings?: string[]; updatedAt?: string;
-  events?: string[]; reportedTotal?: string; terminalFailure?: string;
-};
+const progressInput = z.object({
+  status: z.enum(['running', 'done', 'failed']), current: z.string(), startedAt: z.string(), endedAt: z.string().optional(), elapsedMs: z.number().nonnegative(),
+  phases: z.array(z.object({ name: z.string(), startedAt: z.string(), endedAt: z.string().optional(), elapsedMs: z.number().nonnegative().nullable(), source: z.string() })),
+  runDirectory: z.string().optional(), exitCode: z.number().optional(), result: z.string().optional(), error: z.string().optional(),
+  protocol: z.string().optional(), warnings: z.array(z.string()).optional(), updatedAt: z.string().optional(),
+  events: z.array(z.string()).optional(), reportedTotal: z.string().optional(), terminalFailure: z.string().optional(),
+});
+export type ReviewProgress = z.infer<typeof progressInput>;
 export const reviewLine = (review: Review) => `Review: ${JSON.stringify(review)}`;
 export function reviewOf(body: string): Review | undefined {
   const line = body.split('\n').find(line => line.startsWith('Review: '));
@@ -37,14 +38,11 @@ export function validateReview(input: Review, home: string): Review {
   throw new Error('Проект ревью: нет такой папки');
 }
 export function readReviewProgress(home: string, taskId: string): ReviewProgress | undefined {
-  try { return JSON.parse(readFileSync(join(home, 'data', taskId, 'review-progress.json'), 'utf8')); } catch { return undefined; }
+  try { return progressInput.parse(JSON.parse(readFileSync(join(home, 'data', taskId, 'review-progress.json'), 'utf8'))); } catch { return undefined; }
 }
 
 export function reviewInstructions(review: Review, home: string, taskId: string) {
-  if (review.kind === 'code') return [reviewLine(review), '', codeReviewInstructions(review, taskId, home),
-    `Фиксируй реальные границы фаз через node с argv ${JSON.stringify([join(home, 'delo/src/review-progress.ts'), '--home', home, '--task', taskId, '--event', 'start', '--phase', '<имя фактической фазы>', '--detail', '<свидетельство>'])}.`,
-    'В начале фазы вызывай event=start, в конце event=end. После записи своего отчёта вызывай event=done или event=failed; команда сохраняет отчёт навыка и дописывает времена. Ошибка не является успешным завершением. SA runner для code review не используется.',
-  ].join('\n');
+  if (review.kind === 'code') return [reviewLine(review), '', codeReviewInstructions(review, taskId, home)].join('\n');
   const runner = join(home, 'delo/src/review-run.ts');
   return [reviewLine(review), '',
     'Выполни ревью системной аналитики. Контекстный репозиторий указан в Review.repo; это контекст ревью, а не папка дежурства и не runtime home.',

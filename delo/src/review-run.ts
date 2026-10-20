@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -7,20 +7,10 @@ import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 import { Firstmate } from './firstmate.ts';
 import { id } from './model.ts';
-import { readReviewProgress, reviewOf, validateReview, type ReviewProgress } from './review.ts';
-import { CompactReviewEvents } from './review-events.ts';
+import { reviewOf, validateReview, type ReviewProgress } from './review.ts';
+import { CompactReviewEvents, eventPhase, eventFailure } from './review-events.ts';
 
 export const saCommand = { command: 'npm', cwd: '/home/user/Projects/!researches⭐/dark-factory/3-sa-battle' };
-// Observed in sa-review.mjs, ralph.yml and .ralph/events-*.jsonl on 2026-10-20.
-// Event times are transition boundaries, not unobserved model execution timestamps.
-const transitions: Record<string, string> = {
-  'audit.start': 'audit', 'audit.done': 'audit_review', 'audit.revised': 'audit_review',
-  'review.findings': 'audit_revision', 'review.clean': 'finalize',
-  'comments.prepare': 'comment_draft', 'comments.drafted': 'finalize',
-  'comments.rewrite': 'comment_rewrite', 'comments.rewritten': 'finalize',
-  'comments.review': 'comment_review', 'comments.reviewed': 'finalize',
-  'audit.blocked': 'unknown', 'audit_defender.exhausted': 'unknown', 'FACTORY_STOP': 'unknown', 'loop.terminate': 'unknown',
-};
 const enrichment = z.object({
   status: z.enum(['found', 'none', 'unavailable']), links: z.array(z.string().url().refine(v => /^https?:\/\//i.test(v))),
   note: z.string().trim().min(1).max(4000), startedAt: z.iso.datetime({ offset: true }), endedAt: z.iso.datetime({ offset: true }),
@@ -66,7 +56,7 @@ export async function runSaReview(options: { home: string; taskId: string; comma
   mkdirSync(join(home, 'state'), { recursive: true });
   try { mkdirSync(lock); } catch { throw new Error('Ревью уже запущено; проверьте существующий процесс'); }
   try {
-    if (readReviewProgress(home, taskId)) throw new Error('Ревью уже завершено или прервано; повтор требует новой задачи');
+    if (existsSync(join(dir, 'review-progress.json'))) throw new Error('Ревью уже завершено или прервано; повтор требует новой задачи');
     mkdirSync(dir, { recursive: true });
     const startedAt = new Date().toISOString();
     const progress: ReviewProgress = { status: 'running', current: 'unknown', startedAt, elapsedMs: 0,
@@ -91,11 +81,17 @@ export async function runSaReview(options: { home: string; taskId: string; comma
     let lastEventTime = Date.parse(startedAt);
     const transition = (event: any) => {
       if (event.topic === 'iteration.summary') return;
+      progress.events ??= []; if (progress.events.length < 500) progress.events.push(JSON.stringify(event).slice(0, 4096));
+      if (['FACTORY_STOP', 'loop.terminate', 'audit.blocked', 'audit_defender.exhausted'].includes(event.topic)) {
+        const payload = String(event.payload ?? '');
+        if (eventFailure(event.topic, payload)) progress.terminalFailure = payload.slice(0, 4096) || event.topic;
+        if (event.topic === 'loop.terminate') progress.reportedTotal = /Duration:\s*(.*?)\s*(?:- Exit code:|$)/i.exec(payload)?.[1];
+      }
       const time = typeof event.ts === 'string' ? Date.parse(event.ts) : NaN;
       if (!Number.isFinite(time) || time < Date.parse(startedAt) || time > Date.now() + 1000 || time < lastEventTime) {
         warn('Unsupported event timestamp; stage timing unknown'); progress.current = 'unknown'; return;
       }
-      const name = transitions[event.topic];
+      const name = eventPhase(event.topic);
       if (!name) { warn(`Unsupported transition: ${String(event.topic).slice(0, 120)}; stage unknown`); }
       const at = new Date(time).toISOString(), previous = progress.phases.at(-1);
       if (previous && !previous.endedAt) {

@@ -73,7 +73,7 @@ test('compact stdout fixture is monitored without journals, survives large noise
     const taskId = store.createCase({title:'Compact review',requestId:randomUUID(),review:{kind:'sa',document:'https://example.com/pages/1',repo:root}}).tasks[0].id;
     const old = store.firstmate.show(taskId);
     store.firstmate.update(taskId,{body:old.body+'\nReview links: '+JSON.stringify({status:'unavailable',links:[],note:'Fixture: source is offline',startedAt:new Date().toISOString(),endedAt:new Date().toISOString()})});
-    const fixture = fileURLToPath(new URL('./fixtures/sa-review-console.txt', import.meta.url));
+    const fixture = fileURLToPath(new URL('./fixtures/sa-review-console.log', import.meta.url));
     const fake = join(root,'npm');
     writeFileSync(fake, `#!/usr/bin/env node
 const fs=require('node:fs'),p=require('node:path');
