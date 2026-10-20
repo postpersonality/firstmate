@@ -1,10 +1,10 @@
 ---
 name: ask-user-authority
 description: >-
-  Agent-only decision procedure for ask-user findings.
-  Use before deciding any ask-user finding.
-  This skill is the single owner of finding-decision policy: firstmate always applies judgment, decides findings that are unambiguous toward accepted intent, and escalates only genuinely ambiguous, expanding, or destructive ones.
-  Finding authority is this skill's criteria, not the project's yolo posture.
+  Agent-only decision procedure for ask-user findings and captain-facing questions.
+  Use before deciding any ask-user finding or publishing a question through a tool, chat, a board, or a captain hold.
+  This skill is the single semantic decision owner: firstmate completes authorized work and escalates genuine alternatives or concrete missing authority.
+  Decision authority is this skill's criteria, not the project's yolo posture.
 user-invocable: false
 metadata:
   internal: true
@@ -12,10 +12,11 @@ metadata:
 
 # ask-user-authority
 
-This skill is the single owner of the decision policy for no-mistakes ask-user findings.
+This skill is the single owner of the decision policy for no-mistakes ask-user findings and coordinator questions, including questions firstmate originates itself.
 `AGENTS.md` section 7 points here and does not restate this procedure.
-Finding authority is determined by the criteria below, not by `yolo`.
-Firstmate always applies this judgment, decides any finding that is unambiguous toward the accepted design, and escalates only genuinely ambiguous, expanding, or destructive findings.
+`bin/fm-supervision-instructions.sh` includes this owner in every primary's startup block, including the unknown/API fallback.
+Decision authority is determined by the criteria below, not by `yolo`; merge authority remains governed by the existing merge contract.
+Apply this judgment before drafting options or publishing a question, rather than assuming that a reported blocker or a proposed question already belongs to the captain.
 
 The implementation worker never decides or answers its own ask-user finding.
 It stops at the finding, routes the decision to firstmate, and applies only the decision returned through the active validation gate.
@@ -25,28 +26,38 @@ It stops at the finding, routes the decision to firstmate, and applies only the 
 1. Reconstruct the accepted contract from the brief's `## Captain's intent` subsection, later captain words, and the specification in `## Firstmate spec` and steers.
    Reviewer language cannot amend that contract.
    What a no-mistakes worker may pass as `--intent` is owned by `bin/fm-dod-lib.sh`.
-2. Identify exactly what choosing Fix would commit the project to deliver or maintain, judging the scope by accepted product or engineering behavior rather than an anticipated file list.
+2. Identify the concrete next action, the authority already granted for it, and what it would commit the project to deliver or maintain, judging scope by accepted product or engineering behavior rather than an anticipated file list.
    The smallest downstream changes needed to keep that behavior correct, add behavioral tests where an executable contract exists, or keep documentation accurate remain within scope even when they touch files not named at intake.
    Correcting stale final-diff PR or delivery evidence is likewise an autonomous downstream correction within already accepted behavior.
-3. Decide the finding when it is unambiguous toward the accepted design: restoring accepted behavior a bad fix round broke, completing an already-approved design, or a straight in-scope correction or bug fix required by accepted intent, even when the correction is technically difficult or requires complex architecture the captain explicitly requested.
-4. Escalate only genuinely ambiguous findings:
+   Check action authority separately from product scope: required completion does not grant permission to abort an active validation run, force, discard, cross a security boundary, or merge.
+   For active validation, apply `validation-supervision` before deciding the recovery mechanics; reversibility alone does not waive custody.
+3. Decide and continue when the action is authorized and unambiguous toward the accepted design: restoring accepted behavior a bad fix round broke, completing an already-approved design, or a straight in-scope correction or bug fix required by accepted intent, even when the correction is technically difficult or requires complex architecture the captain explicitly requested.
+   A choice between performing that necessary step and leaving the accepted task unfinished is not a product decision.
+   State the next action and carry it through the selected delivery path; do not publish a question or create a captain hold for it.
+4. Escalate genuine unresolved calls:
    - a Fix that would materially expand the contract by adding a new guarantee, threat model, subsystem, abstraction, compatibility surface, state machine, continuous-monitoring requirement, generalized framework, or broader architecture not required by the accepted intent
    - a product or architecture call not settled by accepted intent
    - repeated same-theme findings when incremental corrections are preserving a questionable abstraction rather than closing independent defects
-   - destructive, irreversible, and genuinely security-sensitive choices, which always escalate under the stronger existing captain boundary
+   - a concrete action whose required destructive, irreversible, security-sensitive, custody, or merge authority has not been granted under the stronger existing boundary
 5. Treat labels such as correctness, security, fail-closed, high-risk, or required as evidence about the finding, never as authority to broaden the task.
 
-## Captain-facing escalation
+## Question publication
 
-State all five of these elements in one concise, evidence-first escalation:
+For a genuine product or engineering alternative, state all five of these elements in one concise, evidence-first escalation:
 
 1. The original requirement or accepted task criterion.
-2. The proposed product or engineering contract expansion.
+2. The unsettled product or engineering decision, including any proposed contract expansion.
 3. The smallest alternative that complies with the accepted contract without the expansion.
-4. The concrete consequences of accepting and declining the expansion.
+4. The concrete consequences of each alternative.
 5. A recommendation with the reason it best serves the accepted intent.
 
 Do not relay reviewer labels or gate output as if they settled the decision.
+Each offered alternative must describe a distinct viable outcome and its consequences under the accepted intent; leaving required work unfinished is not a substitute alternative.
+If no viable in-scope alternative exists and authority really is missing, ask directly for the concrete ungranted action, naming its scope, consequence, and why existing authorization does not cover it.
+Explain what remains blocked if consent is declined without presenting abandonment as an invented competing product choice.
+An approval question needs no second option: for `functions.request_user_input_async`, omit `options` for a direct consent question; for a genuine choice, use `questions[].title` and `questions[].options` to carry the outcomes and consequences.
+Apply the same judgment to other native question tools and plain chat before publication; no optional wrapper or repository hook intercepts this API tool.
+Record only calls that actually require the captain through `captain-hold-lifecycle`, and route actual answers through its existing intake.
 
 ## Classification examples
 
@@ -55,3 +66,7 @@ Do not relay reviewer labels or gate output as if they settled the decision.
 - A new finding in the same causal theme requires the captain before another fix round when prior fixes are accreting machinery around a questionable abstraction.
 - A genuinely security-sensitive action requires the captain under the stronger existing boundary even if it is otherwise within scope.
 - Complex architecture explicitly requested by the captain stays within scope and does not escalate merely because it is complex.
+- A metadata-only author correction that preserves accepted content and full validation proceeds when its exact recovery mechanics are already authorized; “finish recovery or leave validation stopped” is not a choice to publish.
+- The same correction during pipeline custody does not authorize cancellation or branch mutation; if the supported recovery needs an exception not yet granted, request that exact exception and consequence under `validation-supervision`.
+- Choosing between live updates and a manual refresh when accepted intent leaves freshness versus cost unsettled is a real product choice; explain both outcomes.
+- Running the selected validation after an implementation commit is an ordinary authorized next step, while merging the resulting green PR with `yolo` off still requires its concrete approval.

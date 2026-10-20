@@ -8,6 +8,49 @@ set -u
 TMP_ROOT=$(fm_test_tmproot fm-supervision-instructions)
 RENDER="$ROOT/bin/fm-supervision-instructions.sh"
 
+test_question_authority_reaches_every_primary() {
+  local harness out
+  for harness in unknown claude codex cursor grok opencode omp pi pi-signed; do
+    out=$("$RENDER" --harness "$harness") || fail "$harness: instruction rendering failed"
+    assert_contains "$out" '# ask-user-authority' "$harness: startup omitted the question authority owner"
+    assert_equals "$(printf '%s\n' "$out" | grep -c '^# ask-user-authority$')" 1 \
+      "$harness: startup duplicated the question authority owner"
+  done
+  pass "every primary protocol, including unknown/API, delivers question authority"
+}
+
+# Test the rendering dependency, not the wording or the agent's semantic judgment.
+test_question_policy_is_live_and_required() {
+  local root owner out
+  root="$TMP_ROOT/policy-root"
+  owner="$root/.agents/skills/ask-user-authority/SKILL.md"
+  mkdir -p "$root/bin" "$root/docs/supervision-protocols" "$(dirname "$owner")"
+  cp "$RENDER" "$root/bin/"
+  printf 'fixture harness protocol\n' > "$root/docs/supervision-protocols/unknown.md"
+  printf '# ask-user-authority\nfixture policy one\n' > "$owner"
+  out=$(bash "$root/bin/fm-supervision-instructions.sh" --harness unknown) || fail "fixture render failed"
+  assert_contains "$out" 'fixture policy one' "renderer did not consume its tracked policy owner"
+  printf '# ask-user-authority\nfixture policy two\n' > "$owner"
+  out=$(bash "$root/bin/fm-supervision-instructions.sh" --harness unknown) || fail "policy reload failed"
+  assert_contains "$out" 'fixture policy two' "renderer cached a stale policy copy"
+  assert_not_contains "$out" 'fixture policy one' "renderer duplicated the old policy"
+  rm "$owner"
+  if bash "$root/bin/fm-supervision-instructions.sh" --harness unknown > "$TMP_ROOT/missing-policy" 2>&1; then
+    fail "renderer silently continued without its question policy"
+  fi
+  assert_contains "$(cat "$TMP_ROOT/missing-policy")" "$owner" "missing policy diagnostic omitted its owner"
+  : > "$owner"
+  if bash "$root/bin/fm-supervision-instructions.sh" --harness unknown >/dev/null 2>&1; then
+    fail "renderer silently continued with an empty question policy"
+  fi
+  bash "$root/bin/fm-supervision-instructions.sh" --harness unknown --repair-line >/dev/null \
+    || fail "missing policy prevented the independent watcher repair instruction"
+  pass "renderer reloads the policy owner and refuses absent or empty policy without blocking repair"
+}
+
+test_question_authority_reaches_every_primary
+test_question_policy_is_live_and_required
+
 test_selected_harness_block_only() {
   local out
   out=$("$RENDER" --harness codex)
