@@ -244,3 +244,45 @@ test('«Новый агент» appears only on an open дело, defaults its f
     assert.equal(document.querySelector('[data-action="agent-case"]'), null, 'a closed дело has no «Новый агент»');
   } finally { window.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test('overview rows explain dependencies and holds, link fleet PRs, and hide blocked quick starts', async () => {
+  const { overview } = await import('../src/overview.ts');
+  const reason = 'Ждём согласования условий возврата. '.repeat(15);
+  const records = [
+    { id: 'rr-refund-q2', title: 'Согласовать возвраты', state: 'queued', kind: 'ship' },
+    { id: 'rr-refund-q3', title: 'Внедрить возвраты', state: 'queued', kind: 'ship', priority: '0', hold_reason: reason, blocked_by: 'rr-refund-q2', unresolved_blocker_ids: ['rr-refund-q2'] },
+    ...['busy', 'check', 'ask', 'unknown', 'orphan'].map(id => ({ id, title: id, state: 'in_flight', kind: 'ship' })),
+  ];
+  const view = overview({ generated: '2026-10-20T12:00:00Z', gates: [{ id: 'rr-refund-q3', reason: 'Ждём…' }, { id: '(main-inventory)', title: 'in-flight backlog item has no child metadata', reason: 'main inventory' }], in_flight: ['busy', 'check', 'ask', 'unknown'].map(id => ({ id })) }, {
+    backlog: { records }, main_inventory: { orphan_in_flight: ['orphan'] }, tasks: [
+      { id: 'busy', current_state: { state: 'working', detail: 'harness busy (claude-hook)' } },
+      { id: 'check', current_state: { state: 'working', detail: 'validating (running) · run: 123' }, pr: { url: 'https://example.org/pull/2' } },
+      { id: 'ask', current_state: { state: 'parked', detail: 'waiting' }, hints: { pending_decision: true } },
+      { id: 'unknown', current_state: { state: 'unknown', detail: 'harness state unavailable' }, hints: { pending_decision: true } },
+    ],
+  });
+  const dom = new JSDOM(readFileSync(new URL('../web/index.html', import.meta.url), 'utf8'), { url: 'http://localhost:4317/', runScripts: 'outside-only' });
+  const { window } = dom; const document = window.document;
+  window.setInterval = (() => 0) as typeof window.setInterval;
+  (window as any).fetch = async (input: string) => Response.json(input === '/api/meta' ? { csrf: 'synthetic' } : view);
+  try {
+    window.eval(stripTypeScriptTypes(readFileSync(new URL('../web/app.ts', import.meta.url), 'utf8')));
+    for (let i = 0; i < 100 && !document.querySelector('.row'); i++) await new Promise(resolve => setTimeout(resolve, 10));
+    const blocked = [...document.querySelectorAll('.row')].filter(r => r.querySelector('strong a')?.getAttribute('href') === '#rr-refund-q3');
+    assert.equal(blocked.length, 2, 'the same explanation and action policy applies in focus');
+    for (const row of blocked) {
+      assert.ok(row.textContent?.includes(reason));
+      const dependency = row.querySelector('small a[href="#rr-refund-q2"]');
+      assert.equal(dependency?.textContent, 'Согласовать возвраты');
+      assert.ok(row.textContent?.includes('Ждёт:'));
+      assert.equal(row.querySelector('[data-task-action="start"]'), null);
+    }
+    const text = document.querySelector('main')?.textContent ?? '';
+    for (const state of ['Работает', 'Идёт проверка', 'Вопрос исполнителя', 'Состояние неизвестно', 'Нет исполнителя']) assert.ok(text.includes(state), state);
+    assert.doesNotMatch(text, /harness|claude-hook|run:|in-flight backlog|main.inventory|validating/);
+    const pr = document.querySelector('a[href="https://example.org/pull/2"]');
+    assert.equal(pr?.textContent, 'PR');
+    assert.equal(pr?.getAttribute('rel'), 'noopener noreferrer');
+    assert.equal(document.querySelector('[data-task-action="start"][data-id="rr-refund-q3"]'), null);
+  } finally { window.close(); }
+});

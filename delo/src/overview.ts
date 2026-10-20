@@ -3,7 +3,7 @@ import type { FirstmateTask } from './firstmate.ts';
 // Main screen from the Firstmate snapshots: sections follow fm-bearings.v1, row fields come from fm-fleet-snapshot.v1.
 export type Row = {
   id: string; title: string; kind?: string; repo?: string; pinned: boolean; open: boolean; task: boolean; personal: boolean;
-  reason?: string; current?: string; noWorker?: boolean; blockedBy?: string; prUrl?: string; reportPath?: string; owner?: string;
+  reason?: string; current?: string; noWorker?: boolean; blockedBy?: string; blockers?: { id: string; title: string }[]; prUrl?: string; reportPath?: string; owner?: string;
   actions: Goal['actions']; state?: Goal['state']; holdKind?: string; inFlight?: boolean;
 };
 export type Group = { repo: string; rows: Row[] };
@@ -18,6 +18,16 @@ export const reportPath = (id: string) => `data/${id}/report.md`;
 export const linkEntries = (links: unknown): unknown[] => Array.isArray(links) ? links : typeof links === 'string' && links !== 'none' ? links.split(',') : [];
 export const hasReport = (task: { id: string; links?: unknown }) => linkEntries(task.links).includes(`report:${reportPath(task.id)}`);
 export const pinned = (record: any) => String(record?.priority) === '0' && record?.state !== 'done';
+
+// Uses reconciled current state, never historical status events or unknown-state hints.
+export function workerState(worker: any): string {
+  if (!worker) return 'Нет исполнителя';
+  const state = worker.current_state;
+  if (!state || state.state === 'unknown') return 'Состояние неизвестно';
+  if (state.state === 'needs-decision' || (['parked', 'paused', 'blocked'].includes(state.state) && (worker.hints?.pending_decision === true || /^needs-decision\b/.test(state.detail ?? '')))) return 'Вопрос исполнителя';
+  if (state.state === 'working') return state.source === 'run-step' || /^(validating\b|ci running\b)/.test(state.detail ?? '') ? 'Идёт проверка' : 'Работает';
+  return ({ parked: 'Исполнитель на паузе', paused: 'Исполнитель на паузе', blocked: 'Работа заблокирована', done: 'Работа исполнителя завершена', failed: 'Работа завершилась с ошибкой' } as Record<string, string>)[state.state] ?? 'Состояние неизвестно';
+}
 
 export function groupByRepo(rows: Row[]): Group[] {
   const groups = new Map<string, Row[]>();
@@ -36,23 +46,30 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
   const row = (id: string, title: string | undefined, extra: Partial<Row> = {}): Row => {
     const r = records.get(id);
     const task = native.get(id) ?? r;
+    const worker = workers.get(id);
+    const blockerIds: string[] = r?.unresolved_blocker_ids ?? (r?.blocked_by_ids ?? value(extra.blockedBy ?? r?.blocked_by)?.split(',') ?? []).map((id: string) => id.trim()).filter((id: string) => id && records.get(id)?.state !== 'done') ?? [];
     return {
       ...extra, id, title: value(r?.title) ?? value(title) ?? id, kind: value(r?.kind) ?? extra.kind, repo: value(r?.repo) ?? extra.repo,
-      pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(r?.pr_url), reportPath: value(r?.report_path),
+      pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(worker?.pr?.url) ?? value(r?.pr_url), reportPath: value(r?.report_path),
       actions: r ? actions(task) : [], state: !r ? undefined : task.state === 'done' ? 'done' : task.held === true || task.held === 'yes' ? 'paused' : 'active',
+      reason: value(r?.hold_reason) ?? extra.reason,
+      blockers: blockerIds.map(id => ({ id, title: value(records.get(id)?.title) ?? id })),
+      current: worker || task?.state === 'in_flight' ? workerState(worker) : extra.current,
       holdKind: value(task?.hold_kind), inFlight: task?.state === 'in_flight',
     };
   };
-  const current = (id: string, fallback?: string) => {
-    const state = workers.get(id)?.current_state;
-    return [value(state?.state), value(state?.detail)].filter(Boolean).join(': ') || value(fallback);
-  };
   const waiting = (bearings.decisions_open ?? []).map((d: any) => row(d.id, d.summary, { reason: value(records.get(d.id)?.hold_reason) ?? value(d.summary), owner: d.owner }));
   const working = [
-    ...(bearings.in_flight ?? []).map((t: any) => row(t.id, t.name, { kind: value(t.kind), repo: value(t.repo), current: current(t.id, t.doing ?? t.state) })),
+    ...(bearings.in_flight ?? []).map((t: any) => row(t.id, t.name, { kind: value(t.kind), repo: value(t.repo) })),
     ...(fleet.main_inventory?.orphan_in_flight ?? []).map((id: string) => row(id, undefined, { noWorker: true })),
   ];
-  const next = (bearings.gates ?? []).map((g: any) => row(g.id, g.title, { reason: value(g.reason), blockedBy: value(g.blocked_by), owner: g.owner }));
+  const next = (bearings.gates ?? []).map((g: any) => {
+    const warning = !records.has(g.id) && g.id.startsWith('(');
+    return row(g.id, warning ? 'Требуется внимание Firstmate' : g.title, {
+      reason: warning ? 'Нужно проверить состояние задач' : records.has(g.id) ? undefined : value(g.reason),
+      blockedBy: value(g.blocked_by), owner: g.owner,
+    });
+  });
   const done = (bearings.landed ?? []).map((l: any) => row(l.id, l.what, { owner: l.owner }));
   const all = [...waiting, ...working, ...next, ...done];
   const focus = [...records.values()].filter(pinned).map(r => row(r.id, r.title));

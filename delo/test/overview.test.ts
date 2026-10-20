@@ -25,7 +25,7 @@ test('sections follow bearings, orphan In flight rows join «В работе» w
   assert.deepEqual(ids(view.waiting), ['ask']);
   assert.equal(view.waiting[0].rows[0].reason, 'Нужен выбор');
   assert.deepEqual(ids(view.working), ['run', 'orphan']);
-  assert.equal(view.working[0].rows[0].current, 'working: пишет тесты');
+  assert.equal(view.working[0].rows[0].current, 'Работает');
   assert.equal(view.working[1].rows[0].noWorker, true);
   assert.deepEqual(ids(view.next), ['next', '(main-inventory)']);
   assert.equal(view.next.flatMap(g => g.rows).find(r => r.id === '(main-inventory)')?.task, false);
@@ -101,4 +101,37 @@ test('Store pins through the backlog priority and keeps the backlog unchanged on
     assert.deepEqual(after.focus.map(r => r.id).sort(), ['p1', 'p3']);
     assert.match(readFileSync(backlog, 'utf8'), /p2 .*\(priority: 2\)/);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('rows expose full holds, unresolved dependencies, fleet PRs and honest worker states', () => {
+  const reason = 'Пауза до согласования условий. '.repeat(20);
+  const states = [
+    ['busy', { state: 'working', detail: 'harness busy (claude-hook)' }, 'Работает'],
+    ['check', { state: 'working', detail: 'validating (running) · run: 123' }, 'Идёт проверка'],
+    ['ci', { state: 'working', source: 'run-step', detail: 'run active' }, 'Идёт проверка'],
+    ['ask', { state: 'parked', detail: 'needs-decision: choose' }, 'Вопрос исполнителя'],
+    ['unknown', { state: 'unknown', detail: 'harness state unavailable' }, 'Состояние неизвестно'],
+    ['paused', { state: 'paused', detail: 'waiting' }, 'Исполнитель на паузе'],
+    ['failed', { state: 'failed', detail: 'run failed' }, 'Работа завершилась с ошибкой'],
+  ] as const;
+  const records = [record('rr-refund-q2', { title: 'Согласовать возвраты' }),
+    record('rr-refund-q3', { blocked_by: 'rr-refund-q2,missing', unresolved_blocker_ids: ['rr-refund-q2', 'missing'], hold_reason: reason, priority: '0' }),
+    record('released', { blocked_by: 'finished', unresolved_blocker_ids: [] }), record('finished', { state: 'done' }),
+    ...states.map(([id]) => record(id, { state: 'in_flight' })), record('orphan', { state: 'in_flight' })];
+  const view = overview({ gates: [{ id: 'rr-refund-q3', reason: 'Пауза…' }, { id: 'released' }], in_flight: states.map(([id]) => ({ id })) }, {
+    backlog: { records }, main_inventory: { orphan_in_flight: ['orphan'] },
+    tasks: states.map(([id, current_state]) => ({ id, current_state, pr: id === 'check' ? { url: 'https://example.org/pull/2' } : undefined })),
+  });
+  const blocked = view.next[0].rows[0];
+  assert.equal(blocked.reason, reason);
+  assert.deepEqual(blocked.blockers, [{ id: 'rr-refund-q2', title: 'Согласовать возвраты' }, { id: 'missing', title: 'missing' }]);
+  assert.deepEqual(view.focus[0].blockers, blocked.blockers);
+  assert.deepEqual(view.next[0].rows[1].blockers, []);
+  const rows = view.working.flatMap(g => g.rows);
+  for (const [id, , label] of states) assert.equal(rows.find(r => r.id === id)?.current, label, id);
+  assert.equal(rows.find(r => r.id === 'orphan')?.current, 'Нет исполнителя');
+  assert.equal(rows.find(r => r.id === 'check')?.prUrl, 'https://example.org/pull/2');
+  const hinted = overview({ in_flight: [{ id: 'ask' }] }, { backlog: { records }, tasks: [{ id: 'ask', current_state: { state: 'unknown' }, hints: { pending_decision: true } }] });
+  assert.equal(hinted.working[0].rows[0].current, 'Состояние неизвестно', 'unknown is never upgraded using a hint');
 });

@@ -106,10 +106,14 @@ async function taskAction(g: Pick<Goal, 'id' | 'holdKind' | 'inFlight'>, action:
 
 const sections = [['waiting', 'Ждёт меня'], ['working', 'В работе'], ['next', 'Дальше'], ['done', 'Сделано']] as const;
 function row(r: Row, inFocus = false) {
-  const marks = [r.kind ? badge(r.kind) : '', r.personal ? badge('личное') : '', r.pinned && !inFocus ? badge('В фокусе') : '', r.noWorker ? badge('нет исполнителя') : ''].join('');
-  const detail = [r.id, taskState(r), r.reason || r.current].filter(Boolean).join(' · ');
+  const marks = [r.kind ? badge(r.kind) : '', r.personal ? badge('личное') : '', r.pinned && !inFocus ? badge('В фокусе') : ''].join('');
+  const detail = [r.task ? r.id : undefined, taskState(r), r.current, r.reason].filter(Boolean).join(' · ');
+  const blockers = r.blockers ?? (r.blockedBy ? r.blockedBy.split(',').map(id => ({ id, title: id })) : []);
+  const dependencies = blockers.length ? `<small>Ждёт: ${blockers.map(b => `<a href="#${encodeURIComponent(b.id)}">${esc(b.title)}</a>`).join(', ')}</small>` : '';
+  const controls = blockers.length ? { ...r, actions: r.actions.filter(a => a !== 'start') } : r;
+  const pr = r.prUrl && /^https?:\/\//.test(r.prUrl) ? ` · <a href="${esc(r.prUrl)}" target="_blank" rel="noopener noreferrer">PR</a>` : '';
   const pin = r.open ? `<button class="quiet" data-action="pin" data-id="${esc(r.id)}" data-on="${r.pinned ? '' : '1'}" ${pendingTasks.has(r.id) ? 'disabled' : ''}>${r.pinned ? 'Открепить' : 'Закрепить'}</button>` : '';
-  return `<div class="row${r.task ? ' go' : ' warning'}"><div class="row-content"><strong>${r.task ? `<a href="#${encodeURIComponent(r.id)}">${esc(r.title)}</a>` : esc(r.title)}</strong> ${marks}<small>${esc(detail)}${r.reportPath === ownReport(r.id) ? ` · ${reportAnchor(r.id)}` : ''}</small></div><div class="row-actions">${r.task ? taskControls(r) : ''}${pin}</div></div>`;
+  return `<div class="row${r.task ? ' go' : ' warning'}"><div class="row-content"><strong>${r.task ? `<a href="#${encodeURIComponent(r.id)}">${esc(r.title)}</a>` : esc(r.title)}</strong> ${marks}<small>${esc(detail)}${pr}${r.reportPath === ownReport(r.id) ? ` · ${reportAnchor(r.id)}` : ''}</small>${dependencies}</div><div class="row-actions">${r.task ? taskControls(controls) : ''}${pin}</div></div>`;
 }
 function caseRow(c: CaseRow) {
   return `<div class="row go"><div class="row-content"><strong><a href="#case:${encodeURIComponent(c.id)}">${esc(c.title)}</a></strong><small>${esc(Object.entries(phaseLabels).map(([k, l]) => `${l} ${c.counts[k as keyof typeof phaseLabels]}`).join(' · '))}</small></div></div>`;
