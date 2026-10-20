@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { reviewInput, type Review, type ReviewProgress } from './review.ts';
 
 export const line = z.string().max(500).refine(v => !/[\r\n]/.test(v), 'Нужна одна строка');
 export const text = z.string().max(60000);
@@ -12,6 +13,7 @@ export const goalInput = z.object({
 });
 // A дело is a backlog row of kind program whose body is the managed brief after its `Источник:` lines.
 export const caseInput = z.object({
+  requestId: z.string().uuid().optional(), review: reviewInput.optional(),
   title: line.min(1), why: text.default(''), doneWhen: text.default(''), context: text.default(''), constraints: text.default(''), sources: text.default(''),
 });
 // shortcut: список повторяет AGENTS.md, раздел 4, и установленные программы; править при смене списка
@@ -45,6 +47,7 @@ export function phase(task: { state: string; hold_kind?: string }): Phase {
 
 // A card is one Firstmate row; links are the row's own pr/report/doc links.
 export type Goal = {
+  review?: Review; reviewProgress?: ReviewProgress;
   id: string; title: string; state: z.infer<typeof state>; body: string; kind?: string; repo?: string; personal: boolean; actions: Action[];
   managedBrief?: boolean; prUrl?: string; reason?: string; blockers?: { id: string; title: string }[];
   why: string; doneWhen: string; context: string; constraints: string[]; holdKind?: string; inFlight?: boolean; links: string[]; report: boolean; folder: string; harness: string;

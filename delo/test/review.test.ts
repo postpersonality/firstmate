@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
+import { Store } from '../src/store.ts';
+import { firstmateHome, stubLog } from './firstmate-home.ts';
+import { existsSync, readFileSync } from 'node:fs';
+
+test('SA review case validates inputs, resolves registry paths, and queues exactly one ordinary scout on repeated submit', () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-review-'));
+  try {
+    const home = firstmateHome(root);
+    mkdirSync(join(home, 'projects', 'avia'), { recursive: true });
+    writeFileSync(join(home, 'data/projects.md'), '- avia [local-only +yolo] - Context (added 2026-10-20)\n');
+    const store = new Store({ firstmateHome: home });
+    const input = { title: 'Проверить СА', requestId: randomUUID(), review: { kind: 'sa', document: 'https://confluence.example/pages/123', repo: 'avia' } };
+    assert.throws(() => store.createCase({ ...input, review: { ...input.review, document: '' } }));
+    assert.throws(() => store.createCase({ ...input, review: { ...input.review, document: 'file:///tmp/private' } }));
+    assert.throws(() => store.createCase({ ...input, review: { ...input.review, repo: 'missing' } }));
+    assert.throws(() => store.createCase({ ...input, requestId: undefined }));
+    assert.equal(store.list().length, 0, 'invalid submissions leave no rows');
+    assert.deepEqual(store.reviewProjects(), [{ name: 'avia', path: join(home, 'projects/avia') }]);
+    const c = store.createCase(input);
+    assert.equal(c.kind, 'program');
+    assert.equal(c.tasks.length, 1);
+    const child = store.get(c.tasks[0].id);
+    assert.equal(child.kind, 'scout');
+    assert.equal(child.folder, '', 'context repo is not a read-only duty folder');
+    assert.equal(child.review?.repo, join(home, 'projects/avia'));
+    assert.ok(child.review?.kind === 'sa');
+    assert.equal(child.review?.document, input.review.document);
+    assert.equal(child.inFlight, false);
+    assert.equal(store.firstmate.receipts().pending.length, 0, 'create queues review, without auto execution');
+    assert.match(child.body, /confluence.*jira/is);
+    assert.match(child.body, /review-run\.ts/);
+    assert.equal(new Store({ firstmateHome: home }).createCase(input).id, c.id, 'retry survives store restart');
+    assert.equal(store.list().length, 2, 'one container and one worker');
+    assert.throws(() => store.createCase({ ...input, review: { ...input.review, document: 'https://other.example/pages/1' } }), /повтор/i);
+    store.act(child.id, 'start', {}); store.act(child.id, 'start', {});
+    assert.equal(store.firstmate.receipts().pending.length, 1, 'ordinary start is idempotent');
+    assert.equal(existsSync(stubLog) ? readFileSync(stubLog, 'utf8') : '', '', 'no agent/model transport called');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

@@ -212,7 +212,7 @@ test('browser app uses the real router for goal forms, the card and task actions
     }
 
     window.document.getElementById('new-case')?.click();
-    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'sources', 'why', 'doneWhen', 'context', 'constraints']);
+    assert.deepEqual([...window.document.querySelectorAll('#dialog-body [name]')].map(e => e.getAttribute('name')), ['title', 'reviewKind', 'sources', 'why', 'doneWhen', 'context', 'constraints']);
     (window.document.querySelector('[name=title]') as HTMLInputElement).value = 'UI дело';
     (window.document.querySelector('[name=why]') as HTMLTextAreaElement).value = 'Собрать задачи';
     (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));

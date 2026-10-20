@@ -40,6 +40,7 @@ export function router(store: Store, opener = 'xdg-open') {
       if (req.method === 'POST' && url.pathname === '/api/goals') return send(store.create(await req.json()), 201);
       if (req.method === 'POST' && url.pathname === '/api/cases') return send(store.createCase(await req.json()), 201);
       if (req.method === 'GET' && url.pathname === '/api/cases') return send(store.closedCases());
+      if (req.method === 'GET' && url.pathname === '/api/review-projects') return send(store.reviewProjects());
       if (req.method === 'GET' && url.pathname === '/api/folders') return send(store.folders());
       const report = /^\/api\/reports\/([^/]+)$/.exec(url.pathname);
       const reportOpen = /^\/api\/reports\/([^/]+)\/open$/.exec(url.pathname);
