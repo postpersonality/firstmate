@@ -6,6 +6,51 @@ This record supports current session-start, turn-end, watcher-continuity, superv
 Operator behavior and active limits remain in the linked current guides.
 Task-specific chronology, temporary paths, run identifiers, and delivery transcripts remain in private reports or PR evidence.
 
+## Native Codex API Stop delivery
+
+Verified on 2026-10-20 with codex-cli 0.163.0 on Linux, `gpt-6.1-sol` at `xhigh`, the native `app-server --stdio` event path, and the installed Perl timeout owner.
+The isolated proof used three newly owned homes, the existing login, and two separately reviewed fixture hooks with invocation-local `bypass_hook_trust=true`.
+It created no login and changed no global hook, trust store, persistent vendor setting, shared daemon, or live fleet.
+The terminal read/send boundary was synthetic; the native model actually executed the production lock, checkpoint, drain, acknowledgement, and public `fm-send` commands.
+
+With `native_bin` set to the reviewed native binary and `lab` to a newly owned evidence directory, the exact proof command was:
+
+```sh
+FM_CODEX_STOP_LIVE_HOOKS_REVIEWED=1 \
+FM_CODEX_STOP_LIVE_BIN="$native_bin" \
+python3 tests/fm-codex-stop-watch-native.py "$PWD" "$lab"
+```
+
+Observed output:
+
+```text
+ok - codex-cli 0.163.0: old API Stop stayed idle after the late worker completion
+ok - codex-cli 0.163.0: quiet and late API Stop continuations performed one worker validation; interruption stayed stopped
+ok - codex-cli 0.163.0: Stop-bound model tools kept the host lock, ran drain/ack/send/checkpoint; another actual thread refused
+ok - codex-cli 0.163.0: empty API primary completed without supervision work
+```
+
+The worker was recorded in flight before the ordinary short reply.
+The control completed its native turn before the late completion and performed no next action.
+The changed owner returned a quiet checkpoint through native exit-2 feedback, handled the subsequent completion despite another hook's true `stop_hook_active`, sent one durable validation instruction, and acknowledged the printed generation before interruption.
+The owned worker consumed that instruction and ran `bash -n` on its fixture.
+No additional client prompt drove that continuation.
+A second actual thread in the same app-server executed the lock command, received exit 1, and preserved the primary identity.
+An interrupted primary produced no further Stops or leftover watcher; an empty primary completed with guard exit 0 and no watcher beacon.
+
+[`runtime-backends.md`](runtime-backends.md#native-codex-api-primary-identity) records the measured hook/tool identity distinction.
+The portable regression covers an existing healthy watcher, pending delivery across the boundary, idempotent acknowledgement, watcher failure, bounded duplicate handling, foreign ownership, and held-only backlog:
+
+```sh
+bash bin/fm-test-run.sh --jobs 1 \
+  tests/fm-codex-stop-watch.test.sh tests/fm-watch-checkpoint.test.sh
+```
+
+Observed result: `FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0`.
+The opt-in `tests/fm-codex-stop-watch-live-e2e.test.sh` refreshes native evidence after its generated hooks and invocation-local trust scope are separately reviewed.
+This proves the supported native return path with an executing trusted hook and functioning handler; it does not deploy or establish hook trust for any current client.
+The exact guarantee and failure boundary remain in [Codex API Stop ownership](../turnend-guard.md#codex-api-stop-ownership).
+
 ## Native session-start delivery
 
 The cross-harness transport pass ran on 2026-07-17 with Codex 0.144.4, Grok 0.2.103, OpenCode 1.17.18, Pi 0.80.10, and the tracked Claude hook wiring.

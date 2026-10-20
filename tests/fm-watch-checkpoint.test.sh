@@ -26,6 +26,11 @@ test_quiet_checkpoint_exits_124_cleanly() {
   assert_contains "$(cat "$out")" "checkpoint: no actionable wake within 1s" "quiet checkpoint line missing"
   assert_absent "$home/state/.watch.lock/pid" "watch lock pid survived quiet checkpoint timeout"
   pass "quiet checkpoint exits 124 with a clean checkpoint line and no live lock"
+  home=$(make_home quiet-zero-grace)
+  status=0
+  FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 "$CHECKPOINT" --seconds 1 >"$out" 2>"$err" || status=$?
+  expect_code 124 "$status" 'zero watcher signal grace must remain a bounded checkpoint'
+  assert_absent "$home/state/.watch.lock/pid" 'zero-grace checkpoint leaked its watcher'
 }
 
 test_signal_passes_through_and_exits_zero() {
@@ -90,6 +95,7 @@ make_host_home() {  # <name>
   mkdir -p "$home/root/bin"
   cp "$CHECKPOINT" "$home/root/bin/fm-watch-checkpoint.sh"
   cp "$ROOT/bin/fm-supervision-engine-lib.sh" "$home/root/bin/fm-supervision-engine-lib.sh"
+  cp "$ROOT/bin/fm-timeout-lib.sh" "$home/root/bin/fm-timeout-lib.sh"
   cat > "$home/root/bin/fm-supervision-host.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'args=%s\nprimary=%s\npark=%s\nlimit=%s\n' "$*" "${FM_SUPERVISION_HOST_PRIMARY:-}" \
@@ -159,6 +165,16 @@ test_host_checkpoint_passes_a_handback_and_reports_a_stand_down() {
   pass "checkpoint: a handed-back wake passes through, and a host stand-down is a failure"
 }
 
+test_host_hard_bound_includes_away_and_engine_time() {
+  local home
+  home=$(make_host_home host-hard-bound)
+  : > "$home/state/.afk-contract"
+  run_host_checkpoint "$home" boundary --seconds 2 --hard-bound
+  expect_code 124 "$STATUS" 'a hard host boundary is a quiet checkpoint'
+  assert_contains "$(cat "$home/host-env")" $'park=2\nlimit=2' 'the Stop deadline must include away and engine time'
+  pass 'checkpoint: hard bound forbids a longer away park or engine turn'
+}
+
 # The Codex owner stays file-gated: without config/supervision-host, or with
 # config/supervision-host-off, the checkpoint never runs the host.
 test_host_checkpoint_needs_the_file_and_honors_off() {
@@ -202,5 +218,6 @@ test_registered_check_uses_preserved_watcher_environment
 test_existing_singleton_watcher_is_not_success
 test_host_checkpoint_bounds_the_park_by_posture
 test_host_checkpoint_passes_a_handback_and_reports_a_stand_down
+test_host_hard_bound_includes_away_and_engine_time
 test_host_checkpoint_needs_the_file_and_honors_off
 test_real_host_checkpoint_ends_quietly_at_its_bound

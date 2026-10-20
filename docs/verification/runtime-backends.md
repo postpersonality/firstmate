@@ -6,6 +6,30 @@ This record contains reusable version-scoped evidence for active runtime guarant
 The backend guides own current setup, safety boundaries, and limitations.
 Exact task chronology, branch names, temporary homes, local paths, process ids, thread ids, and delivery transcripts remain in private reports or PR evidence.
 
+## Native Codex API primary identity
+
+Verified on 2026-10-20 with the native codex-cli 0.163.0 app-server on Linux and actual model tools in its `workspace-write` sandbox.
+The native proof command and complete action/continuation evidence are in [supervision verification](supervision.md#native-codex-api-stop-delivery).
+
+The real Stop payload carried `session_id` and `turn_id`, while both vendor identity environment variables were absent from the hook.
+The actual model tools reported:
+
+```text
+CODEX_THREAD_ID_present=true
+CODEX_SESSION_ID_present=true
+vendor_ids_equal=true
+FM_CODEX_HOOK_SESSION_ID_present=false
+pid1_comm=codex
+pid1_argv0=codex-linux-sandbox
+```
+
+The hook-bound lock named the host app-server; the model tool's native sandbox saw its init as PID 1.
+The tool confirmed ownership and ran `fm-lock` with exit 0 without replacing that host PID.
+A second actual API thread returned exit 1 from the same command and left the primary sidecar unchanged.
+This distinguishes managed API ownership from CLI ancestry and from inherited environment markers; the shared session-lock library owns the classifier and trust conditions.
+The portable `tests/fm-codex-stop-watch.test.sh` also proves that CLI prompt text containing `codex app-server` cannot select the API owner.
+Other primary adapters keep their existing identity paths; this measurement makes no new claim for a client that does not execute the verified native hooks.
+
 ## Harness detection precedence
 
 Firstmate's own harness comes from two kinds of evidence, and `bin/fm-harness.sh` owns how they combine: an environment marker names its harness, and the nearest harness process in the parent chain proves who owns the process tree.

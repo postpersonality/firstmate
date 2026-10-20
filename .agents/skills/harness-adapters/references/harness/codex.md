@@ -42,7 +42,7 @@ This is why `$no-mistakes` reaches a Codex worker instead of being consumed by t
 
 The primary integration was verified on 2026-07-08 with codex-cli 0.142.1.
 The firstmate primary's `.codex/hooks.json` registers a Stop hook that pipes Codex's payload to `../../../bin/fm-turnend-guard.sh`.
-Codex Stop hooks preserve exit status 2 and stderr to block, and expose `stop_hook_active` for the same one-block loop safety used by the guard's default mode.
+Codex Stop hooks preserve exit status 2 and stderr to block; native app-server sessions retain the checkpoint return under [Codex API Stop ownership](../../../../../docs/turnend-guard.md#codex-api-stop-ownership), while legacy sessions keep the guard's one-block `stop_hook_active` bound.
 
 The Stop payload includes `cwd`, but the tracked hook does not use it to choose the guard executable.
 Codex runs the Stop command with process PWD set to the hook-loaded project root, while no `CODEX_PROJECT_DIR`, `CODEX_WORKSPACE_ROOT`, or `CODEX_CWD` root variable is set.
