@@ -51,7 +51,6 @@ printf '%s' "$PAYLOAD" | jq -e \
 FM_CODEX_HOOK_SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id')
 export FM_CODEX_HOOK_SESSION_ID
 session=$(fm_session_lock_codex_session_id) || exit 0
-turn=$(printf '%s' "$PAYLOAD" | jq -r '.turn_id')
 
 notice() { jq -cn --arg message "$1" '{systemMessage:$message}'; }
 owned() { fm_session_lock_owned_by_self "$STATE"; }
@@ -92,39 +91,25 @@ if ! fm_lock_acquire_wait_max "$stop_lock" $((deadline - SECONDS)); then
   continuation "another Stop held the checkpoint lock for the whole ${bound}s bound"
 fi
 trap 'rm -f "$out"; fm_lock_release "$stop_lock"' EXIT
-delivery="$STATE/.codex-stop-delivery"
-key="$session:$turn"
-delivered() {
-  local fingerprint
-  if [ -s "$STATE/.wake-queue" ]; then
-    fingerprint="$key:$(cksum < "$STATE/.wake-queue")"
-    [ "$(cat "$delivery" 2>/dev/null || true)" != "$fingerprint" ] \
-      || continuation 'the previous durable wake was not handled/acknowledged; repair the primary handler before ending'
-    printf '%s\n' "$fingerprint" > "$delivery"
-  else
-    rm -f "$delivery"
-  fi
-  continuation "$1"
-}
 
-if [ -s "$STATE/.wake-queue" ]; then delivered 'pending durable wake at Stop boundary'; fi
+if [ -s "$STATE/.wake-queue" ]; then continuation 'pending durable wake at Stop boundary'; fi
 if fm_watcher_healthy "$STATE" "$SCRIPT_DIR/fm-watch.sh" "${FM_GUARD_GRACE:-300}" "$FM_HOME"; then
   # A previously yielded checkpoint may still own the singleton. Retain a
   # native return path while it finishes; its queue, not its output, is durable.
   while [ "$SECONDS" -lt "$deadline" ]; do
     mine || exit 0
-    [ ! -s "$STATE/.wake-queue" ] || delivered 'existing watcher published a durable wake'
+    [ ! -s "$STATE/.wake-queue" ] || continuation 'existing watcher published a durable wake'
     fm_watcher_healthy "$STATE" "$SCRIPT_DIR/fm-watch.sh" "${FM_GUARD_GRACE:-300}" "$FM_HOME" || break
     sleep 1
   done
-  if [ "$SECONDS" -ge "$deadline" ]; then delivered "checkpoint: existing watcher retained for ${bound}s"; fi
+  if [ "$SECONDS" -ge "$deadline" ]; then continuation "checkpoint: existing watcher retained for ${bound}s"; fi
 fi
 
 status=0
 remaining=$((deadline - SECONDS))
-[ "$remaining" -gt 0 ] || delivered "checkpoint: existing watcher retained for ${bound}s"
+[ "$remaining" -gt 0 ] || continuation "checkpoint: existing watcher retained for ${bound}s"
 FM_SIGNAL_GRACE=1 "$SCRIPT_DIR/fm-watch-checkpoint.sh" --seconds "$remaining" --hard-bound >"$out" 2>&1 || status=$?
 if [ "$status" -eq 0 ] || [ "$status" -eq 124 ]; then
-  delivered "$(cat "$out")"
+  continuation "$(cat "$out")"
 fi
 continuation "checkpoint failed (exit $status); repair the existing watcher owner before continuing: $(cat "$out")"
