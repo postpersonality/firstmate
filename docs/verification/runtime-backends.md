@@ -25,6 +25,7 @@ pid1_argv0=codex-linux-sandbox
 
 The hook-bound lock named the host app-server; the model tool's native sandbox saw its init as PID 1.
 The tool confirmed ownership and ran `fm-lock` with exit 0 without replacing that host PID.
+That confirmation compares thread ids; the measured tool environment names the thread, not the app-server, so it does not show that the same thread attached to another live app-server would be refused.
 A second actual API thread returned exit 1 from the same command and left the primary sidecar unchanged.
 This distinguishes managed API ownership from CLI ancestry and from inherited environment markers; the shared session-lock library owns the classifier and trust conditions.
 The portable `tests/fm-codex-stop-watch.test.sh` also proves that CLI prompt text containing `codex app-server` cannot select the API owner.
