@@ -213,6 +213,13 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep "{FIRSTMATE_SPEC}" "$brief" "$id: brief missing the {FIRSTMATE_SPEC} placeholder"
     assert_grep "## Captain's intent" "$brief" "$id: brief missing Captain's intent subsection"
     assert_grep "## Firstmate spec" "$brief" "$id: brief missing Firstmate spec subsection"
+    if [ "$mode" = no-mistakes ]; then
+      assert_grep "{PUBLIC_INTENT}" "$brief" "$id: no-mistakes brief missing the {PUBLIC_INTENT} placeholder"
+      assert_grep "## Public intent" "$brief" "$id: no-mistakes brief missing Public intent subsection"
+    else
+      assert_no_grep "{PUBLIC_INTENT}" "$brief" "$id: $mode brief scaffolds a Public intent nothing consumes"
+      assert_no_grep "## Public intent" "$brief" "$id: $mode brief scaffolds a Public intent subsection"
+    fi
     assert_grep 'never a bare number such as "PR 108"' "$brief" "$id: brief missing the full-PR-URL rule"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
@@ -377,6 +384,11 @@ test_no_mistakes_dod_wording() {
     "no-mistakes DOD must select the prepared Public intent subsection"
   assert_grep "changed requirements need a refreshed public paraphrase before validation" "$brief" \
     "no-mistakes DOD must require a refreshed public paraphrase for changed requirements"
+  # shellcheck disable=SC2016 # Backticks are literal generated instructions.
+  assert_grep 'the latest firstmate instruction-inbox message carrying an explicitly prepared replacement under its own `## Public intent` heading supersedes both' "$brief" \
+    "no-mistakes DOD must name the steered public intent replacement that supersedes the spawn-time input"
+  assert_grep "ask firstmate for that replacement, and never append raw words" "$brief" \
+    "no-mistakes DOD must tell the worker to request a replacement instead of appending raw words"
   assert_grep "Do not include \`## Firstmate spec\`" "$brief" \
     "no-mistakes DOD must keep Firstmate spec out of --intent"
   assert_grep "or your own decisions and tradeoffs" "$brief" \
@@ -1025,6 +1037,7 @@ test_scout_and_secondmate_scaffold() {
   assert_grep "## Captain's intent" "$brief" "scout brief missing Captain's intent subsection"
   assert_grep "## Firstmate spec" "$brief" "scout brief missing Firstmate spec subsection"
   assert_grep "{FIRSTMATE_SPEC}" "$brief" "scout brief missing the spec placeholder"
+  assert_grep "{PUBLIC_INTENT}" "$brief" "promotable scout brief missing the public intent placeholder"
 
   FM_SECONDMATE_CHARTER='Supervise the alpha domain.' \
     FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-sm-q6 --secondmate alpha >/dev/null 2>&1 \

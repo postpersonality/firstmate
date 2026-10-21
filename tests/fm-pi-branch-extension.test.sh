@@ -2132,7 +2132,6 @@ if (stolen?.messages?.some((message) => message.customType === "fm-branch-proces
 }
 await fire("agent_end", {});
 aborted = false;
-// Pi 1.3+ opens the triggered processing run with a custom-message event.
 await fire("before_agent_start", { messageType: "custom", message: processingMsg }, abortCtx);
 await fire("agent_start", {}, defaultSessionCtx);
 const openedByRequest = await fire("context", { messages: [...history, processingMsg] }, abortCtx);

@@ -24,8 +24,10 @@
 #   `## Captain's intent` line opening with a Captain label or address.
 #   Every ship or scout spawn renders `launch-brief.md`; for a no-mistakes ship
 #   it also carries the current `--intent` contract and prepared public intent.
-#   Missing, blank or placeholder `## Public intent` under `# Task` is refused,
-#   including on legacy briefs and relaunches; private words are never a fallback.
+#   A missing, blank or placeholder `## Public intent` under `# Task`, or one
+#   equal to the complete private intent after whitespace normalization, is
+#   refused, including on legacy briefs and relaunches; private words are never
+#   a fallback.
 #   bin/fm-dod-lib.sh owns the parsing and intent rules. When
 #   the explicit mode carries less rigor than the project's standing posture, a
 #   loud one-line deviation notice is printed and the spawn continues.

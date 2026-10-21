@@ -71,8 +71,8 @@ run_spawn() {  # <home> <fakebin> <spawn-args...>
     "$SPAWN" "$@" 2>&1
 }
 
-# Consume only the launch contract's public validation input at a local sink.
-# The sink never invokes a model, network service, or real pipeline.
+# The launch contract carries exactly the prepared public validation input; a
+# missing input or a full copy of the private intent is refused.
 test_public_intent_is_separate_and_required() {
   local rec home proj fakebin id brief launch out status authorized public variant
   rec=$(make_home public-intent)
@@ -87,6 +87,7 @@ EOF
 # Task
 ## Captain's intent
 PRIVATE_DIALOGUE_SENTINEL: please fix that routing problem again.
+Preserve existing approvals and retain a public Intent section.
 
 ## Public intent
 $public
@@ -103,11 +104,11 @@ EOF
   assert_present "$launch" "public wording was not serialized before backend refusal: $out"
   authorized=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit { print }' "$launch")
   [ "$authorized" = "$public" ] || fail "launch validation input differs from prepared public intent"
-  printf '## Intent\n%s\n' "$authorized" > "$TMP_ROOT/public-intent-sink.md"
-  assert_grep '## Intent' "$TMP_ROOT/public-intent-sink.md" "public Intent was omitted"
-  assert_grep 'Correct the request routing defect.' "$TMP_ROOT/public-intent-sink.md" "public objective was lost"
-  assert_grep 'Preserve existing approvals' "$TMP_ROOT/public-intent-sink.md" "public constraints were lost"
-  assert_no_grep 'PRIVATE_' "$TMP_ROOT/public-intent-sink.md" "private input reached the public sink"
+  assert_not_contains "$authorized" PRIVATE_ "private input reached the authorized public input"
+  # shellcheck disable=SC2016 # Backticks are literal generated Markdown.
+  assert_grep 'replacement under its own `## Public intent` heading supersedes that text' "$launch" \
+    "the launch contract did not name the steered public intent replacement"
+  assert_grep 'the latest such replacement wins' "$launch" "the launch contract did not order public intent replacements"
   assert_grep 'PRIVATE_DIALOGUE_SENTINEL' "$brief" "private source was not retained"
 
   for variant in missing blank placeholder outside-task; do
@@ -131,6 +132,24 @@ EOF
     [ "$status" -ne 0 ] || fail "$variant: spawn without prepared public input succeeded"
     assert_contains "$out" 'prepared ## Public intent' "$variant: refusal did not explain the missing public input"
     assert_absent "$home/data/$id/launch-brief.md" "$variant: unsafe launch input was serialized"
+    assert_absent "$home/state/$id.meta" "$variant: refused spawn recorded a task"
+  done
+
+  for variant in direct reformatted legacy; do
+    id="public-intent-copy-$variant"
+    write_brief "$home" "$id" no-mistakes
+    brief="$home/data/$id/brief.md"
+    case "$variant" in
+      direct) printf '# Task\n## Captain'\''s intent\nFix the routing defect.\nPreserve existing approvals.\n\n## Public intent\nFix the routing defect.\nPreserve existing approvals.\n\n## Firstmate spec\nUse the existing helper.\n' > "$brief" ;;
+      reformatted) printf '# Task\n## Captain'\''s intent\nFix the routing defect.\nPreserve existing approvals.\n\n## Public intent\n  Fix the routing defect.  Preserve\n\texisting approvals.\n\n## Firstmate spec\nUse the existing helper.\n' > "$brief" ;;
+      legacy) printf '# Task\n[captain] Fix the routing defect.\n[captain] Preserve existing approvals.\n\n## Public intent\nFix the routing defect.\nPreserve existing approvals.\n' > "$brief" ;;
+    esac
+    printf '\n# Definition of done\nDelivery contract: mode=no-mistakes\n' >> "$brief"
+    out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
+    status=$?
+    [ "$status" -ne 0 ] || fail "$variant: spawn with a copied private intent succeeded"
+    assert_contains "$out" 'copies the complete private' "$variant: refusal did not explain the copied public input"
+    assert_absent "$home/data/$id/launch-brief.md" "$variant: copied private intent was serialized"
     assert_absent "$home/state/$id.meta" "$variant: refused spawn recorded a task"
   done
 
@@ -169,6 +188,12 @@ EOF
   assert_contains "$out" 'prepared ## Public intent' "promotion did not explain missing public input"
   assert_absent "$home/data/$id/ship-instructions.md" "refused promotion serialized instructions"
   assert_grep 'kind=scout' "$home/state/$id.meta" "refused promotion mutated the task kind"
+  printf '# Task\n## Captain'\''s intent\nFix that problem.\n\n## Public intent\nFix that problem.\n\n## Firstmate spec\nInvestigate with the existing helper.\n' > "$brief"
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "promotion with a copied private intent succeeded"
+  assert_contains "$out" 'copies the complete private' "promotion did not explain the copied public input"
+  assert_absent "$home/data/$id/ship-instructions.md" "refused promotion serialized copied instructions"
   cat > "$brief" <<EOF
 # Task
 ## Captain's intent
@@ -187,7 +212,7 @@ EOF
     [ "$authorized" = "$public" ] || fail "promotion's worker or relaunch input differs from prepared public wording"
     assert_grep 'PRIVATE_PROMOTION_SENTINEL' "$launch" "promotion lost the private original"
   done
-  pass "public intent: prepared objective reaches the public sink; private source and missing inputs cannot"
+  pass "public intent: launch input is exactly the prepared public wording; private source, full copies and missing inputs are refused"
 }
 
 # A ship spawn must stop when its delivery contract was never decided or cannot be
@@ -1347,14 +1372,24 @@ test_forge_gerrit_changes_what_no_mistakes_means() {
        emit { print }
        emit && /hard rule violation\.$/ { exit }' "$plain" > "$TMP_ROOT/forge-dod/plain-middle"
   [ -s "$TMP_ROOT/forge-dod/gerrit-middle" ] || fail "the gerrit brief carries no pipeline-driving section to compare"
-  # Only the two statements about a green PR differ: the ci step is skipped on
-  # this forge, so there is no checks-passed return to wait for.
+  # Only the green-PR statements and the PR Intent publication lines differ: the
+  # pr and ci steps are skipped on this forge, so there is no checks-passed
+  # return to wait for and no PR Intent section to read back.
   grep -q "reports the green PR" "$TMP_ROOT/forge-dod/plain-middle" \
     || fail "the default contract lost the green-PR return statement the comparison removes"
+  grep -q "Read the published Intent back from the forge" "$TMP_ROOT/forge-dod/plain-middle" \
+    || fail "the default contract lost the PR Intent readback the comparison removes"
   assert_no_grep "checks-passed" "$TMP_ROOT/forge-dod/gerrit-middle" \
     "the gerrit worker was told to wait for a checks-passed return its skipped ci step never gives"
+  assert_no_grep "Read the published Intent back" "$TMP_ROOT/forge-dod/gerrit-middle" \
+    "the gerrit worker was told to read back a PR Intent section its skipped pr step never publishes"
+  assert_no_grep "no-publish-intent" "$TMP_ROOT/forge-dod/gerrit-middle" \
+    "the gerrit worker received a PR publication flag its skipped pr step never reads"
+  assert_grep "inspect the complete final payload against the prepared public wording" "$TMP_ROOT/forge-dod/gerrit-middle" \
+    "the gerrit worker lost the reviewed payload requirement"
   # shellcheck disable=SC2016 # Backticks are literal generated Markdown.
-  grep -v "reports the green PR" "$TMP_ROOT/forge-dod/plain-middle" \
+  grep -v -e "reports the green PR" -e 'public `## Intent` section' -e "positive publication settings" \
+    -e "Read the published Intent back" "$TMP_ROOT/forge-dod/plain-middle" \
     | sed 's/; once checks are green it returns `checks-passed` immediately, and if it refuses/; if it refuses/' \
     > "$TMP_ROOT/forge-dod/plain-middle-no-pr"
   cmp -s "$TMP_ROOT/forge-dod/gerrit-middle" "$TMP_ROOT/forge-dod/plain-middle-no-pr" \
