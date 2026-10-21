@@ -1434,14 +1434,14 @@ trap spawn_abort_cleanup EXIT
 # is required so secondmate and primary spawns serialize against the same
 # session without writing any other home's state directory.
 #
-# Default mode is one BOUNDED attempt. A clean create uses that default and
-# falls back to the ordinary flat layout on contention. An exact resume also
-# defaults to the bounded attempt and hard-refuses on contention (it does not
-# degrade flat). Passing mode `wait` makes this call WAIT for the lock instead
-# (`fm_lock_acquire_wait`, the same unbounded-wait idiom this file already uses
-# for its other fleet-shared locks). Only the recovery path under the explicit
-# --herdr-resume-lock-wait opt-in passes `wait`, so unbounded blocking on a
-# third-party session lock never becomes the default for every caller.
+# Default mode is one BOUNDED attempt. An exact resume defaults to it and
+# hard-refuses on contention (it does not degrade to project placement); abort
+# cleanup of a reclaimed projection also uses it. Passing mode `wait` makes
+# this call WAIT for the lock instead (`fm_lock_acquire_wait`, the same
+# unbounded-wait idiom this file already uses for its other fleet-shared
+# locks). Only the recovery path under the explicit --herdr-resume-lock-wait
+# opt-in passes `wait`, so unbounded blocking on a third-party session lock
+# never becomes the default for every caller.
 # Dead-owner reclaim inside `fm_lock_try_acquire` still bounds a wait against a
 # holder that crashed mid-hold.
 spawn_herdr_presentation_order_lock_acquire() {
@@ -3680,10 +3680,9 @@ if [ "$RELAUNCH" -eq 1 ]; then
     # (fm_control_endpoint_absence_verdict owns that argument). tmux and every
     # secondmate were already refused, so there is no dispatch left to make.
     #
-    # This deliberately uses the FLAT container shape rather than Herdr's
-    # presentation projection: projection is a presentation-only layout that is
-    # never endpoint or ownership authority, and flat is already the documented
-    # fallback for every recovery it cannot bind exactly
+    # This deliberately uses ordinary project Space placement rather than a
+    # presentation projection: projection is never endpoint or ownership
+    # authority, and neither a reclaim nor a new task creates one
     # (docs/herdr-backend.md "Presentation spaces").
     #
     # KNOWN LIMITATION (bead fm-herdr-rebind-leak-20260913): the tab minted
