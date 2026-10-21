@@ -1,0 +1,40 @@
+FM_TEST_BEGIN 2026-10-20T23:38:02Z tests/fm-codex-stop-watch.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - Codex API Stop: a quiet checkpoint returns an executable continuation, despite the old loop flag
+ok - Codex API identity: CLI prompt text cannot select the native API owner
+ok - Codex API Stop: an existing healthy watcher is retained once and quiet completion still reaches the handler
+ok - Codex API Stop: a late worker completion survives into a real idempotent steering action
+ok - Codex API Stop: shared daemon PID does not grant another thread ownership
+ok - Codex API session-lock writer: refuses another thread and never adopts a live legacy PID-only lock
+ok - Codex API SessionStart: a live legacy lock stays read-only; after a restart the payload identity binds it without vendor environment IDs
+ok - Codex API Stop: an empty fleet with held or parked backlog stays legitimately idle
+ok - Codex API Stop: repeated checkpoint failure keeps returning a repair continuation instead of allowing Stop
+ok - Codex API Stop: an unhandled pending wake stays durable and keeps blocking Stop
+ok - Codex API Stop: a held checkpoint lock returns a continuation instead of a silent Stop
+ok - Codex API Stop: a legacy PID-only lock keeps a bounded guard and binds only through native SessionStart after a restart
+ok - Codex API Stop: free, stale and PID-1 locks keep a bounded non-claiming guard, silent for an empty fleet
+ok - Codex API SessionStart: resume refuses a live legacy lock, binds after an app-server restart and leaves another recorded thread read-only
+ok - Codex API Stop: the Stop of the same thread in another app-server is read-only while the owner lives and reclaims after it exits
+ok - Codex sandboxed lock writer: confirms the recorded thread by its id alone, keeps the host anchor, and never publishes PID 1 or replaces a PID-only, stale or PID-1 lock
+FM_TEST_END 2026-10-20T23:38:29Z tests/fm-codex-stop-watch.test.sh exit=0 duration_ms=26632 gate_skip=false
+FM_TEST_BEGIN 2026-10-20T23:38:29Z tests/fm-watch-checkpoint.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - quiet checkpoint exits 124 with a clean checkpoint line and no live lock
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 19111.1792539514.n6KxWO
+ok - checkpoint passes through a real watcher wake and leaves the queue for drain
+ok - checkpoint preserves watcher environment for registered custom checks
+ok - checkpoint rejects an existing watcher singleton as unowned
+ok - checkpoint: an opted-in home runs the host for the checkpoint's bound, raised only while away
+ok - checkpoint: a handed-back wake passes through, and a host stand-down is a failure
+ok - checkpoint: hard bound forbids a longer away park or engine turn
+ok - checkpoint: a timeout kill escalation is the quiet bound, and a real failure keeps its status
+ok - checkpoint: a Codex home without config/supervision-host, or with an off file, never runs the host
+ok - checkpoint: the real host ends its park at the checkpoint bound as a quiet checkpoint
+FM_TEST_END 2026-10-20T23:38:45Z tests/fm-watch-checkpoint.test.sh exit=0 duration_ms=15954 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0 duration_ms=42891
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=2 duration_ms=42586 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-codex-stop-watch.test.sh duration_ms=26632
+FM_TEST_SLOWEST rank=2 script=tests/fm-watch-checkpoint.test.sh duration_ms=15954
+fm-test-run: wrote timing artifact: /home/nikolayseliverstov/.no-mistakes/evidence/01M5D83GNC4CC1P2G37V5KDSZQ/portable-suites.json
+
+real	0m43,098s
+user	0m11,211s
+sys	0m11,496s

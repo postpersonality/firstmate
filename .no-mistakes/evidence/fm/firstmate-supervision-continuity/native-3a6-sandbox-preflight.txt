@@ -1,0 +1,64 @@
+# Preflight for the Root034 one-time native acceptance (not executed); 2026-10-20T23:58:23Z
+## head and tracked content
+HEAD=3a6c5afa3681035eab84b37188d4d2356fbec483
+tracked_changes=0
+## fixture pins (read-only replay of run.sh assertions, without affinity or claim)
+04d1ca3cf770c770bef267f029dfe4973c0da0a4988c7b5e0462e69dbd961d22  /home/nikolayseliverstov/Projects/firstmate/data/firstmate-supervision-continuity/native-review-3a6c5afa/run.sh
+a40730dc2811126fc9b557da59f5faacd0f7878682e0a9175b52997badaffcd4  /home/nikolayseliverstov/Projects/firstmate/data/firstmate-supervision-continuity/native-review-3a6c5afa/pins.json
+source_pins=226 mismatches=[] binary_pin_ok=True
+free_GiB=25.3 MemAvailable_GiB=52.1 SwapTotal=0
+execution.claimed exists: no
+## blocker 1: run.sh clean-tree guard  [ -z "$(git status --porcelain)" ] inside this Test sandbox
+?? .bash_profile
+?? .bashrc
+?? .claude/agents
+?? .claude/commands
+?? .claude/hooks
+?? .claude/launch.json
+?? .claude/loop.md
+?? .claude/output-styles
+?? .claude/routines
+?? .claude/scheduled_tasks.json
+?? .claude/workflows
+?? .gitconfig
+?? .gitmodules
+?? .idea
+?? .mcp.json
+?? .profile
+?? .ripgreprc
+?? .vscode
+?? .zprofile
+?? .zshrc
+porcelain_entries=20
+-- mount source of each untracked entry (from /proc/self/mountinfo)
+.bash_profile <- /null devtmpfs
+.bashrc <- /null devtmpfs
+.claude/agents <- /null devtmpfs
+.claude/commands <- /null devtmpfs
+.claude/hooks <- /null devtmpfs
+.claude/launch.json <- /null devtmpfs
+.claude/loop.md <- /null devtmpfs
+.claude/output-styles <- /null devtmpfs
+.claude/routines <- /null devtmpfs
+.claude/scheduled_tasks.json <- /null devtmpfs
+.claude/workflows <- /null devtmpfs
+.gitconfig <- /null devtmpfs
+.gitmodules <- /null devtmpfs
+.idea <- /null devtmpfs
+.mcp.json <- /null devtmpfs
+.profile <- /null devtmpfs
+.ripgreprc <- /null devtmpfs
+.vscode <- /null devtmpfs
+.zprofile <- /null devtmpfs
+.zshrc <- /null devtmpfs
+## blocker 2: PID namespace without its own /proc
+shell $$=2  readlink /proc/self=914426  /proc/1/comm=systemd
+-- same probe inside unshare --user --map-current-user --pid --fork --mount --mount-proc
+inner $$=1 readlink /proc/self=2 /proc/1/comm=sh uid=1000
+## capability probes that did not start an app-server, model, hook or login
+codex tool sandbox: pid1_argv0=codex-linux-sandbox
+cwd_write=ok
+outside_write=refused
+proxy https://chatgpt.com/backend-api/codex/responses -> 405
+proxy https://api.openai.com/v1/models -> 401
+direct (no proxy) https://api.openai.com -> 000

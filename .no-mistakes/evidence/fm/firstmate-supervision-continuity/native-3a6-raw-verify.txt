@@ -1,0 +1,71 @@
+== provenance
+PASS worktree HEAD 3a6c5afa3681035eab84b37188d4d2356fbec483
+PASS tracked tree clean
+PASS 226 source pins match current tree (mismatch [])
+PASS private script pins (run.sh) match
+PASS codex-cli 0.163.0 binary pin matches
+PASS run.sh hash equals the Root034/035 reviewed value
+PASS pins.json hash equals the Root034/035 reviewed value
+PASS host-assist.sh hash equals the Root034/035 reviewed value
+PASS host-assist-pins.json hash equals the Root034/035 reviewed value
+PASS execution.claimed head 3a6c5afa at 1792541124 (single claim file)
+PASS host preflight: coherent pid/proc, same head, no prior claim
+PASS host-assist.rc 0, driver.rc 0, driver.err empty
+PASS driver.out: five ok lines
+PASS manifest 40 files match by sha256 and size (mismatch [])
+PASS before/bin equals HEAD bin (control guard = base 343e7a31) except the driver shim ['bin/fm-session-start.sh']
+PASS after/bin equals HEAD bin (control guard = base 343e7a31) except the driver shim ['bin/fm-session-start.sh']
+PASS empty/bin equals HEAD bin (control guard = base 343e7a31) except the driver shim ['bin/fm-session-start.sh']
+== S2 negative control: base guard in native app-server (before home)
+PASS SessionStart bound primary thread 01a15bc6-e8a1-7203-b293-c1da5d1e5188: lock acquired: harness pid 1018247
+PASS base guard: Stop#1 exit 2, Stop#2 (stop_hook_active=true) exit 0
+PASS turn completed; no further turn started after the late worker completion
+PASS worker.status=done yet no worker.inbox and no terminal send: primary stayed idle
+== after home: owned primary S1, foreign S2, restart/resume
+   S1=01a15bc7-58ba-7c20-a99e-bce2c462b7e1 S2=01a15bc8-0ba4-78e0-9687-411afca9af93
+PASS SessionStart rows: S1 startup, S2 startup, S1 resume
+PASS S1 bound host 1027103 at startup and new host 1048126 at resume (no PID 1)
+PASS S2 native SessionStart refused: error: another live firstmate session holds the lock (pid 1027103, session 01a15bc7-58ba-7c20-a99e-bce2c462b7e1); operate read-only until resolved
+PASS Stop rows: S1 quiet exit 2, S1 stop_hook_active=true exit 2, S2 exit 0, resumed S1 exit 2
+PASS S1 Stop#1: quiet checkpoint continuation names drain + exact ACK
+PASS S1 Stop#2 under stop_hook_active=true: guard alone (primer already spent) delivered the late worker.status wake
+PASS runtime injected both guard feedbacks into the model as hookPrompt items
+   S1 commands:
+      0 /usr/bin/bash -lc 'bash tool-proof.sh'
+      0 /usr/bin/bash -lc 'bash bin/fm-wake-drain.sh 2>&1'
+      0 /usr/bin/bash -lc 'bin/fm-wake-drain.sh --ack-through 0 --recovery-generation 1029526.1792541165.baaa9J'
+      0 /usr/bin/bash -lc 'bash tool-proof.sh'
+      0 /usr/bin/bash -lc 'bash bin/fm-wake-drain.sh 2>&1'
+      0 /usr/bin/bash -lc 'FM_SEND_IDEMPOTENT=1 bash bin/fm-send.sh worker "Proceed with the already authorized validation"'
+      0 /usr/bin/bash -lc 'bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 1034868.1792541183.kpCBC3'
+      0 /usr/bin/bash -lc 'bash tool-proof.sh'
+      0 /usr/bin/bash -lc 'bash bin/fm-wake-drain.sh 2>&1'
+      0 /usr/bin/bash -lc 'FM_SEND_IDEMPOTENT=1 bash bin/fm-send.sh worker "Proceed with the already authorized validation after the host restart"'
+      0 /usr/bin/bash -lc 'bin/fm-wake-drain.sh --ack-through 4 --recovery-generation 1052165.1792541248.3PTLi5'
+PASS late-completion drain presented seq 2 worker event and its WAKE_ACK_REQUIRED
+PASS model ran public fm-send (exit 0) then the exact printed ACK through 2 (exit 0)
+PASS fm-send reached the synthetic worker terminal twice (nudge + Enter each)
+PASS first instruction consumed into handled/001.msg; validation.ok written (driver acts as synthetic worker)
+PASS turn ends: S1 interrupted, S2 completed, resumed S1 interrupted
+PASS foreign S2 ran zero commands and only replied "Read-only."
+PASS post-resume drain listed only seq 4; ACKed seq 2 did not replay
+PASS after resume: fm-send of the resumed instruction then exact ACK through 4
+PASS inbox ['002.msg', 'handled/001.msg']: exactly one steer per handled event, no 003.msg
+PASS wake queue empty after ACK; lock = resumed host, sidecar = S1
+   .watcher-down = acked:handling:1052165.1792541248.3PTLi5
+PASS model tools ran inside codex-linux-sandbox with CODEX_THREAD_ID
+PASS sandboxed fm-lock confirmed its own SessionStart anchor byte-identically (post-resume proof)
+PASS sandboxed fm-lock refused legacy and free locks: legacy PID unchanged, no sidecar, no PID 1 published
+   refusal text: error: a sandboxed Codex tool cannot verify the host owner of the session lock and never claims it; operate read-only until the native SessionStart hook records this thread
+PASS before: no watcher or checkpoint lock left
+PASS after: no watcher or checkpoint lock left
+PASS empty: no watcher or checkpoint lock left
+== S8 empty fleet
+PASS empty: bound, single Stop exit 0
+PASS empty: zero commands, turn completed, no watcher beat or queue
+== cleanup
+PASS fixture host 1018247 absent
+PASS fixture host 1027103 absent
+PASS fixture host 1048126 absent
+PASS fixture host 1062658 absent
+RESULT ALL PASS

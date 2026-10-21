@@ -1,0 +1,84 @@
+Test phase, round 3: evidence-only reanalysis of the completed Root035 host-assisted native run
+Run 01M5D83GNC4CC1P2G37V5KDSZQ, HEAD 3a6c5afa3681035eab84b37188d4d2356fbec483 (re-checked: tracked tree clean).
+No native invocation in this phase: run.sh, host-assist.sh, the opt-in driver, app-server, model turns and probes were not executed.
+Source, tests and pins were not modified.
+
+Provenance (read-only re-verification)
+- run.sh 04d1ca3c..., pins.json a40730dc..., host-assist.sh ba079063..., host-assist-pins.json 670c88b9...: match Root034/Root035.
+- All 226 source pins match the current worktree, including tests/fm-codex-stop-watch-native.py 32ab6d87....
+  The run.sh private pin matches. The codex binary pin 399ff69c... (codex-cli 0.163.0) matches.
+- root035-host-preflight.json: pid mapping consistent (994978), head 3a6c5afa, clean, claims absent before start.
+- host-assist.claimed at 1792541123, execution.claimed at 1792541124 (head 3a6c5afa); last-lab-path = native-3a6.gdlrgT.
+- host-assist.rc 0, driver.rc 0, driver.err empty, driver.out has 5 "ok" lines.
+- root035-native-evidence-manifest.json: 40/40 files match by SHA-256 and byte size.
+- The lab bin/ copies equal HEAD bin/ except bin/fm-session-start.sh, which the driver replaces in every home.
+  The control home also carries bin/fm-turnend-guard.sh = base 343e7a31 (79d4fbb8...); the after home carries the HEAD guard (c17728b0...).
+- Cleanup: /proc/<pid> is absent for 1018247, 1027103, 1048126 and 1062658.
+  No running codex app-server has its cwd in the lab. No .watch.lock or checkpoint lock exists in before, after or empty.
+
+Hook payload ids equal the thread ids from the app-server responses:
+- before primary 01a15bc6-e8a1
+- after primary S1 01a15bc7-58ba
+- foreign S2 01a15bc8-0ba4
+- empty 01a15bc9-8309
+
+Scenario coverage. Label: "host-assisted native, evidence-verified". The run was executed on the host by the Codex task worker under Root035, not inside this Test sandbox.
+
+1. Owned API primary, short reply with a worker in flight: host-assisted native, evidence-verified.
+   after turn 1: the model replied "All five received."
+   Stop#1 (stop_hook_active=false) got primer exit 2 plus guard exit 2 "checkpoint: no actionable wake within 2s".
+   The model ran tool-proof, fm-wake-drain (empty, WAKE_ACK_REQUIRED through 0) and the exact ACK through 0, all exit 0.
+2. Negative control, base 343e7a31 guard: host-assisted native, evidence-verified.
+   Stop#1 exit 2 "TURN WOULD END BLIND". Stop#2 (stop_hook_active=true) exit 0, and the turn ended with status completed.
+   After the late worker.status=done: no worker.inbox, no terminal-calls.jsonl, no further turn.
+3. Late worker completion: host-assisted native, evidence-verified.
+   Stop#2 (stop_hook_active=true) guard exit 2 "signal: .../worker.status".
+   The drain presented seq 2 worker.status, "STATUS OUTCOME BACKSTOP ... worker done: ready for already authorized validation" and WAKE_ACK_REQUIRED through 2.
+   The model ran `FM_SEND_IDEMPOTENT=1 bash bin/fm-send.sh worker "Proceed with the already authorized validation"` (exit 0), then the exact ACK through 2 with generation 1034868.1792541183.kpCBC3 (exit 0).
+   worker.inbox/handled/001.msg holds that text. terminal-calls.jsonl holds one nudge plus Enter.
+   The post-restart drain listed only seq 4, so seq 2 did not replay.
+   The consumption (mv to handled/) and `bash -n fixture.sh` -> validation.ok were performed by the driver acting as the synthetic worker (driver lines 374-377), not by a separate worker agent.
+   In both homes the guard itself also blocked Stop#1, so the native payload does not isolate "stop_hook_active set only by another hook". What it shows is the guard returning exit 2 under stop_hook_active=true.
+4. Native interruption: host-assisted native, evidence-verified.
+   Both primary turns ended turn/completed status=interrupted. api.jsonl has no Stop hook run after either interrupt.
+   native-stops.jsonl has 4 rows: 2 for turn 1, 1 for foreign S2, 1 for the resumed turn. No .watch.lock remains.
+5. Foreign native thread S2: host-assisted native, evidence-verified.
+   Native SessionStart output: "error: another live firstmate session holds the lock (pid 1027103, session 01a15bc7-58ba...); operate read-only until resolved".
+   S2 replied "Read-only." with zero commandExecution items. Its Stop exited 0.
+   Owner .lock/.lock-session equality at that moment rests on driver assertions 394-395, which passed (the line-399 print is present). The retained files reflect only the later post-restart values.
+6. Sandboxed model tools: host-assisted native, evidence-verified.
+   tool-env: pid1_argv0=codex-linux-sandbox, CODEX_THREAD_ID present. tool-lock-status "0 0". tool-lock-before = tool-lock-after = 1048126.
+   tool-unowned-status "1 1", and both outputs read "a sandboxed Codex tool cannot verify the host owner ... never claims it".
+   legacy-state/.lock is still 1048126, with no legacy .lock-session and no free-state/.lock (PID 1 not published).
+   The retained after/ files are from the post-restart tool-proof; the driver deleted the pre-restart files after its passing tools_confirmed.
+   The control home shows the same "0 0" / "1 1".
+   Not exercised: a same-thread duplicate attachment. That conditional risk remains unproved and unfixed.
+7. Owned host restart + native thread/resume: host-assisted native, evidence-verified.
+   Host 1027103 exited (driver line 191 assertion; /proc absent). thread/resume returned S1.
+   Native SessionStart source=resume printed "lock acquired: harness pid 1048126"; .lock=1048126, .lock-session=S1.
+   The resumed-turn Stop (primer inactive) guard exited 2 "signal: .../worker.status".
+   The drain presented seq 4 "... after the host restart". fm-send of the resumed instruction exited 0, then the exact ACK through 4 with generation 1052165.1792541248.3PTLi5 exited 0.
+   worker.inbox/002.msg holds the resumed text and 003.msg is absent. .watcher-down = acked:handling:1052165.1792541248.3PTLi5, and .wake-queue is empty.
+   002.msg was enqueued and ACKed; no second consumed validation is claimed.
+8. Empty-fleet API primary: host-assisted native, evidence-verified.
+   One Stop with exit 0 and empty feedback, zero commands, turn completed. empty/state contains only .lock and .lock-session (no .last-watcher-beat).
+9. Fail-closed Stop paths (repeated checkpoint failure, unhandled pending wake, checkpoint-lock contention) and the --hard-bound/137 classification: NOT live.
+   Covered by portable suites only: round-1 portable-suites.log, fm-codex-stop-watch.test.sh and fm-watch-checkpoint.test.sh, exit 0 on 3a6c5afa.
+10. Other primaries (legacy guard, Claude auto-arm, Cursor, session-lock ancestry, sessionstart nudge): NOT live; no other-harness launch is authorized.
+   Covered by portable suites only: round-1 regression-suites.log, 5 scripts, exit 0 on 3a6c5afa.
+   Host-side native SessionStart against a live legacy PID-only lock, and free/stale/PID-1 Stop behaviour, were also not exercised natively (portable only).
+
+Not exercised by the driver: the registered lab check's "check: rearm-resurface" delivery.
+It went to tool-checkpoint.out (redirected by tool-proof.sh), and no driver assertion covers it.
+
+Actual live primary (root035-primary-integration-inventory.json, read-only)
+- PID 3314335 runs the same codex 0.163.0 binary (399ff69c...).
+- The installed bin/fm-turnend-guard.sh sha256 79d4fbb8... is byte-identical to the base 343e7a31 guard, the one the negative control showed staying idle.
+- Installed bin/fm-codex-stop-watch.sh is absent; the installed fm-lock, session-lock-lib and sessionstart-run differ from the candidate.
+- .lock-session is absent. Hook trust and client turn delivery for the active thread are unverified.
+- No deployment was performed or authorized. The fixture result does not establish protection of this primary.
+
+Verdict for this Test phase
+- Scenarios 1-8 pass on the host-assisted native run at 3a6c5afa, verified here from retained raw evidence only. This is not a direct Test-sandbox run.
+- Scenarios 9-10: portable only, not live.
+- Remaining authority gates: live-primary deployment (not authorized); remote CI for broad regression.

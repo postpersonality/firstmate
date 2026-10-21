@@ -1,0 +1,31 @@
+=== base 343e7a318f83b0b07ea802351ec68d909edbc93a: short reply ends while worker is in flight (Stop with stop_hook_active=true) ===
+Stop exit=0
+RESULT: turn ENDS; primary idles with a worker in flight
+=== base 343e7a318f83b0b07ea802351ec68d909edbc93a: worker completes 1s into the next Stop's checkpoint ===
+Stop exit=0
+RESULT: turn ENDS; the late worker completion reaches no handler
+
+=== head 3a6c5afa: short reply ends while worker is in flight (Stop with stop_hook_active=true) ===
+Stop exit=2
+  stderr| firstmate watcher wake: checkpoint: no actionable wake within 2s
+  stderr| Drain bin/fm-wake-drain.sh, handle its current wakes and permitted next fleet actions, then run its exact WAKE_ACK_REQUIRED command. Respect real captain/security waits and explicit stops.
+RESULT: turn continues (native exit-2 feedback)
+=== head 3a6c5afa: worker completes 1s into the next Stop's checkpoint ===
+Stop exit=2
+  stderr| firstmate watcher wake: check: rearm-resurface
+  stderr| Drain bin/fm-wake-drain.sh, handle its current wakes and permitted next fleet actions, then run its exact WAKE_ACK_REQUIRED command. Respect real captain/security waits and explicit stops.
+--- handler drains bin/fm-wake-drain.sh:
+  drain| STATUS OUTCOME BACKSTOP (newest captain-facing task event has no covering branch outcome):
+  drain| worker done: ready for already authorized validation
+  drain| WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 0 --recovery-generation 488.1792539750.rlf2Kh
+  drain| ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  drain| ●  WATCHER DOWN - SUPERVISION IS OFF
+  drain| ●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 1s ago).
+  drain| ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  drain| ●  This is a supervision warning only; the guarded operation WILL still run.
+  drain| ●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+  drain| ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+--- handler steers worker (idempotent, issued twice) and runs: bin/fm-wake-drain.sh --ack-through 0 --recovery-generation 488.1792539750.rlf2Kh
+  worker inbox: 001.msg handled -> 4 lines, body: Proceed with the already authorized validation
+  replay after ACK: none
+
