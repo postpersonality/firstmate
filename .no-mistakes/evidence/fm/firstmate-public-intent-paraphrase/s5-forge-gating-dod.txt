@@ -1,0 +1,19 @@
+=== nm-ship (Definition of done --intent/publication lines)
+7:## Public intent
+106:When starting no-mistakes, pass `--intent` as only this brief's prepared `## Public intent` body, or the current launch overlay's authorized public input, never private `## Captain's intent` or legacy `[captain]` lines; the latest firstmate instruction-inbox message carrying an explicitly prepared replacement under its own `## Public intent` heading supersedes both.
+108:Keep the original request and later captain clarifications privately auditable; changed requirements need a refreshed public paraphrase before validation: ask firstmate for that replacement, and never append raw words to `--intent`.
+113:Before starting validation, inspect the complete final payload against the prepared public wording for fidelity and privacy; do not publish a raw draft and sanitize it afterwards.
+114:When a submission receipt provides an intent digest, compare it with the exact reviewed payload; a digest proves the supplied bytes, not their meaning or privacy.
+115:Keep a meaningful public `## Intent` section; do not use `--no-publish-intent` or disable publication as a substitute for public wording.
+116:Check the installed tool's supported positive publication settings before starting; if it cannot retain the public Intent with this prepared input, report the exact limitation before publication.
+117:Read the published Intent back from the forge and confirm the approved objective and constraints survived before reporting ready.
+=== g-ship (Definition of done --intent/publication lines)
+7:## Public intent
+109:When starting no-mistakes, pass `--intent` as only this brief's prepared `## Public intent` body, or the current launch overlay's authorized public input, never private `## Captain's intent` or legacy `[captain]` lines; the latest firstmate instruction-inbox message carrying an explicitly prepared replacement under its own `## Public intent` heading supersedes both.
+111:Keep the original request and later captain clarifications privately auditable; changed requirements need a refreshed public paraphrase before validation: ask firstmate for that replacement, and never append raw words to `--intent`.
+116:Before starting validation, inspect the complete final payload against the prepared public wording for fidelity and privacy; do not publish a raw draft and sanitize it afterwards.
+117:When a submission receipt provides an intent digest, compare it with the exact reviewed payload; a digest proves the supplied bytes, not their meaning or privacy.
+=== dpr-ship (Definition of done --intent/publication lines)
+(no --intent / Intent publication lines)
+=== lo-ship (Definition of done --intent/publication lines)
+(no --intent / Intent publication lines)

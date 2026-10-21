@@ -1,0 +1,24 @@
+nikolayseliverstov@fedora:/tmp/claude-1000/fm-lab.K7isig/projects/demo$ treehous
+e get
+A new version of treehouse is available: v3.1.2 → v3.1.4
+Run "treehouse update" to update
+
+🌳 Setting up worktree...
+🌳 Entered worktree at /tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehouse/
+demo-b6d07e/2/demo. Type 'exit' to return.
+nikolayseliverstov@fedora:/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehou
+se/demo-b6d07e/2/demo$ cd -- '/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.tre
+ehouse/demo-b6d07e/2/demo'
+nikolayseliverstov@fedora:/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehou
+se/demo-b6d07e/2/demo$ export GOTMPDIR=/tmp/fm-nm-ship/gotmp
+export COMPACT_ADVISER_DISABLE=1
+export FM_TASK_ID=nm-ship
+nikolayseliverstov@fedora:/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehou
+se/demo-b6d07e/2/demo$ export COMPACT_ADVISER_DISABLE=1
+nikolayseliverstov@fedora:/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehou
+se/demo-b6d07e/2/demo$ export FM_TASK_ID=nm-ship
+nikolayseliverstov@fedora:/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehou
+se/demo-b6d07e/2/demo$ . '/tmp/fm-nm-ship+419d2514ea1e025740237bdada1b3d29f73306
+4cffb25cd03cf5894217709df5/launch.s1792574667.11.11064.sh'
+LAB-WORKER-STARTED
+

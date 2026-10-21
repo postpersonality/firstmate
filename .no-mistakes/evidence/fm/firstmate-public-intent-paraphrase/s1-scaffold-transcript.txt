@@ -1,0 +1,64 @@
+$ FM_HOME=$LAB bin/fm-brief.sh nm-ship demo --mode no-mistakes
+scaffolded: /tmp/claude-1000/fm-lab.K7isig/data/nm-ship/brief.md (ship, mode=no-mistakes; replace {TASK}, {PUBLIC_INTENT} and {FIRSTMATE_SPEC})
+rc=0
+$ FM_HOME=$LAB bin/fm-brief.sh dpr-ship demo --mode direct-PR
+scaffolded: /tmp/claude-1000/fm-lab.K7isig/data/dpr-ship/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+$ FM_HOME=$LAB bin/fm-brief.sh lo-ship demo --mode local-only
+scaffolded: /tmp/claude-1000/fm-lab.K7isig/data/lo-ship/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+rc=0
+$ FM_HOME=$LAB bin/fm-brief.sh sc-scout demo --scout
+scaffolded: /tmp/claude-1000/fm-lab.K7isig/data/sc-scout/brief.md (scout; replace {TASK}, {PUBLIC_INTENT} and {FIRSTMATE_SPEC})
+rc=0
+$ FM_HOME=$LAB bin/fm-brief.sh g-ship gdemo --mode no-mistakes --forge gerrit
+scaffolded: /tmp/claude-1000/fm-lab.K7isig/data/g-ship/brief.md (ship, mode=no-mistakes forge=gerrit shape=squash; replace {TASK}, {PUBLIC_INTENT} and {FIRSTMATE_SPEC})
+rc=0
+--- nm-ship: '# Task' section headings and placeholders
+# Task
+## Captain's intent
+{TASK}
+
+## Public intent
+{PUBLIC_INTENT}
+
+## Firstmate spec
+{FIRSTMATE_SPEC}
+
+--- dpr-ship: '# Task' section headings and placeholders
+# Task
+## Captain's intent
+{TASK}
+
+## Firstmate spec
+{FIRSTMATE_SPEC}
+
+--- lo-ship: '# Task' section headings and placeholders
+# Task
+## Captain's intent
+{TASK}
+
+## Firstmate spec
+{FIRSTMATE_SPEC}
+
+--- sc-scout: '# Task' section headings and placeholders
+# Task
+## Captain's intent
+{TASK}
+
+## Public intent
+{PUBLIC_INTENT}
+
+## Firstmate spec
+{FIRSTMATE_SPEC}
+
+--- g-ship: '# Task' section headings and placeholders
+# Task
+## Captain's intent
+{TASK}
+
+## Public intent
+{PUBLIC_INTENT}
+
+## Firstmate spec
+{FIRSTMATE_SPEC}
+

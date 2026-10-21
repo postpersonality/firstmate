@@ -1,0 +1,5 @@
+$ labrun bin/fm-spawn.sh sc3 $LAB/projects/demo --scout --backend tmux --harness <lab worker>
+spawned sc3 harness=env kind=scout window=firstmate:fm-sc3 worktree=/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehouse/demo-b6d07e/2/demo
+overlay headings in scout launch brief: 0; authorized-public headings: 0
+CHECK PASS: scout launch brief carries no intent overlay
+lab tmux server killed

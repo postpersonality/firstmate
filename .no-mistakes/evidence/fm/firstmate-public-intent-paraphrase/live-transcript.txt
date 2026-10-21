@@ -1,0 +1,150 @@
+
+================ S2 live spawn: no-mistakes ship with a prepared public paraphrase
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh nm-ship /tmp/claude-1000/fm-lab.K7isig/projects/demo --mode no-mistakes --yolo off --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+spawned nm-ship harness=env kind=ship mode=no-mistakes yolo=off window=firstmate:fm-nm-ship worktree=/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehouse/demo-b6d07e/2/demo
+rc=0
+--- authorized --intent payload rendered into launch-brief.md:
+Add a --quiet option to pager.sh that suppresses informational output.
+Constraint: pager.sh must keep its exit status unchanged.
+Acceptance: invocations without --quiet behave exactly as before.
+CHECK PASS: spawn succeeded
+CHECK PASS: exactly one intent overlay
+CHECK PASS: exactly one authorized public heading
+CHECK PASS: authorized payload is exactly the prepared public paraphrase
+CHECK PASS: authorized payload carries no private sentinel
+CHECK PASS: authorized payload carries no private Russian dialogue
+CHECK PASS: private source still preserved in the worker's private brief
+CHECK PASS: worker window exists
+--- worker pane tail:
+nikolayseliverstov@fedora:/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehou
+se/demo-b6d07e/2/demo$ . '/tmp/fm-nm-ship+419d2514ea1e025740237bdada1b3d29f73306
+4cffb25cd03cf5894217709df5/launch.s1792574667.11.11064.sh'
+LAB-WORKER-STARTED
+
+
+================ S3 adversarial spawn refusals (each must stop before creating a worker)
+--- ref-missing
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh ref-missing /tmp/claude-1000/fm-lab.K7isig/projects/demo --mode no-mistakes --yolo off --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+error: no-mistakes requires a prepared ## Public intent under # Task; preserve the original privately and add a reviewed formal technical paraphrase before validation (no private fallback)
+rc=1
+CHECK PASS: ref-missing refused (nonzero exit)
+CHECK PASS: ref-missing created no worker window
+CHECK PASS: ref-missing rendered no launch brief
+--- ref-placeholder
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh ref-placeholder /tmp/claude-1000/fm-lab.K7isig/projects/demo --mode no-mistakes --yolo off --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+error: no-mistakes requires a prepared ## Public intent under # Task; preserve the original privately and add a reviewed formal technical paraphrase before validation (no private fallback)
+rc=1
+CHECK PASS: ref-placeholder refused (nonzero exit)
+CHECK PASS: ref-placeholder created no worker window
+CHECK PASS: ref-placeholder rendered no launch brief
+--- ref-blank
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh ref-blank /tmp/claude-1000/fm-lab.K7isig/projects/demo --mode no-mistakes --yolo off --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+error: no-mistakes requires a prepared ## Public intent under # Task; preserve the original privately and add a reviewed formal technical paraphrase before validation (no private fallback)
+rc=1
+CHECK PASS: ref-blank refused (nonzero exit)
+CHECK PASS: ref-blank created no worker window
+CHECK PASS: ref-blank rendered no launch brief
+--- ref-copy
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh ref-copy /tmp/claude-1000/fm-lab.K7isig/projects/demo --mode no-mistakes --yolo off --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+error: ## Public intent copies the complete private Captain's intent; replace it with a reviewed formal technical paraphrase before validation
+rc=1
+CHECK PASS: ref-copy refused (nonzero exit)
+CHECK PASS: ref-copy created no worker window
+CHECK PASS: ref-copy rendered no launch brief
+--- ref-reformat
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh ref-reformat /tmp/claude-1000/fm-lab.K7isig/projects/demo --mode no-mistakes --yolo off --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+error: ## Public intent copies the complete private Captain's intent; replace it with a reviewed formal technical paraphrase before validation
+rc=1
+CHECK PASS: ref-reformat refused (nonzero exit)
+CHECK PASS: ref-reformat created no worker window
+CHECK PASS: ref-reformat rendered no launch brief
+--- ref-legacy-copy
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh ref-legacy-copy /tmp/claude-1000/fm-lab.K7isig/projects/demo --mode no-mistakes --yolo off --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+error: ## Public intent copies the complete private Captain's intent; replace it with a reviewed formal technical paraphrase before validation
+rc=1
+CHECK PASS: ref-legacy-copy refused (nonzero exit)
+CHECK PASS: ref-legacy-copy created no worker window
+CHECK PASS: ref-legacy-copy rendered no launch brief
+
+================ S3b legacy mixed Task with a distinct public paraphrase is accepted
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh ok-legacy /tmp/claude-1000/fm-lab.K7isig/projects/demo --mode no-mistakes --yolo off --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+spawned ok-legacy harness=env kind=ship mode=no-mistakes yolo=off window=firstmate:fm-ok-legacy worktree=/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehouse/demo-b6d07e/3/demo
+rc=0
+CHECK PASS: legacy paraphrase spawn succeeded
+--- legacy authorized payload:
+Add a --quiet option to pager.sh that suppresses informational output.
+CHECK PASS: legacy payload is the paraphrase only
+CHECK PASS: legacy payload has no [captain] words
+
+================ S4 scout -> no-mistakes promotion -> public refresh -> relaunch
+--- scout spawn with {PUBLIC_INTENT} still unprepared (scouts do not consume it):
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh sc2 /tmp/claude-1000/fm-lab.K7isig/projects/demo --scout --backend tmux --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+spawned sc2 harness=env kind=scout window=firstmate:fm-sc2 worktree=/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehouse/demo-b6d07e/4/demo
+rc=0
+CHECK PASS: scout spawn succeeded without public intent
+CHECK FAIL: scout launch brief carries no intent overlay
+--- promotion to no-mistakes while Public intent is still a placeholder:
+$ /tmp/claude-1000/labrun.sh bin/fm-promote.sh sc2 --mode no-mistakes --yolo off
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  3 task(s) in flight, but no watcher has a fresh beacon (last beat: 340s ago, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: no-mistakes requires a prepared ## Public intent under # Task; preserve the original privately and add a reviewed formal technical paraphrase before validation (no private fallback)
+rc=1
+CHECK PASS: promotion without prepared public intent refused
+CHECK PASS: refused promotion left kind=scout
+CHECK PASS: refused promotion wrote no ship instructions
+--- promotion to no-mistakes with a full private copy as Public intent:
+$ /tmp/claude-1000/labrun.sh bin/fm-promote.sh sc2 --mode no-mistakes --yolo off
+WARNING: watcher still down (same stale episode; last beat: 341s ago, grace 300s) - full banner already printed this episode.
+error: ## Public intent copies the complete private Captain's intent; replace it with a reviewed formal technical paraphrase before validation
+rc=1
+CHECK PASS: promotion with copied private intent refused
+CHECK PASS: copy-refused promotion left kind=scout
+--- promotion to no-mistakes with prepared P0:
+$ /tmp/claude-1000/labrun.sh bin/fm-promote.sh sc2 --mode no-mistakes --yolo off
+WARNING: watcher still down (same stale episode; last beat: 341s ago, grace 300s) - full banner already printed this episode.
+promoted sc2 to ship mode=no-mistakes yolo=off (teardown protection restored)
+wrote ship instructions for mode=no-mistakes: /tmp/claude-1000/fm-lab.K7isig/data/sc2/ship-instructions.md
+next: FM_HOME=/tmp/claude-1000/fm-lab.K7isig bin/fm-send.sh fm-sc2 "$(cat /tmp/claude-1000/fm-lab.K7isig/data/sc2/ship-instructions.md)"
+rc=0
+CHECK PASS: promotion succeeded
+CHECK PASS: live ship instructions carry exactly one overlay
+--- ship-instructions authorized payload:
+Investigate and correct the pager.sh quiet-mode handling while preserving its exit status.
+CHECK PASS: live ship-instructions payload is P0
+CHECK PASS: live ship-instructions payload has no private sentinel
+CHECK PASS: persisted promoted brief carries no cached overlay
+CHECK PASS: persisted promoted brief keeps the private source
+CHECK PASS: meta flipped to kind=ship mode=no-mistakes
+--- firstmate refreshes Public intent P0 -> P1 in brief.md, worker stops, relaunch:
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh sc2 --relaunch --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+spawned sc2 harness=env kind=ship mode=no-mistakes yolo=off window=firstmate:fm-sc2 worktree=/tmp/claude-1000/fm-lab.K7isig/treehouse-root/.treehouse/demo-b6d07e/4/demo
+rc=0
+CHECK PASS: relaunch succeeded
+CHECK PASS: relaunch brief has exactly one overlay
+CHECK PASS: relaunch brief has exactly one authorized heading
+--- relaunch authorized payload:
+Correct the pager.sh quiet-mode handling, preserve its exit status, and document the option in its usage text.
+CHECK PASS: relaunch payload is the refreshed P1
+CHECK PASS: relaunch brief retains no stale P0
+CHECK PASS: relaunch payload has no private sentinel
+CHECK PASS: relaunch brief keeps private source
+
+================ S6 relaunch refuses a refreshed Public intent that copies the private ask
+$ /tmp/claude-1000/labrun.sh bin/fm-spawn.sh nm-ship --relaunch --harness env FM_LAB_WORKER=1 sh -c 'echo LAB-WORKER-STARTED; exec sleep 3600'
+error: ## Public intent copies the complete private Captain's intent; replace it with a reviewed formal technical paraphrase before validation
+rc=1
+CHECK PASS: relaunch with copied private intent refused
+CHECK PASS: refused relaunch left the previous launch brief untouched
+
+================ teardown
+firstmate:bash
+firstmate:fm-nm-ship
+firstmate:fm-ok-legacy
+firstmate:fm-sc2
+lab tmux server killed
+SUMMARY: 51 pass, 1 fail
