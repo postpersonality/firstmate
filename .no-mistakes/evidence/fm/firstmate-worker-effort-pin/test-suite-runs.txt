@@ -1,0 +1,29 @@
+# Test-suite runs (unshare --map-current-user -m -p -f --mount-proc, node 24.18.0 on PATH)
+
+## tests/fm-remote-secondmate-relaunch.test.sh @ 4577e002
+ok - a successful remote relaunch republishes the parent's harness, model, and effort
+ok - a remote relaunch records the identity the host confirmed
+ok - a refused remote relaunch leaves the parent's record untouched
+ok - a local secondmate is refused by the remote relaunch tool
+ok - a remote relaunch keeps an already-armed PR poll authenticating
+ok - the worker effort pin refuses a different remote relaunch effort before the host and fills an omitted one
+ALL TESTS PASSED
+
+## tests/fm-control-relaunch.test.sh @ 4577e002 (full file, stops at first failure)
+ok - fm-control removes the dialog file after exit and after relaunch
+ok - fm-control exit removes the dialog file before it releases the control lock
+ok - fm-control relaunch: a same-harness relaunch replaces the agent in the same endpoint and worktree
+ok - fm-control relaunch: pending composer text refuses before the exit command is typed
+ok - fm-control relaunch: an unreadable composer fails safe before the exit command is typed
+ok - fm-control relaunch: a linked spawning home preserves committed and unfinished work in the recorded copy
+ok - fm-control relaunch: durable task metadata survives replacement launch publication
+not ok - concurrent metadata publication erased the replacement's trace carrier
+
+## focused copy of tests/fm-control-relaunch.test.sh @ 4577e002 (pin test + neighbours)
+ok - fm-control relaunch: the worker effort pin replaces the recorded effort and refuses before the agent stops
+ok - fm-control relaunch: a same-harness relaunch keeps the profile axes it was running with
+ok - fm-control relaunch: invalid configured effort is ignored before stop
+not ok - concurrent metadata publication erased the replacement's trace carrier
+
+## same race test on base 343e7a31 (git archive extract)
+not ok - concurrent metadata publication erased the replacement's trace carrier

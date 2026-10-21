@@ -1,0 +1,214 @@
+# Live lab transcript: config/crew-effort pin (tmux backend, real fm-spawn.sh / fm-control.sh, real claude CLI 2.1.305)
+# Lab home: disposable FM_HOME minted by bin/fm-lab-home.sh, private tmux socket, private pid+mount namespace
+
+################ 1. pinned home, ship spawn with NO --effort
+FM_HOME=/tmp/claude-1000/fm-lab.upfGEw NO_MISTAKES_GATE=unset
+config/crew-effort: xhigh
+brief ready: /tmp/claude-1000/fm-lab.upfGEw/data/pin-omit-a1/brief.md
+$ spawn pin-omit-a1 /tmp/claude-1000/fm-lab.upfGEw/projects/notes --mode local-only --yolo on --harness claude --model sonnet
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/claude-1000/fm-lab.upfGEw
+spawned pin-omit-a1 harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-pin-omit-a1 worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/1/notes
+spawn exit=0
+--- state/pin-omit-a1.meta (harness/model/effort lines)
+window=firstmate:fm-pin-omit-a1
+worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/1/notes
+harness=claude
+model=sonnet
+effort=xhigh
+--- processes in the worker window
+   1651 treehouse get
+   1683 /bin/bash -i -l
+[script exit=0]
+
+################ 1b. argv of the launched claude worker
+--- real claude process 2632 (/home/nikolayseliverstov/.local/share/claude/versions/2.1.305) argv flags:
+--model sonnet
+--effort xhigh
+[script exit=0]
+
+################ 2. pinned home, spawns that must refuse (medium, high, grok, raw command)
+config/crew-effort = xhigh
+
+=== pin-med-b1
+windows: lab driver fm-pin-omit-a1 
+treehouse slots: 1
+$ fm-spawn.sh pin-med-b1 <notes> --mode local-only --yolo on --harness claude --model sonnet --effort medium
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: config/crew-effort pins worker effort to xhigh, but this launch requests medium; omit the effort or request xhigh
+exit=1
+windows: lab driver fm-pin-omit-a1 
+treehouse slots: 1
+state/pin-med-b1.meta: absent
+task temp dir: absent
+
+=== pin-high-b2
+windows: lab driver fm-pin-omit-a1 
+treehouse slots: 1
+$ fm-spawn.sh pin-high-b2 <notes> --mode local-only --yolo on --harness claude --model sonnet --effort high
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: config/crew-effort pins worker effort to xhigh, but this launch requests high; omit the effort or request xhigh
+exit=1
+windows: lab driver fm-pin-omit-a1 
+treehouse slots: 1
+state/pin-high-b2.meta: absent
+task temp dir: absent
+
+=== pin-grok-b3
+windows: lab driver fm-pin-omit-a1 
+treehouse slots: 1
+$ fm-spawn.sh pin-grok-b3 <notes> --mode local-only --yolo on --harness grok
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: config/crew-effort pins worker effort to xhigh, but the grok runtime has no verified native setting for it, so this launch is refused rather than running without it; choose a runtime that supports xhigh or remove the pin
+exit=1
+windows: lab driver fm-pin-omit-a1 
+treehouse slots: 1
+state/pin-grok-b3.meta: absent
+task temp dir: absent
+
+=== pin-raw-b4
+windows: lab driver fm-pin-omit-a1 
+treehouse slots: 1
+$ fm-spawn.sh pin-raw-b4 <notes> --mode local-only --yolo on claude --effort xhigh
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: config/crew-effort pins worker effort to xhigh, but a raw launch command cannot be verified to carry it; launch a verified --harness instead
+exit=1
+windows: lab driver fm-pin-omit-a1 
+treehouse slots: 1
+state/pin-raw-b4.meta: absent
+task temp dir: absent
+[script exit=0]
+
+################ 3. malformed pin content (medium, max) refuses even an omitted effort
+
+=== config/crew-effort = medium; spawn with NO --effort
+error: config/crew-effort must hold exactly xhigh (got 'medium'); fix or remove the file
+exit=1
+state/pin-bad-medium-c1.meta: absent
+windows: lab driver fm-pin-omit-a1 
+
+=== config/crew-effort = max; spawn with NO --effort
+error: config/crew-effort must hold exactly xhigh (got 'max'); fix or remove the file
+exit=1
+state/pin-bad-max-c1.meta: absent
+windows: lab driver fm-pin-omit-a1 
+[script exit=0]
+
+################ 4. no pin file: --effort medium launches unchanged
+ls: cannot access '/tmp/claude-1000/fm-lab.upfGEw/config/crew-effort': No such file or directory
+spawned unpinned-med-d1 harness=claude kind=ship mode=local-only yolo=on window=firstmate:fm-unpinned-med-d1 worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+--- state/unpinned-med-d1.meta (harness/model/effort lines)
+window=firstmate:fm-unpinned-med-d1
+worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+harness=claude
+model=sonnet
+effort=medium
+--- real claude process 9385 (/home/nikolayseliverstov/.local/share/claude/versions/2.1.305) argv flags:
+--model sonnet
+--effort medium
+[script exit=0]
+
+################ 5a. pinned relaunch naming --effort medium refuses before the old agent stops
+config/crew-effort = xhigh
+--- state/unpinned-med-d1.meta (harness/model/effort lines)
+window=firstmate:fm-unpinned-med-d1
+worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+harness=claude
+model=sonnet
+effort=medium
+running claude pid before: 9385
+$ fm-control.sh unpinned-med-d1 relaunch --effort medium --note 'effort pin check'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/claude-1000/fm-lab.upfGEw
+error: config/crew-effort pins worker effort to xhigh, but this launch requests medium; omit the effort or request xhigh
+exit=1
+claude pid 9385 still alive: yes
+--- state/unpinned-med-d1.meta (harness/model/effort lines)
+window=firstmate:fm-unpinned-med-d1
+worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+harness=claude
+model=sonnet
+effort=medium
+[script exit=0]
+
+################ 5b. first no-flag relaunch attempt (old agent parked on Claude workspace-trust dialog)
+config/crew-effort = xhigh
+--- state/unpinned-med-d1.meta (harness/model/effort lines)
+window=firstmate:fm-unpinned-med-d1
+worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+harness=claude
+model=sonnet
+effort=medium
+running claude pid before: 9385
+$ fm-control.sh unpinned-med-d1 relaunch --note 'effort pin check'   (no --effort)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/claude-1000/fm-lab.upfGEw
+error: task unpinned-med-d1's composer visibly holds pending text; refusing to type the /exit exit command because it would concatenate onto that text. Clear or submit the pending text, then retry 'relaunch'
+error: unpinned-med-d1's agent stopped but relaunch did not reach replacement launch; no agent is running, and its work plus progress note are preserved at /tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+exit=1
+old claude pid 9385 alive: no
+--- state/unpinned-med-d1.meta (harness/model/effort lines)
+window=firstmate:fm-unpinned-med-d1
+worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+harness=claude
+model=sonnet
+effort=medium
+no claude process under firstmate:fm-unpinned-med-d1
+[script exit=1]
+
+################ 5c. no-flag relaunch of a task recorded effort=medium under the pin
+config/crew-effort = xhigh
+--- state/unpinned-med-d1.meta (harness/model/effort lines)
+window=firstmate:fm-unpinned-med-d1
+worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+harness=claude
+model=sonnet
+effort=medium
+$ fm-control.sh unpinned-med-d1 relaunch --note 'effort pin check'   (no --effort; previous agent already stopped)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/claude-1000/fm-lab.upfGEw
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/claude-1000/fm-lab.upfGEw
+relaunched unpinned-med-d1 harness=claude from=claude model=sonnet effort=xhigh backend=tmux endpoint=firstmate:fm-unpinned-med-d1 worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+exit=0
+--- state/unpinned-med-d1.meta (harness/model/effort lines)
+window=firstmate:fm-unpinned-med-d1
+worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/notes
+harness=claude
+model=sonnet
+effort=xhigh
+--- real claude process 12835 (/home/nikolayseliverstov/.local/share/claude/versions/2.1.305) argv flags:
+--model sonnet
+--effort xhigh
+[script exit=0]
+
+################ 6. secondmate spawn under the pin and inheritance into the secondmate home
+config/crew-effort = xhigh
+$ fm-home-seed.sh pinmate-e1 <mate-home> --no-projects
+
+scaffolded: /tmp/claude-1000/fm-lab.upfGEw/data/pinmate-e1/brief.md (secondmate charter)
+home=/tmp/claude-1000/fm-lab-mate.Ybfmn0
+seed exit=0
+
+config/secondmate-harness = claude sonnet medium
+$ fm-spawn.sh pinmate-e1 --secondmate
+error: config/crew-effort pins worker effort to xhigh, but this launch requests medium; omit the effort or request xhigh
+exit=1
+state/pinmate-e1.meta: absent
+
+config/secondmate-harness = claude sonnet
+$ fm-spawn.sh pinmate-e1 --secondmate
+spawned pinmate-e1 harness=claude kind=secondmate mode=secondmate yolo=off window=firstmate:fm-pinmate-e1 worktree=/tmp/claude-1000/fm-lab-mate.Ybfmn0
+exit=0
+--- state/pinmate-e1.meta (harness/model/effort lines)
+window=firstmate:fm-pinmate-e1
+worktree=/tmp/claude-1000/fm-lab-mate.Ybfmn0
+harness=claude
+model=sonnet
+effort=xhigh
+secondmate home config/crew-effort: xhigh
+--- real claude process 15217 (/home/nikolayseliverstov/.local/share/claude/versions/2.1.305) argv flags:
+--model sonnet
+--effort xhigh
+[script exit=0]
