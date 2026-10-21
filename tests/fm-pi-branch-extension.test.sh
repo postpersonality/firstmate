@@ -1061,11 +1061,20 @@ const operational = spawnSync(
 if (operational.status !== 0) throw new Error(`could not create operational input: ${operational.stderr}`);
 await fire("before_agent_start", { prompt: operational.stdout }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: operational.stdout } });
-// Pi 1.3+ also raises before_agent_start for a run an idle custom message opens.
-const customRunText = "extension note that opened its own run";
+// Pi 1.2+ fires before_agent_start when an idle custom message opens a run;
+// the event carries the custom message and no prompt. Exercise both custom
+// message types seen in the main and session-start paths.
+const customRunTexts = [
+  "extension note that opened its own run",
+  "custom message that started an idle run",
+];
 await fire("before_agent_start", {
   messageType: "custom",
-  message: { role: "custom", customType: "fm-branch-merge", content: customRunText, display: false },
+  message: { role: "custom", customType: "fm-branch-merge", content: customRunTexts[0], display: false },
+}, mainCtx);
+await fire("before_agent_start", {
+  messageType: "custom",
+  message: { role: "custom", customType: "firstmate-sessionstart-nudge", content: customRunTexts[1], display: false, timestamp: 0 },
 }, mainCtx);
 const unsolicitedPrompt = "Please keep responses concise while monitoring the fleet.";
 await fire("before_agent_start", { prompt: unsolicitedPrompt }, mainCtx);
@@ -1128,7 +1137,7 @@ for (const content of [unsolicitedPrompt, ...requestedPrompts]) {
 }
 if (mirroredCaptainText.some((text) =>
   text.includes("operational watcher injection") || text.includes("FIRSTMATE_OP: give me a fresh system-resource report") ||
-  text.includes(customRunText)
+  customRunTexts.some((customRunText) => text.includes(customRunText))
 )) {
   throw new Error("operational input or a custom-message run entered captain mirror context");
 }
