@@ -1,0 +1,31 @@
+{
+  "frozen_at": 1792540243,
+  "head": "ac9cca539256a1c00dc88f7a53f7b03230302cf3",
+  "tracked_changes": "",
+  "sha256": {
+    "bin/fm-captain-alert.py": "5a07c9c26609241878e18bd0471b77a3cdcdbf4ecee9cc75003cbe781132dd01",
+    "bin/fm-mail.sh": "de5822a90aceaa0d6580e67b190b1a99dc098d046a2157a78c914aacc83343f3",
+    "bin/fm-classify-lib.sh": "7e79d6c889918e6c9af5fcaeeab4fd57f7fff2d16ae0f016516b770c41f88380",
+    "tests/fm-captain-alert-scope.json": "a8611d14bbc4e04edc60b505444c5ffdd64ec60da1489041df58e39f79a489ed",
+    "tests/fm-captain-alert-live.test.sh": "33d48933dd9ed73125378e4fd753c04afe8335a7ce6479ff694205d71388d1d1",
+    "AGENTS.md": "cb6725671f5abe72949fab50b686ed80ac6f08e9d1e7f23297ec654a2ccae91a"
+  },
+  "inherited_env_names": [
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_CODE_HOST_HTTP_PROXY_PORT",
+    "CLAUDE_CODE_HOST_SOCKS_PROXY_PORT",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_TMPDIR",
+    "CLAUDE_EFFORT",
+    "CLAUDE_PID",
+    "CLAUDE_TMPDIR"
+  ],
+  "CLAUDE_EFFORT": "xhigh",
+  "note": "Frozen before the four Root031 native evaluations; inherited environment left unchanged (no model/effort/account override)."
+}

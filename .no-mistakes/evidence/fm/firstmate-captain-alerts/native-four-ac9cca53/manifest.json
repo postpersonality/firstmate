@@ -1,0 +1,109 @@
+{
+  "at": "2026-10-20T23:50:50.475618+00:00",
+  "native_version": "2.1.305 (Claude Code)",
+  "native_executable": "/home/nikolayseliverstov/.local/share/claude/versions/2.1.305",
+  "native_executable_sha256": "86cb722ab68348877dba7971e4d0c659919e05e6228c05e006e83da320e656ef",
+  "fixture_sha256": "a8611d14bbc4e04edc60b505444c5ffdd64ec60da1489041df58e39f79a489ed",
+  "head": "ac9cca539256a1c00dc88f7a53f7b03230302cf3",
+  "cases": [
+    {
+      "id": "publish-b",
+      "expected": "SELF_RESOLVE",
+      "verdict": "SELF_RESOLVE",
+      "exit_code": 1,
+      "session": "852eeb5d-eec5-4f6a-96ca-e300e708d19e",
+      "models": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 2096,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 19993,
+          "webSearchRequests": 0,
+          "costUSD": 0.201872,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1183,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "binding": "b853b4ee4cb6023b0cb433a02a45c17bb038c88e212594a182077b2b7a7b2b46"
+    },
+    {
+      "id": "human-annotation",
+      "expected": "NEEDS_CAPTAIN",
+      "verdict": "NEEDS_CAPTAIN",
+      "exit_code": 0,
+      "session": "7d56f420-edda-4a7e-a641-59d667e23f66",
+      "models": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 1350,
+          "cacheReadInputTokens": 1486,
+          "cacheCreationInputTokens": 18498,
+          "webSearchRequests": 0,
+          "costUSD": 0.1752892,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 529,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "binding": "7640556e92a56277d15748f06e9cc4595b891c691d00fa98ad8a86f4afccc0fc"
+    },
+    {
+      "id": "q23",
+      "expected": "SELF_RESOLVE",
+      "verdict": "SELF_RESOLVE",
+      "exit_code": 1,
+      "session": "c6d61302-147e-479a-b74f-1e8730f354dd",
+      "models": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 1035,
+          "cacheReadInputTokens": 1486,
+          "cacheCreationInputTokens": 18335,
+          "webSearchRequests": 0,
+          "costUSD": 0.1676852,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 134,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "binding": "c5337d81d3949baa2a3914e7d73a76baaa874e8e8d9d20dd1340320af59df789"
+    },
+    {
+      "id": "nextstep",
+      "expected": "SELF_RESOLVE",
+      "verdict": "SELF_RESOLVE",
+      "exit_code": 1,
+      "session": "f18e46cf-024a-438f-bf8d-3e65db39ef41",
+      "models": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 895,
+          "cacheReadInputTokens": 1486,
+          "cacheCreationInputTokens": 18185,
+          "webSearchRequests": 0,
+          "costUSD": 0.1636852,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 81,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "binding": "043e14e929b5765bf48d69e19fb48906238abd0f000ad4c740bcfcb1a4ba9ea7"
+    }
+  ],
+  "real_smtp": false,
+  "native_stdout": "native.json is the parsed CLI envelope; transport.json hashes original stdout",
+  "failures": []
+}

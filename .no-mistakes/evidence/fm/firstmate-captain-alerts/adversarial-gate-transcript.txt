@@ -1,0 +1,43 @@
+### control: no secret anywhere -> gate reaches the critic (sentinel fails) -> NO_MAIL
+$ fm-mail.sh alert plain.json
+NO_MAIL: native critic failed or exceeded bound; repair the gate critic and resubmit
+exit=1 critic_calls=1 smtp_messages=0
+
+### adversarial: JSON-escaped SMTP secret in request body -> refused before critic
+$ fm-mail.sh alert inbody.json
+NO_MAIL: request or task records contain the SMTP secret; remove it before review
+exit=1 critic_calls=0 smtp_messages=0
+
+### adversarial: JSON-escaped SMTP secret only in a steering record -> refused before critic
+$ fm-mail.sh alert plain.json
+NO_MAIL: request or task records contain the SMTP secret; remove it before review
+exit=1 critic_calls=0 smtp_messages=0
+
+### adversarial: critic unconfigured (FM_CAPTAIN_ALERT_CLAUDE empty) -> no mail, no fallback
+$ fm-mail.sh alert plain.json
+NO_MAIL: configure FM_CAPTAIN_ALERT_CLAUDE in $FM_HOME/.env
+exit=1 critic_calls=0 smtp_messages=0
+
+### adversarial: critic replaced by /bin/true (no verdict) -> no mail
+$ fm-mail.sh alert plain.json
+NO_MAIL: Critic transport or evidence failure; resubmit to review again
+exit=1 critic_calls=0 smtp_messages=0
+
+### adversarial: critic named via PATH (relative "claude") -> refused, PATH never searched
+$ fm-mail.sh alert plain.json
+NO_MAIL: critic must be an absolute path; PATH is never searched
+exit=1 critic_calls=0 smtp_messages=0
+
+### adversarial: legacy ungated send entrypoints
+$ fm-mail.sh send someone@example.invalid subj body
+fm-mail: unreviewed send is closed; use alert <request.json> for mandatory independent review
+exit=1 smtp_messages=0
+$ fm-mail.py send someone@example.invalid subj body
+fm-mail: unreviewed send is closed; use fm-mail.sh alert
+exit=1 smtp_messages=0
+
+### durable Firstmate inbox notes written by the gate
+      1 Blocker email inbody.json: NO_MAIL
+      3 Blocker email plain.json: NO_MAIL
+      2 Blocker email plain: NO_MAIL
+secret value present in any inbox note or receipt: no

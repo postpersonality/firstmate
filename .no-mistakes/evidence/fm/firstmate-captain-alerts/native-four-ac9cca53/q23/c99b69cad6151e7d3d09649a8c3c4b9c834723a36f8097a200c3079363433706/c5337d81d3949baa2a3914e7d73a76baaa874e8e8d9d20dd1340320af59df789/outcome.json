@@ -1,0 +1,5 @@
+{
+  "status": "SELF_RESOLVE",
+  "action": "Don't send the email. Close the open \"default\" blocker on task q23 (spawn_gen s1.1.1) by steering the worker through fm-send with --resolve-key default, telling it to: apply the Q23 question-authority trigger correction in bin/fm-ask.sh on its isolated branch, add the regression test, run that test, and deliver through the task's selected delivery path. If the test fails, report that plainly. Merging still needs the captain's separate approval or the project's yolo setting, as normal. Nothing here grants merge authority.",
+  "at": 1792540289
+}

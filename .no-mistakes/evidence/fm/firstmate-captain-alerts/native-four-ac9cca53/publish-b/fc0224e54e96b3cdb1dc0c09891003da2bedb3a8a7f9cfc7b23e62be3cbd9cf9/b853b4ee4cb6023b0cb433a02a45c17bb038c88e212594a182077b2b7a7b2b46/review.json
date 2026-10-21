@@ -1,0 +1,37 @@
+{
+  "verdict": "SELF_RESOLVE",
+  "request_sha256": "b853b4ee4cb6023b0cb433a02a45c17bb038c88e212594a182077b2b7a7b2b46",
+  "reason": "The brief asks for one thing: a local draft of the v2 release notes. It says outright that publishing is not authorized by the brief, and the steering message only repeats that the draft should stay local. Publishing was never part of the accepted work. It is an extra step nobody requested, so not having permission for it does not block anything. The status log calls publishing 'the only remaining step', but the status log cannot add scope. According to the same log, the requested work is finished: the draft is complete, saved locally and not published. Under the rules, the captain's word is needed only for a review, approval, merge or design pick. Asking whether to expand the task does not qualify. The proposed email treats this extra step as a blocker and asks the captain to approve it, so it should not be sent.",
+  "action": "Do not send the permission email. Check that data/publish/notes.md exists and holds the finished v2 release-notes draft. Then close the open 'default' blocker on the publish task (spawn_gen s1.1.1) as resolved, because the accepted work is complete. Wrap up the task through the normal completion path. In the next ordinary captain-facing reply, report that the v2 release-notes draft is finished and saved locally, and that nothing was published, as the brief and steering require. Do not ask the captain whether to publish. Publish nothing unless the captain later gives separate, explicit permission on their own initiative.",
+  "human_only": "",
+  "evidence": [
+    {
+      "source": "brief",
+      "quote": "Prepare the v2 release-notes draft locally in data/<task>/notes.md."
+    },
+    {
+      "source": "brief",
+      "quote": "Publishing the notes to the public project site is NOT authorized by this brief"
+    },
+    {
+      "source": "steering",
+      "quote": "Keep the draft local. Do not publish anything publicly until the captain explicitly grants publication permission."
+    },
+    {
+      "source": "status",
+      "quote": "Release-notes draft is complete and saved locally."
+    },
+    {
+      "source": "status",
+      "quote": "nothing has been published"
+    },
+    {
+      "source": "authority",
+      "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+    },
+    {
+      "source": "authority",
+      "quote": "a finished requested deliverable is an outcome rather than progress or a no-op"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "verdict": "SELF_RESOLVE",
+  "request_sha256": "c5337d81d3949baa2a3914e7d73a76baaa874e8e8d9d20dd1340320af59df789",
+  "reason": "This doesn't need the captain. The brief already asks for this exact correction: fix the Q23 question-authority trigger in bin/fm-ask.sh, add its regression test, then carry on without asking again. Later steering says to go ahead with every accepted in-scope correction and not to ask the captain to reconfirm accepted work. The status line itself calls the correction \"accepted\", says an isolated editable branch is available, and says no external action is needed. The blocker comes from the worker being unsure, not from a missing permission. Touching the question-authority path makes the change sensitive, but the captain has already approved it, and being sensitive doesn't make it a captain-only call. Merging is the one thing still reserved for the captain, and the delivery path asks for that separately. The draft email is wrong because it asks the captain to reconfirm work the brief already approved, which the steering forbids. It should not be sent.",
+  "action": "Don't send the email. Close the open \"default\" blocker on task q23 (spawn_gen s1.1.1) by steering the worker through fm-send with --resolve-key default, telling it to: apply the Q23 question-authority trigger correction in bin/fm-ask.sh on its isolated branch, add the regression test, run that test, and deliver through the task's selected delivery path. If the test fails, report that plainly. Merging still needs the captain's separate approval or the project's yolo setting, as normal. Nothing here grants merge authority.",
+  "human_only": "",
+  "evidence": [
+    {
+      "source": "brief",
+      "quote": "Correct the Q23 question-authority trigger in bin/fm-ask.sh and add its regression test; then proceed with ordinary in-scope work without asking again."
+    },
+    {
+      "source": "steering",
+      "quote": "Proceed with every already accepted in-scope correction; do not ask the captain to reconfirm accepted work."
+    },
+    {
+      "source": "status",
+      "quote": "Unsure whether to apply the accepted Q23 trigger correction because it touches the question-authority path. An isolated editable branch is available; no external action is needed."
+    },
+    {
+      "source": "authority",
+      "quote": "Ask for the captain's word only when the next step requires a review, approval, merge, or design pick."
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "duration_api_ms": 12639,
+  "stop_reason": "tool_use",
+  "session_id": "7d56f420-edda-4a7e-a641-59d667e23f66",
+  "total_cost_usd": 0.1752892,
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 18498,
+    "cache_read_input_tokens": 1486,
+    "output_tokens": 1350,
+    "output_tokens_details": {
+      "thinking_tokens": 529
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 18498,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 1350,
+        "cache_read_input_tokens": 1486,
+        "cache_creation_input_tokens": 18498,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 18498
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "inputTokens": 2,
+      "outputTokens": 1350,
+      "cacheReadInputTokens": 1486,
+      "cacheCreationInputTokens": 18498,
+      "webSearchRequests": 0,
+      "costUSD": 0.1752892,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 529,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "safety_stops": 0,
+  "is_error": false,
+  "num_turns": 2,
+  "subtype": "success",
+  "api_error_status": null,
+  "result": "{\"verdict\":\"NEEDS_CAPTAIN\",\"request_sha256\":\"7640556e92a56277d15748f06e9cc4595b891c691d00fa98ad8a86f4afccc0fc\",\"reason\":\"The accepted brief says the v2 release-notes draft must include the owner's exact release annotation. It also says only the owner may write that wording, and it must not be invented or paraphrased. The later instruction confirms that no instruction so far has supplied the annotation, and it says to get the exact text from the owner. According to the status log, everything else in the draft is done, so the annotation is the only missing part of the accepted work. No permission already given can fill this gap. A placeholder would not meet the requirement for exact wording, and writing or rephrasing the text ourselves is forbidden. This is not about doing extra work or about how hard the task is. It is a required piece of input that only the owner can provide. The proposed email goes to the owner, describes the request accurately, keeps the draft local and contains no secrets.\",\"action\":\"Send the proposed email to owner@example.invalid asking for the exact release annotation text. Keep the draft local. When the text arrives, insert it into the draft word for word and close the 'default' blocker on the annotation task.\",\"human_only\":\"The owner's exact wording for the required release annotation in the local v2 release-notes draft\",\"evidence\":[{\"source\":\"brief\",\"quote\":\"Prepare the v2 release-notes draft locally, including the exact owner-supplied release annotation. The annotation is a required part of the accepted draft.\"},{\"source\":\"brief\",\"quote\":\"Only the owner may supply its wording; do not invent or paraphrase it.\"},{\"source\":\"steering\",\"quote\":\"The required owner annotation has not been supplied in this brief or any later instruction. Obtain the exact annotation from the owner and keep the draft local.\"},{\"source\":\"status\",\"quote\":\"blocked: The local draft is otherwise complete. The required owner annotation is missing from the complete brief and steering. No local action can supply the owner's exact wording.\"},{\"source\":\"authority\",\"quote\":\"A real blocker or failure after the relevant playbook is exhausted.\"}]}",
+  "structured_output": {
+    "verdict": "NEEDS_CAPTAIN",
+    "request_sha256": "7640556e92a56277d15748f06e9cc4595b891c691d00fa98ad8a86f4afccc0fc",
+    "reason": "The accepted brief says the v2 release-notes draft must include the owner's exact release annotation. It also says only the owner may write that wording, and it must not be invented or paraphrased. The later instruction confirms that no instruction so far has supplied the annotation, and it says to get the exact text from the owner. According to the status log, everything else in the draft is done, so the annotation is the only missing part of the accepted work. No permission already given can fill this gap. A placeholder would not meet the requirement for exact wording, and writing or rephrasing the text ourselves is forbidden. This is not about doing extra work or about how hard the task is. It is a required piece of input that only the owner can provide. The proposed email goes to the owner, describes the request accurately, keeps the draft local and contains no secrets.",
+    "action": "Send the proposed email to owner@example.invalid asking for the exact release annotation text. Keep the draft local. When the text arrives, insert it into the draft word for word and close the 'default' blocker on the annotation task.",
+    "human_only": "The owner's exact wording for the required release annotation in the local v2 release-notes draft",
+    "evidence": [
+      {
+        "source": "brief",
+        "quote": "Prepare the v2 release-notes draft locally, including the exact owner-supplied release annotation. The annotation is a required part of the accepted draft."
+      },
+      {
+        "source": "brief",
+        "quote": "Only the owner may supply its wording; do not invent or paraphrase it."
+      },
+      {
+        "source": "steering",
+        "quote": "The required owner annotation has not been supplied in this brief or any later instruction. Obtain the exact annotation from the owner and keep the draft local."
+      },
+      {
+        "source": "status",
+        "quote": "blocked: The local draft is otherwise complete. The required owner annotation is missing from the complete brief and steering. No local action can supply the owner's exact wording."
+      },
+      {
+        "source": "authority",
+        "quote": "A real blocker or failure after the relevant playbook is exhausted."
+      }
+    ]
+  },
+  "ttft_ms": 5947,
+  "type": "result",
+  "duration_ms": 12936,
+  "uuid": "ebe7ad35-7d2e-4371-911c-cfb91232dd0f",
+  "ttft_stream_ms": 1580,
+  "time_to_request_ms": 294,
+  "first_content_frame_ms": 1580,
+  "queued_turn_count": 0,
+  "result_index": 0
+}

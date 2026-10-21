@@ -1,0 +1,31 @@
+{
+  "families": [
+    {
+      "count": 1,
+      "duration_ms": 62676,
+      "failed": 0,
+      "name": "live-harness-optin"
+    }
+  ],
+  "finished_at": "2026-10-20T23:51:53Z",
+  "run_id": "fm-test-run-1792540250239-2",
+  "scripts": [
+    {
+      "duration_ms": 62676,
+      "exit": 0,
+      "expected_gate_skip": "live-capability",
+      "family": "live-harness-optin",
+      "gate_skip": false,
+      "gate_skip_reason": "",
+      "path": "tests/fm-captain-alert-live.test.sh"
+    }
+  ],
+  "selection": "scripts;jobs=1",
+  "started_at": "2026-10-20T23:50:50Z",
+  "summary": {
+    "duration_ms": 62877,
+    "failed": 0,
+    "skipped_gate": 0,
+    "total": 1
+  }
+}

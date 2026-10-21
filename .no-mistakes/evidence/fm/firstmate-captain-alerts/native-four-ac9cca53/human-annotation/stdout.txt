@@ -1,0 +1,1 @@
+SENT: SMTP accepted the notification (inbox arrival unverified)
