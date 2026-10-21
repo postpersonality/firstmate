@@ -2,14 +2,15 @@
 # Scaffold a crewmate brief or persistent secondmate charter at
 # data/<task-id>/brief.md under the active firstmate home.
 # For ordinary tasks, the standard Setup/Rules/Definition-of-done contract is
-# filled in. Ship and scout `# Task` sections have three subsections Firstmate
-# fills before dispatch: `{TASK}` under `## Captain's intent` (the captain's
-# own ask plus the context needed to read it, including the substance of any
-# report, decision, or PR the ask refers to, without added speaker labels or
-# direct address), `{PUBLIC_INTENT}` under `## Public intent` (reviewed public
-# technical wording, required for no-mistakes dispatch or promotion), and `{FIRSTMATE_SPEC}`
-# under `## Firstmate spec` (build instructions, which are never the captain's
-# intent). bin/fm-dod-lib.sh owns the no-mistakes `--intent` contract those
+# filled in. Ship and scout `# Task` sections have subsections Firstmate fills
+# before dispatch: `{TASK}` under `## Captain's intent` (the captain's own ask
+# plus the context needed to read it, including the substance of any report,
+# decision, or PR the ask refers to, without added speaker labels or direct
+# address) and `{FIRSTMATE_SPEC}` under `## Firstmate spec` (build
+# instructions, which are never the captain's intent). Only no-mistakes ships
+# and scouts, which promotion can turn into no-mistakes ships, also get
+# `{PUBLIC_INTENT}` under `## Public intent` (reviewed public technical wording,
+# required for no-mistakes dispatch or promotion). bin/fm-dod-lib.sh owns the no-mistakes `--intent` contract those
 # subsections feed; bin/fm-spawn.sh refuses leftover placeholders and a
 # `## Captain's intent` line opening with a Captain label or address. Secondmate
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
@@ -648,15 +649,18 @@ EOF
 HERDR_SECTION=${HERDR_SECTION%$'\n'}
 fi
 
-IFS= read -r -d '' TASK_SECTION <<'EOF' || true
+PUBLIC_INTENT_SECTION=
+PUBLIC_INTENT_FILL=
+if [ "$KIND" = scout ] || [ "$MODE" = no-mistakes ]; then
+  PUBLIC_INTENT_SECTION=$'## Public intent\n{PUBLIC_INTENT}\n\n'
+  PUBLIC_INTENT_FILL=', {PUBLIC_INTENT}'
+fi
+IFS= read -r -d '' TASK_SECTION <<EOF || true
 # Task
 ## Captain's intent
 {TASK}
 
-## Public intent
-{PUBLIC_INTENT}
-
-## Firstmate spec
+${PUBLIC_INTENT_SECTION}## Firstmate spec
 {FIRSTMATE_SPEC}
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
@@ -775,7 +779,7 @@ If your findings reveal work that should ship (e.g. you reproduced a bug and the
 EOF
 append_case_brief
 append_brief_include
-echo "scaffolded: $BRIEF (scout; replace {TASK} and {FIRSTMATE_SPEC})"
+echo "scaffolded: $BRIEF (scout; replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
 exit 0
 fi
 
@@ -857,7 +861,7 @@ EOF
 append_case_brief
 append_brief_include
 if [ "$FORGE" = none ]; then
-  echo "scaffolded: $BRIEF (ship, mode=$MODE; replace {TASK} and {FIRSTMATE_SPEC})"
+  echo "scaffolded: $BRIEF (ship, mode=$MODE; replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
 else
-  echo "scaffolded: $BRIEF (ship, mode=$MODE forge=$FORGE shape=$SHAPE; replace {TASK} and {FIRSTMATE_SPEC})"
+  echo "scaffolded: $BRIEF (ship, mode=$MODE forge=$FORGE shape=$SHAPE; replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
 fi
