@@ -21,8 +21,9 @@
 # read outside fenced blocks and indented examples so a quoted `Captain:` sample
 # never passes the provenance gate as the private ask (bin/fm-dod-lib.sh).
 # No-mistakes promotion additionally requires prepared `## Public intent` and
-# emits the same public-input overlay as spawn, including in the persisted
-# relaunch brief; private captain words are never its validation input.
+# emits the same public-input overlay as spawn in the ship instructions only; the
+# persisted brief keeps that `# Task` subsection, from which a relaunch renders
+# its one current overlay. Private captain words are never its validation input.
 # A scout records no delivery posture, so promotion is where this task's delivery
 # contract is decided: --mode, --yolo, and the ship branch resolved from
 # --branch-prefix are written into the meta alongside the kind= flip. Firstmate resolves all three at promotion time, having just
@@ -279,9 +280,6 @@ EOF
   fi
   printf '\n'
   fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH"
-  if [ "$MODE" = no-mistakes ]; then
-    fm_brief_intent_overlay "$PUBLIC_INTENT"
-  fi
 }
 mkdir -p "$DATA/$ID"
 [ ! -d "$INSTRUCTIONS" ] || { echo "error: ship instructions path is a directory: $INSTRUCTIONS" >&2; exit 1; }
@@ -304,6 +302,9 @@ $PROMOTION_SHIP_SPEC
 
 EOF
   promote_delivery_contract
+  if [ "$MODE" = no-mistakes ]; then
+    fm_brief_intent_overlay "$PUBLIC_INTENT"
+  fi
 } > "$TMP" || { echo "error: could not render ship instructions for mode=$MODE" >&2; exit 1; }
 mv "$TMP" "$INSTRUCTIONS"
 TMP=

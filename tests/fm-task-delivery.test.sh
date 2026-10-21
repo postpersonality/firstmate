@@ -207,11 +207,11 @@ PRIVATE_SCOUT_SPEC_SENTINEL: investigate with the existing helper.
 EOF
   out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1)
   expect_code 0 "$?" "promotion with prepared public wording failed: $out"
-  for launch in "$home/data/$id/ship-instructions.md" "$brief"; do
-    authorized=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit { print }' "$launch")
-    [ "$authorized" = "$public" ] || fail "promotion's worker or relaunch input differs from prepared public wording"
-    assert_grep 'PRIVATE_PROMOTION_SENTINEL' "$launch" "promotion lost the private original"
-  done
+  authorized=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit { print }' "$home/data/$id/ship-instructions.md")
+  [ "$authorized" = "$public" ] || fail "promotion's worker input differs from prepared public wording"
+  assert_grep 'PRIVATE_PROMOTION_SENTINEL' "$home/data/$id/ship-instructions.md" "promotion lost the private original"
+  assert_grep 'PRIVATE_PROMOTION_SENTINEL' "$brief" "the promoted brief lost the private original"
+  assert_no_grep '# Current no-mistakes intent contract' "$brief" "the promoted brief persisted a public input overlay that relaunch renders again"
   pass "public intent: launch input is exactly the prepared public wording; private source, full copies and missing inputs are refused"
 }
 

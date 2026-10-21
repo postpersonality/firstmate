@@ -1151,7 +1151,9 @@ test_spawn_relaunch_of_promoted_scout_uses_the_recorded_branch() {
 }
 
 test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
-  local dir home id brief launch out mode rule public_input
+  local dir home id brief launch out mode rule public_input instructions
+  local p0='Correct promotion delivery while preserving safety requirements.'
+  local p1='Correct promotion delivery and keep the refreshed safety requirements.'
   for mode in no-mistakes direct-PR local-only; do
     id="rl-promoted-${mode}"
     dir=$(new_case "promoted-scout-$mode" "$id")
@@ -1160,7 +1162,7 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
     FM_HOME="$home" "$BRIEF" "$id" firstmate --scout >/dev/null \
       || fail "$mode: could not scaffold the scout brief"
     brief="$home/data/$id/brief.md"
-    sed 's/{TASK}/PRIVATE_RELAUNCH_SENTINEL: fix that promotion issue./; s/{FIRSTMATE_SPEC}/Preserve the current delivery mode./; s/{PUBLIC_INTENT}/Correct promotion delivery while preserving safety requirements./' \
+    sed "s/{TASK}/PRIVATE_RELAUNCH_SENTINEL: fix that promotion issue./; s/{FIRSTMATE_SPEC}/Preserve the current delivery mode./; s/{PUBLIC_INTENT}/$p0/" \
       "$brief" > "$brief.filled"
     mv "$brief.filled" "$brief"
     {
@@ -1184,6 +1186,15 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
       "$mode: the reproduction fixture lost the original scout delivery text"
     assert_grep 'Never push to any remote and never open a PR' "$brief" \
       "$mode: the reproduction fixture lost the stale scout prohibition"
+    if [ "$mode" = no-mistakes ]; then
+      instructions="$home/data/$id/ship-instructions.md"
+      [ "$(grep -cx '# Current no-mistakes intent contract' "$instructions")" = 1 ] \
+        || fail "the live promotion instructions did not carry exactly one public intent contract"
+      public_input=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit { print }' "$instructions")
+      [ "$public_input" = "$p0" ] || fail "the live promotion instructions lost their prepared public intent"
+      awk -v old="$p0" -v new="$p1" '!done && $0 == old { print new; done = 1; next } { print }' "$brief" > "$brief.refreshed"
+      mv "$brief.refreshed" "$brief"
+    fi
 
     printf 'zsh' > "$dir/fake/command"
     out=$(run_spawn "$dir" "$id" --relaunch) \
@@ -1212,9 +1223,15 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
     assert_grep "Delivery contract: mode=$mode" "$launch" \
       "$mode: the replacement launch did not receive the actual ship delivery mode"
     if [ "$mode" = no-mistakes ]; then
-      public_input=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; text=""; next } emit { text=text $0 "\n" } END { printf "%s", text }' "$launch")
-      [ "$public_input" = 'Correct promotion delivery while preserving safety requirements.' ] \
-        || fail "relaunch replaced prepared public intent with private source or earlier contract text"
+      [ "$(grep -cx '# Current no-mistakes intent contract' "$launch")" = 1 ] \
+        || fail "the relaunched promoted task did not carry exactly one public intent contract"
+      [ "$(grep -cx '## Public intent authorized for --intent' "$launch")" = 1 ] \
+        || fail "the relaunched promoted task did not carry exactly one authorized public input"
+      public_input=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit { print }' "$launch")
+      [ "$public_input" = "$p1" ] \
+        || fail "relaunch did not authorize the refreshed prepared public intent"
+      assert_not_contains "$public_input" PRIVATE_ "relaunch authorized private source as public input"
+      assert_no_grep "$p0" "$launch" "relaunch kept a stale public intent payload"
       assert_grep 'PRIVATE_RELAUNCH_SENTINEL' "$launch" "relaunch lost the private source"
     fi
   done
