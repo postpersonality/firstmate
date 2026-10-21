@@ -341,7 +341,7 @@ To upgrade a primary that took the helm before thread binding:
 3. Confirm that `state/.lock-session` names the primary thread and that line 1 of `state/.lock` is the new app-server PID. A start refused by another live owner prints `READ-ONLY SESSION` and binds nothing.
 4. Later Stops of that thread run `bin/fm-codex-stop-watch.sh` and fail closed as described above.
 
-Only the portable regression has run this restart and resume; the opt-in native API guard scripts it, but no native run has exercised it.
+[Native evidence](verification/supervision.md#native-codex-api-stop-delivery) records which part of this restart and resume a native run has exercised.
 
 This keeps a known boundary.
 While the recorded thread's app-server lives, every other native thread, in that app-server or another, stays read-only, even after the recorded thread is abandoned or archived.
