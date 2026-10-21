@@ -8,6 +8,9 @@ Add `references/common/dispatch.md` for configured profile precedence.
 `../../../bin/fm-spawn.sh` accepts concrete `--harness`, `--model`, and `--effort` values selected at intake; scripts never parse natural-language dispatch rules.
 The tool reference records verified flags, accepted values, omission behavior, and discovery.
 
+A home with `config/crew-effort` pins every worker launch: an omitted or `default` effort resolves to the pinned level, a different explicit effort is refused, and a runtime or model that cannot natively carry the pinned level is refused instead of capped or recorded-and-omitted.
+`../../../docs/configuration.md` "Worker effort pin" owns that contract; the precedence, fallback, cap, and record-and-omit rules below apply only to unpinned homes.
+
 Effort precedence is a per-task captain instruction, then applicable dispatch profile or secondmate pin, then the fallback below.
 Never replace either higher-precedence value.
 Use the fallback only when neither specifies effort.

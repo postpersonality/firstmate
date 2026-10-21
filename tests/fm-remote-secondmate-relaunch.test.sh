@@ -53,6 +53,7 @@ reset_meta() {
 
 cat > "$FAKEBIN/fake-ssh" <<'SH'
 #!/usr/bin/env bash
+[ -z "${FM_FAKE_SSH_LOG:-}" ] || printf '%s\n' "$*" >> "$FM_FAKE_SSH_LOG"
 while [ "$#" -gt 0 ]; do
   case "$1" in -o) shift 2 ;; --) shift; break ;; *) exit 90 ;; esac
 done
@@ -98,6 +99,7 @@ chmod +x "$FAKEBIN/fake-ssh"
 run_relaunch() {  # <args...>
   env FM_HOME="$HOME_DIR" FM_SSH_BIN="$FAKEBIN/fake-ssh" \
     FM_FAKE_RELAUNCH_MODE="${FM_FAKE_RELAUNCH_MODE:-}" \
+    FM_FAKE_SSH_LOG="${FM_FAKE_SSH_LOG:-}" \
     "$ROOT/bin/fm-remote-secondmate-relaunch.sh" "$@" 2>&1
 }
 
@@ -188,5 +190,27 @@ expect_code 0 "$RC" "a confirmed remote relaunch should succeed with an armed PR
 fm_pr_poll_artifacts_valid "$HOME_DIR/state" ios "$ROOT/bin/fm-pr-poll.sh" \
   || fail "a remote relaunch broke PR poll authentication by writing harness/model/effort after pr="
 pass "a remote relaunch keeps an already-armed PR poll authenticating"
+
+# --- the worker effort pin binds the request before the host is reached ------
+reset_meta
+printf 'xhigh\n' > "$HOME_DIR/config/crew-effort"
+cp "$HOME_DIR/state/ios.meta" "$TMP/ios-before-pin.meta"
+FM_FAKE_SSH_LOG="$TMP/ssh.log"
+: > "$FM_FAKE_SSH_LOG"
+OUT=$(run_relaunch ios claude claude-opus-5-5 medium); RC=$?
+expect_code 1 "$RC" "a pinned remote relaunch requesting medium must refuse"$'\n'"$OUT"
+assert_contains "$OUT" "config/crew-effort pins worker effort to xhigh, but this launch requests medium" \
+  "the refusal should name the pin"
+[ ! -s "$FM_FAKE_SSH_LOG" ] || fail "a refused pinned relaunch reached the host"
+cmp -s "$TMP/ios-before-pin.meta" "$HOME_DIR/state/ios.meta" \
+  || fail "a refused pinned relaunch must not touch the parent's record"
+OUT=$(run_relaunch ios claude claude-opus-5-5 -); RC=$?
+expect_code 0 "$RC" "a pinned remote relaunch without an effort should succeed"$'\n'"$OUT"
+[ -s "$FM_FAKE_SSH_LOG" ] || fail "the pinned relaunch never reached the host"
+assert_grep 'effort=xhigh' "$HOME_DIR/state/ios.meta" \
+  "the host was not asked for the pinned effort"
+unset FM_FAKE_SSH_LOG
+rm "$HOME_DIR/config/crew-effort"
+pass "the worker effort pin refuses a different remote relaunch effort before the host and fills an omitted one"
 
 echo "ALL TESTS PASSED"
