@@ -82,6 +82,9 @@ EOF
 ## Captain's intent
 Exercise backlog dispatch for $id.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify the atomic backlog transition.
 

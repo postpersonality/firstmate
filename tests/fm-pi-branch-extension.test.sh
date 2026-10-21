@@ -1061,6 +1061,13 @@ const operational = spawnSync(
 if (operational.status !== 0) throw new Error(`could not create operational input: ${operational.stderr}`);
 await fire("before_agent_start", { prompt: operational.stdout }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: operational.stdout } });
+// Pi >= 1.2 also fires before_agent_start for a run an idle custom message
+// starts; that event carries the message and no prompt.
+const customRunText = "custom message that started an idle run";
+await fire("before_agent_start", {
+  messageType: "custom",
+  message: { role: "custom", customType: "firstmate-sessionstart-nudge", content: customRunText, display: false, timestamp: 0 },
+}, mainCtx);
 const unsolicitedPrompt = "Please keep responses concise while monitoring the fleet.";
 await fire("before_agent_start", { prompt: unsolicitedPrompt }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: unsolicitedPrompt } });
@@ -1124,6 +1131,9 @@ if (mirroredCaptainText.some((text) =>
   text.includes("operational watcher injection") || text.includes("FIRSTMATE_OP: give me a fresh system-resource report")
 )) {
   throw new Error("canonical current or legacy operational input entered captain mirror context");
+}
+if (mirroredCaptainText.some((text) => text.includes(customRunText))) {
+  throw new Error("a custom-message run entered captain mirror context");
 }
 if ((globalThis.__fmPrompts ?? []).length !== 5) throw new Error("a handled fleet wake was rerun");
 let processingRequests = sentToMain.filter((sent) => sent.message.customType === "fm-branch-process");
@@ -2116,7 +2126,7 @@ if (stolen?.messages?.some((message) => message.customType === "fm-branch-proces
 }
 await fire("agent_end", {});
 aborted = false;
-await fire("before_agent_start", { prompt: pending.message.content }, abortCtx);
+await fire("before_agent_start", { messageType: "custom", message: processingMsg }, abortCtx);
 await fire("agent_start", {}, defaultSessionCtx);
 const openedByRequest = await fire("context", { messages: [...history, processingMsg] }, abortCtx);
 if (!aborted) throw new Error("a dedicated processing turn with history was not aborted under the record");

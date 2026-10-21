@@ -18,6 +18,9 @@ write_ship_brief() {  # <file> <id>
 ## Captain's intent
 Exercise trace propagation for $2.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify the spawned process receives the expected trace context.
 EOF

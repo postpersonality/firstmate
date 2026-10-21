@@ -1680,9 +1680,12 @@ ${context.command}
     // SessionManager still contains only the preceding dialog, so relying on
     // getEntries() here loses the captain request that the next wake may answer.
     // Stage it verbatim and remember the future persisted index for turn_end's
-    // duplicate suppression. Operational extension injections are not dialog.
+    // duplicate suppression. Operational extension injections are not dialog,
+    // and neither is a run Pi starts from an idle custom message (no prompt).
+    const opened = event.messageType === "custom" ? event.message.content : event.prompt;
+    processingOpenedThisRun = queuedProcessingContent !== null && opened === queuedProcessingContent;
+    if (event.messageType === "custom") return;
     const prompt = event.prompt;
-    processingOpenedThisRun = queuedProcessingContent !== null && prompt === queuedProcessingContent;
     const trimmed = prompt.trim();
     if (!trimmed || isOperationalUserText(trimmed)) return;
     const file = currentMainSession.getSessionFile() ?? "";

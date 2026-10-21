@@ -138,6 +138,9 @@ make_spawn_case() {
 ## Captain's intent
 Exercise Muse dispatch.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify the Muse harness behavior under test.
 EOF

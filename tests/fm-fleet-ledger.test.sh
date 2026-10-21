@@ -47,6 +47,9 @@ make_case() {  # <name> <on|off>
 ## Captain's intent
 Exercise the fleet ledger for $TASK.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Nothing to build.
 EOF

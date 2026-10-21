@@ -213,6 +213,13 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep "{FIRSTMATE_SPEC}" "$brief" "$id: brief missing the {FIRSTMATE_SPEC} placeholder"
     assert_grep "## Captain's intent" "$brief" "$id: brief missing Captain's intent subsection"
     assert_grep "## Firstmate spec" "$brief" "$id: brief missing Firstmate spec subsection"
+    if [ "$mode" = no-mistakes ]; then
+      assert_grep "{PUBLIC_INTENT}" "$brief" "$id: no-mistakes brief missing the {PUBLIC_INTENT} placeholder"
+      assert_grep "## Public intent" "$brief" "$id: no-mistakes brief missing Public intent subsection"
+    else
+      assert_no_grep "{PUBLIC_INTENT}" "$brief" "$id: $mode brief scaffolds a Public intent nothing consumes"
+      assert_no_grep "## Public intent" "$brief" "$id: $mode brief scaffolds a Public intent subsection"
+    fi
     assert_grep 'never a bare number such as "PR 108"' "$brief" "$id: brief missing the full-PR-URL rule"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
@@ -314,11 +321,11 @@ test_faster_paths_use_configured_authority_without_stacked_review() {
     "local-only brief hard-coded captain-only authority"
   assert_no_grep "Firstmate then reviews your branch diff" "$brief" \
     "local-only brief retained a personal review stacked on the selected delivery path"
-  assert_no_grep "pass \`--intent\` as only this brief's \`## Captain's intent\`" "$home/data/$id/brief.md" \
+  assert_no_grep "pass \`--intent\` as only this brief's prepared \`## Public intent\`" "$home/data/$id/brief.md" \
     "local-only brief must not include the no-mistakes --intent contract"
   id="brief-direct-intent-a4"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" direct-proj --mode direct-PR >/dev/null 2>&1
-  assert_no_grep "pass \`--intent\` as only this brief's \`## Captain's intent\`" "$home/data/$id/brief.md" \
+  assert_no_grep "pass \`--intent\` as only this brief's prepared \`## Public intent\`" "$home/data/$id/brief.md" \
     "direct-PR brief must not include the no-mistakes --intent contract"
   pass "fm-brief.sh: faster paths use configured authority without stacked review"
 }
@@ -373,10 +380,15 @@ test_no_mistakes_dod_wording() {
   # shellcheck disable=SC2016  # single quotes are deliberate: the backticks must stay literal
   assert_grep '`help`' "$brief" \
     "no-mistakes DOD must render literal backticks around help"
-  assert_grep "pass \`--intent\` as only this brief's \`## Captain's intent\`" "$brief" \
-    "no-mistakes DOD must require --intent to be the Captain's intent subsection"
-  assert_grep "plus any later words the captain actually said" "$brief" \
-    "no-mistakes DOD must allow later captain words in --intent"
+  assert_grep "pass \`--intent\` as only this brief's prepared \`## Public intent\`" "$brief" \
+    "no-mistakes DOD must select the prepared Public intent subsection"
+  assert_grep "changed requirements need a refreshed public paraphrase before validation" "$brief" \
+    "no-mistakes DOD must require a refreshed public paraphrase for changed requirements"
+  # shellcheck disable=SC2016 # Backticks are literal generated instructions.
+  assert_grep 'the latest firstmate instruction-inbox message carrying an explicitly prepared replacement under its own `## Public intent` heading supersedes both' "$brief" \
+    "no-mistakes DOD must name the steered public intent replacement that supersedes the spawn-time input"
+  assert_grep "ask firstmate for that replacement, and never append raw words" "$brief" \
+    "no-mistakes DOD must tell the worker to request a replacement instead of appending raw words"
   assert_grep "Do not include \`## Firstmate spec\`" "$brief" \
     "no-mistakes DOD must keep Firstmate spec out of --intent"
   assert_grep "or your own decisions and tradeoffs" "$brief" \
@@ -388,8 +400,15 @@ test_no_mistakes_dod_wording() {
   # its substance.
   assert_grep "The \`--intent\` string you pass must be self-sufficient" "$brief" \
     "no-mistakes DOD must require a self-sufficient --intent string"
-  assert_grep "write the substance of the referenced items into \`--intent\`" "$brief" \
+  assert_grep "preserve the substance of the referenced requirements in the public paraphrase" "$brief" \
     "no-mistakes DOD must tell the worker to resolve report, decision, and PR references into substance"
+  # shellcheck disable=SC2016 # Backticks are literal generated instructions.
+  assert_grep 'Keep a meaningful public `## Intent` section; do not use `--no-publish-intent`' "$brief" \
+    "no-mistakes DOD must preserve public Intent publication"
+  assert_grep 'inspect the complete final payload against the prepared public wording' "$brief" \
+    "no-mistakes DOD must require payload review before publication"
+  assert_grep 'Read the published Intent back from the forge' "$brief" \
+    "no-mistakes DOD must require public Intent verification"
 
   # The --yes ban is a fleet-wide prohibition, not a preference, and it must not
   # claim an enforcement the tool does not provide: this is instruction only.
@@ -1018,6 +1037,7 @@ test_scout_and_secondmate_scaffold() {
   assert_grep "## Captain's intent" "$brief" "scout brief missing Captain's intent subsection"
   assert_grep "## Firstmate spec" "$brief" "scout brief missing Firstmate spec subsection"
   assert_grep "{FIRSTMATE_SPEC}" "$brief" "scout brief missing the spec placeholder"
+  assert_grep "{PUBLIC_INTENT}" "$brief" "promotable scout brief missing the public intent placeholder"
 
   FM_SECONDMATE_CHARTER='Supervise the alpha domain.' \
     FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-sm-q6 --secondmate alpha >/dev/null 2>&1 \

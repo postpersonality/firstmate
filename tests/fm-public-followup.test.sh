@@ -36,6 +36,9 @@ write_promotion_brief() {  # <home> <id>
 ## Captain's intent
 Promote the selected scout.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify promotion preserves the behavior under test.
 EOF
@@ -45,7 +48,7 @@ EOF
 # command that staged its job. Stop it before the shared fixture cleanup runs,
 # and keep that cleanup (tests/lib.sh owns it) rather than replacing the trap.
 pf_test_cleanup() {
-  local pid_file="${REMOTE_FIXTURE_JOBS:-$TMP_ROOT/remote-jobs}/worker.pid" pid
+  local pid_file="${REMOTE_FIXTURE_JOBS:-$TMP_ROOT/remote-jobs}/worker.pid" pid stop_rc=0
   if [ -n "$PF_TEST_LOCK_HOLDER" ]; then
     kill "$PF_TEST_LOCK_HOLDER" 2>/dev/null || true
     wait "$PF_TEST_LOCK_HOLDER" 2>/dev/null || true
@@ -53,9 +56,16 @@ pf_test_cleanup() {
   fi
   if [ -f "$pid_file" ]; then
     pid=$(cat "$pid_file" 2>/dev/null) || pid=
-    [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+    # worker.pid names the serving child; its restart supervisor would replace
+    # it and both still write remote-jobs while shutting down. Stop the whole
+    # isolated worker tree and wait for it before the fixture is removed.
+    # Production libraries are linted independently by fm-lint.sh.
+    # shellcheck source=/dev/null
+    [ -z "$pid" ] || (. "$ROOT/bin/fm-remote-job-lib.sh"; fm_remote_job_stop_worker_tree "$pid") \
+      || stop_rc=$?
   fi
   fm_test_cleanup
+  [ "$stop_rc" -eq 0 ] || fail "remote job worker tree $pid did not stop before fixture removal"
 }
 trap pf_test_cleanup EXIT
 trap 'pf_test_cleanup; exit 130' INT

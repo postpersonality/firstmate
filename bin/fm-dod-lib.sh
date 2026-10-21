@@ -67,21 +67,36 @@
 # report, read back from the forge; a lane that deliberately holds a draft
 # declares a paused wait instead. bin/fm-pr-check.sh refuses to arm merge
 # monitoring on a draft through the same reading bin/fm-pr-merge.sh uses.
-# This file is the one owner of the no-mistakes `--intent` contract: only the
-# brief's `## Captain's intent` subsection plus later captain words, never
-# `## Firstmate spec` and never the worker's own tradeoffs.
-# Author the subsection body and later relays as the actual words, without
-# adding speaker labels or direct address: the heading supplies provenance and
-# is not part of --intent. A legacy mixed Task instead marks each captain line
-# with `[captain] `; the selector returns its words, not that metadata prefix.
+# This file owns the no-mistakes `--intent` contract: the separately prepared
+# `## Public intent` under `# Task`, never private `## Captain's intent`,
+# `## Firstmate spec`, or the worker's own tradeoffs. Firstmate prepares and
+# reviews a formal technical paraphrase in the project's publication language,
+# preserving the approved goal, constraints and acceptance criteria without
+# quoting or literally translating private conversation. Keep the original ask
+# and later clarifications in private task records. When approved requirements
+# change, firstmate steers an explicitly prepared replacement under its own
+# `## Public intent` heading through the task's instruction inbox; the latest
+# such replacement supersedes the spawn-time public input before validation, and
+# raw dialogue is never appended. Public wording must be self-sufficient, resolving referenced reports, decisions or PRs into substance.
+# Legacy mixed Task briefs remain readable for private provenance: each captain
+# line is marked with `[captain] `; the selector returns words without the marker.
 # That selector skips fenced blocks and indented examples like the heading
-# reader, so a quoted `Captain:` sample is never authorized intent.
+# reader, so a quoted `Captain:` sample is never treated as private provenance.
 # Previously stored speaker labels remain readable for compatibility only.
-# Never scrub literal examples or other content the captain actually supplied.
-# The string passed must be self-sufficient - it plus the codebase reconstructs
-# roughly the same specification - so a report, decision, or PR the intent
-# refers to is written into it as substance, never left as a pointer.
-# bin/fm-brief.sh scaffolds those two `# Task` subsections; bin/fm-spawn.sh and
+# Never rewrite the private source. Legacy briefs need an explicit Public intent
+# before no-mistakes spawn, relaunch or promotion; there is no private fallback.
+# fm_brief_public_intent enforces presence and rejects a blank or placeholder
+# body, or one equal to the complete private intent (or legacy marked captain
+# words) after whitespace normalization. That stops an exact full copy only, not
+# a partial quote or literal translation: semantic fidelity and privacy of
+# prepared wording require review, not a conversation-style detector.
+# Publication remains enabled: inspect the complete final payload before
+# starting a run and compare the submitted intent digest with it when the tool
+# provides a receipt. On a PR forge, also check the supported publication
+# settings, never substitute --no-publish-intent for a public paraphrase, and
+# read the public Intent back from the forge before reporting ready.
+# bin/fm-brief.sh scaffolds the private `# Task` pair, plus `## Public intent`
+# for no-mistakes ships and scouts; bin/fm-spawn.sh and
 # bin/fm-promote.sh refuse leftover `{TASK}` / `{FIRSTMATE_SPEC}` placeholders
 # and a `## Captain's intent` line opening with a Captain label or address
 # through the helpers below. Other mentions of `--intent` point here rather than
@@ -265,23 +280,44 @@ fm_brief_marked_captain_words() {  # <task-body>
   '
 }
 
-fm_brief_intent_overlay() {  # <captain-intent>
+fm_brief_public_intent() {  # <brief> -> prepared public validation input
+  local public private
+  public=$(fm_brief_task_heading_body "$1" '## Public intent')
+  case "$(printf '%s' "$public" | tr -d '[:space:]')" in
+    ''|'{PUBLIC_INTENT}')
+      echo 'error: no-mistakes requires a prepared ## Public intent under # Task; preserve the original privately and add a reviewed formal technical paraphrase before validation (no private fallback)' >&2
+      return 1 ;;
+  esac
+  if fm_brief_task_heading_present "$1" "## Captain's intent"; then
+    private=$(fm_brief_task_heading_body "$1" "## Captain's intent")
+  else
+    private=$(fm_brief_marked_captain_words "$(fm_brief_heading_body "$1" '# Task')")
+  fi
+  if [ "$(printf '%s' "$public" | tr -d '[:space:]')" = "$(printf '%s' "$private" | tr -d '[:space:]')" ]; then
+    echo "error: ## Public intent copies the complete private Captain's intent; replace it with a reviewed formal technical paraphrase before validation" >&2
+    return 1
+  fi
+  printf '%s\n' "$public"
+}
+
+fm_brief_intent_overlay() {  # <public-intent>
   cat <<'EOF'
 
 # Current no-mistakes intent contract
-This section supersedes every earlier brief instruction about constructing `--intent`, but not later clarifications actually supplied by the captain.
-Use everything under `## Captain intent authorized for --intent` through the end of this brief, including any nested subheadings but excluding that heading, plus any later words the captain actually supplied as `--intent`; never include Firstmate specification or other mixed Task content.
-Preserve those words without adding speaker labels or direct address.
-Firstmate-authored constraints, acceptance criteria, implementation details, decisions, and tradeoffs are specification, not captain intent.
-The Definition of done's rule that `--intent` must be self-sufficient still governs the string you pass: resolve any report, decision, or PR the intent below refers to into its substance rather than passing the pointer.
+This section supersedes every earlier brief instruction about constructing `--intent`.
+Use only the prepared text under `## Public intent authorized for --intent` through the end of this brief, including nested subheadings but excluding that heading.
+A later firstmate instruction-inbox message carrying an explicitly prepared replacement under its own `## Public intent` heading supersedes that text: use that message's body under the heading, and the latest such replacement wins.
+Private Captain's intent, legacy captain-marked lines, Firstmate specification, home additions and private dialogue are never validation input.
+If later captain clarifications change the approved requirements, retain them privately and ask firstmate for such a replacement before starting validation; never append raw words.
+The Definition of done's self-sufficiency, publication and payload-review requirements still govern this input.
 
-## Captain intent authorized for --intent
+## Public intent authorized for --intent
 EOF
   printf '%s\n' "$1"
 }
 
-# Accept the current two-subsection contract only when both bodies have content;
-# briefs predating that contract remain valid when their # Task body has content.
+# Require the private intent/spec pair when present; older briefs keep their
+# nonempty Task rule. Public input is validated separately before no-mistakes.
 fm_brief_task_content_valid() {  # <file>
   local file=$1 intent spec task has_intent=0 has_spec=0
   [ -f "$file" ] && [ -r "$file" ] || return 1
@@ -327,11 +363,16 @@ EOF
 
 # The forge-independent middle of the no-mistakes contract: how a worker drives
 # the pipeline, what `--intent` may carry, and the two firstmate-specific rules.
-# Written once; only the two sentences about a green PR depend on the forge,
-# because on gerrit the ci step is skipped and there is no PR to report.
+# Written once; only the two sentences about a green PR and the PR Intent
+# publication lines depend on the forge, because on gerrit the pr and ci steps
+# are skipped and there is no PR to report or read back.
 fm_nm_driving_block() {  # <forge>
-  local pr_return_line='' pr_reattach_clause=';' drive_block wait_cfg
+  local pr_return_line='' pr_reattach_clause=';' pr_intent_lines='' drive_block wait_cfg
   if [ "$1" != gerrit ]; then
+    pr_intent_lines="Keep a meaningful public \`## Intent\` section; do not use \`--no-publish-intent\` or disable publication as a substitute for public wording.
+Check the installed tool's supported positive publication settings before starting; if it cannot retain the public Intent with this prepared input, report the exact limitation before publication.
+Read the published Intent back from the forge and confirm the approved objective and constraints survived before reporting ready.
+"
     pr_return_line="Only a drive call's return reports the green PR: \`no-mistakes axi status\` shows progress but never reports \`checks-passed\` while the ci step is still monitoring the PR for merge, so never wait on a status poll for the next gate or outcome.
 "
     pr_reattach_clause="; once checks are green it returns \`checks-passed\` immediately, and"
@@ -355,14 +396,16 @@ ${pr_return_line}Whenever a drive call returns without a gate or an outcome - it
   cat <<EOF
 You drive no-mistakes by responding to its gates, not by implementing fixes.
 Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
-When starting no-mistakes, pass \`--intent\` as only this brief's \`## Captain's intent\` subsection body, not its heading, plus any later words the captain actually said.
-Preserve the actual words without adding speaker labels or direct address; the subsection heading supplies provenance outside the pipeline input.
-For a legacy brief with no such subsection, include only words on lines marked \`[captain] \`, excluding that metadata prefix; never copy its mixed \`# Task\` wholesale.
-If it has no provenance-marked captain words, stop and ask firstmate instead of starting no-mistakes.
+When starting no-mistakes, pass \`--intent\` as only this brief's prepared \`## Public intent\` body, or the current launch overlay's authorized public input, never private \`## Captain's intent\` or legacy \`[captain]\` lines; the latest firstmate instruction-inbox message carrying an explicitly prepared replacement under its own \`## Public intent\` heading supersedes both.
+If no reviewed public wording is present, stop and ask firstmate to prepare it; do not fall back to the original request.
+Keep the original request and later captain clarifications privately auditable; changed requirements need a refreshed public paraphrase before validation: ask firstmate for that replacement, and never append raw words to \`--intent\`.
+The public wording must describe the approved technical goal, constraints and acceptance criteria in formal language appropriate to the project, without quoting or literally translating private dialogue or interpersonal remarks.
 Do not include \`## Firstmate spec\`, later Firstmate build constraints, or your own decisions and tradeoffs.
-The \`--intent\` string you pass must be self-sufficient: that string plus the codebase must let a reader reconstruct roughly the same specification, without depending on a separate report, a PR, or context that lives only in this conversation.
-When the captain's intent refers to a report, decision, or PR ("do items 1, 2, 3, and 7 of the report"), write the substance of the referenced items into \`--intent\` in the captain's terms, not only the pointer; that substance is the captain's ask by reference, while Firstmate's build instructions and your own decisions still stay out.
-This replaces the no-mistakes skill's advice to enrich \`--intent\` with decisions and tradeoffs; that advice does not apply to Firstmate-dispatched work.
+The \`--intent\` string you pass must be self-sufficient: that string plus the codebase must let a reader reconstruct roughly the same specification.
+When the ask refers to a report, decision or PR, preserve the substance of the referenced requirements in the public paraphrase rather than only a pointer.
+Before starting validation, inspect the complete final payload against the prepared public wording for fidelity and privacy; do not publish a raw draft and sanitize it afterwards.
+When a submission receipt provides an intent digest, compare it with the exact reviewed payload; a digest proves the supplied bytes, not their meaning or privacy.
+${pr_intent_lines}This replaces the no-mistakes skill's advice to enrich \`--intent\` with decisions and tradeoffs; that advice does not apply to Firstmate-dispatched work.
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
 $drive_block

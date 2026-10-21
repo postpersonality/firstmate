@@ -101,6 +101,9 @@ cat > "$DATA/$ID/brief.md" <<'EOF'
 ## Captain's intent
 Exercise Herdr backend auto-detection.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify the real spawn path selects Herdr.
 EOF

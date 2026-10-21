@@ -51,6 +51,9 @@ write_spawn_brief() {  # <file> <id>
 ## Captain's intent
 Exercise backend dispatch for $2.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify backend selection without changing task intent.
 EOF
