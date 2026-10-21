@@ -33,6 +33,9 @@ write_brief() {  # <home> <id>
 ## Captain's intent
 Run the project's heavy suite for $2.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Exercise project capacity admission.
 

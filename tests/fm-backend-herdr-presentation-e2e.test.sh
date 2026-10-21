@@ -408,6 +408,9 @@ write_ship_brief() {  # <home> <id> [description]
 ## Captain's intent
 $description
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify projected workspace behavior for $id.
 EOF

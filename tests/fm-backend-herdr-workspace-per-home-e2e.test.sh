@@ -96,6 +96,9 @@ cat > "$PRIMARY_HOME/data/cm1/brief.md" <<'EOF'
 ## Captain's intent
 Exercise primary-home Herdr placement.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify the crewmate uses its primary home's workspace.
 EOF
@@ -112,6 +115,9 @@ cat > "$SM_HOME/data/cm2/brief.md" <<'EOF'
 # Task
 ## Captain's intent
 Exercise secondmate-owned Herdr placement.
+
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
 
 ## Firstmate spec
 Verify the crewmate uses its secondmate home's workspace.

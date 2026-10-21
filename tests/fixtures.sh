@@ -286,6 +286,9 @@ fm_test_spawn_brief() {
 ## Captain's intent
 $intent
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Exercise the spawn behavior under test.
 EOF

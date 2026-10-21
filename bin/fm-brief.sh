@@ -2,11 +2,12 @@
 # Scaffold a crewmate brief or persistent secondmate charter at
 # data/<task-id>/brief.md under the active firstmate home.
 # For ordinary tasks, the standard Setup/Rules/Definition-of-done contract is
-# filled in. Ship and scout `# Task` sections have two subsections Firstmate
+# filled in. Ship and scout `# Task` sections have three subsections Firstmate
 # fills before dispatch: `{TASK}` under `## Captain's intent` (the captain's
 # own ask plus the context needed to read it, including the substance of any
 # report, decision, or PR the ask refers to, without added speaker labels or
-# direct address) and `{FIRSTMATE_SPEC}`
+# direct address), `{PUBLIC_INTENT}` under `## Public intent` (reviewed public
+# technical wording, required for no-mistakes dispatch or promotion), and `{FIRSTMATE_SPEC}`
 # under `## Firstmate spec` (build instructions, which are never the captain's
 # intent). bin/fm-dod-lib.sh owns the no-mistakes `--intent` contract those
 # subsections feed; bin/fm-spawn.sh refuses leftover placeholders and a
@@ -550,6 +551,9 @@ IFS= read -r -d '' TASK_SECTION <<'EOF' || true
 # Task
 ## Captain's intent
 {TASK}
+
+## Public intent
+{PUBLIC_INTENT}
 
 ## Firstmate spec
 {FIRSTMATE_SPEC}

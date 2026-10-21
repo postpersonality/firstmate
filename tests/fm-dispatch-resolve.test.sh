@@ -515,6 +515,9 @@ cat > "$SCAFFOLD_BRIEF" <<'MD'
 ## Captain's intent
 Add a flag to the pager.
 
+## Public intent
+PUBLIC-ROUTING-PARAPHRASE must not replace private dispatch context.
+
 ## Firstmate spec
 Touch pager.sh only.
 ```sh
@@ -527,7 +530,7 @@ Anything else.
 # Setup
 BOILERPLATE-SETUP never push to the default branch.
 
-## Captain intent authorized for --intent
+## Public intent authorized for --intent
 BOILERPLATE-DUPLICATE
 MD
 reset_log
@@ -538,6 +541,7 @@ assert_contains "$sent" $'## Captain\'s intent\nAdd a flag to the pager.' "the c
 assert_contains "$sent" $'## Firstmate spec\nTouch pager.sh only.' "the Firstmate spec section is sent"
 assert_contains "$sent" $'# Not a heading inside a fence\n## Setup\n```\n### Out of scope\nAnything else.' "fenced lines and subheadings stay inside the section"
 assert_not_contains "$sent" 'BOILERPLATE' "scaffold boilerplate after the task sections is not sent"
+assert_not_contains "$sent" 'PUBLIC-ROUTING-PARAPHRASE' "publication input replaced private dispatch context"
 assert_not_contains "$sent" '# Task' "the enclosing Task heading is not sent"
 assert_not_contains "$sent" 'Brief kind:' "a brief without a scout contract line gets no kind line"
 

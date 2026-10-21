@@ -87,6 +87,9 @@ cat > "$HOME_DIR/data/hsmoke/brief.md" <<'EOF'
 ## Captain's intent
 Exercise Herdr lifecycle control safely.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Keep the isolated endpoint and worktree intact.
 EOF

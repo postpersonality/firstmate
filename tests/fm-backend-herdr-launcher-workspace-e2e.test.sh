@@ -193,6 +193,9 @@ write_ship_brief() {  # <file> <id>
 ## Captain's intent
 Exercise Herdr launcher placement for $2.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify the worker is placed in the correct workspace.
 EOF

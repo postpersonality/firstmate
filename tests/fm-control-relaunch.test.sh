@@ -207,6 +207,9 @@ add_ship_task() {
 ## Captain's intent
 Exercise relaunch behavior for $id.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Preserve the task while replacing its agent process.
 EOF
@@ -1148,7 +1151,7 @@ test_spawn_relaunch_of_promoted_scout_uses_the_recorded_branch() {
 }
 
 test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
-  local dir home id brief launch out mode rule
+  local dir home id brief launch out mode rule public_input
   for mode in no-mistakes direct-PR local-only; do
     id="rl-promoted-${mode}"
     dir=$(new_case "promoted-scout-$mode" "$id")
@@ -1157,7 +1160,7 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
     FM_HOME="$home" "$BRIEF" "$id" firstmate --scout >/dev/null \
       || fail "$mode: could not scaffold the scout brief"
     brief="$home/data/$id/brief.md"
-    sed 's/{TASK}/Fix the promotion relaunch contract./; s/{FIRSTMATE_SPEC}/Preserve the current delivery mode./' \
+    sed 's/{TASK}/PRIVATE_RELAUNCH_SENTINEL: fix that promotion issue./; s/{FIRSTMATE_SPEC}/Preserve the current delivery mode./; s/{PUBLIC_INTENT}/Correct promotion delivery while preserving safety requirements./' \
       "$brief" > "$brief.filled"
     mv "$brief.filled" "$brief"
     {
@@ -1208,6 +1211,12 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
       "$mode: the replacement launch did not receive the carry-over boundary"
     assert_grep "Delivery contract: mode=$mode" "$launch" \
       "$mode: the replacement launch did not receive the actual ship delivery mode"
+    if [ "$mode" = no-mistakes ]; then
+      public_input=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; text=""; next } emit { text=text $0 "\n" } END { printf "%s", text }' "$launch")
+      [ "$public_input" = 'Correct promotion delivery while preserving safety requirements.' ] \
+        || fail "relaunch replaced prepared public intent with private source or earlier contract text"
+      assert_grep 'PRIVATE_RELAUNCH_SENTINEL' "$launch" "relaunch lost the private source"
+    fi
   done
   pass "fm-promote/fm-spawn --relaunch: the current ship contract supersedes stale scout delivery text"
 }
@@ -2123,6 +2132,9 @@ add_herdr_ship_task() {  # <case-dir> <id> [session] [surviving-pane]
 # Task
 ## Captain's intent
 Exercise a herdr reclaim safely.
+
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
 
 ## Firstmate spec
 Keep the recorded endpoint when it outlives its server.
