@@ -12,36 +12,6 @@ set -u
 # shellcheck source=tests/supervision-host-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/supervision-host-helpers.sh"
 
-# Every live process a home recorded, as its pid and identity, read before the
-# stop: a host's EXIT cleanup removes its own record.
-home_actors() {  # <home>
-  local pid identity
-  for pid in $( { awk -F '\t' '$1 == "host" || $1 == "arm" { print $2 }' "$1/state/.supervision-host"
-    cut -f 1 "$1/state/.supervision-host-left"
-    cat "$1/state/.watch.lock/pid" "$1/claude-pids" "$1/orphan-pid"; } 2>/dev/null); do
-    identity=$(fm_test_pid_identity "$pid" 2>/dev/null) && printf '%s\t%s\n' "$pid" "$identity"
-  done
-}
-# The listed actors that are still the same process.
-actors_running() {  # <actors file>
-  local pid identity
-  while IFS="$(printf '\t')" read -r pid identity; do
-    [ "$(fm_test_pid_identity "$pid" 2>/dev/null)" != "$identity" ] || printf '%s ' "$pid"
-  done < "$1"
-}
-actors_gone() { [ -z "$(actors_running "$1")" ]; }
-# A case's fixtures end with it: once its final assertion has passed, stop each
-# home it registered and see every process it ran then gone before the next case.
-end_case() {
-  local home actors="$TMP_ROOT/case-actors"
-  while IFS= read -r home; do
-    [ -n "$home" ] || continue
-    home_actors "$home" > "$actors"
-    stop_home_processes "$home"
-    wait_until 100 actors_gone "$actors" || fail "teardown: $home still runs $(actors_running "$actors")"
-  done < <(cat "$HOMES_FILE" 2>/dev/null)
-  : > "$HOMES_FILE"
-}
 
 # --- report surface -----------------------------------------------------------
 
@@ -2069,8 +2039,7 @@ for test_case in \
   test_outcome_lookup_failure_is_not_treated_as_silence \
   test_outcome_after_the_return_survives_a_host_killed_at_the_turn_end \
   test_next_host_clears_a_turn_its_killed_predecessor_left \
-  test_report_without_acknowledgement_hands_the_wake_to_main \
-; do
+  test_report_without_acknowledgement_hands_the_wake_to_main; do
   "$test_case"
   end_case
 done
