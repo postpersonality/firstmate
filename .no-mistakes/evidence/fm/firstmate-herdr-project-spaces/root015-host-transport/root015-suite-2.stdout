@@ -1,0 +1,11 @@
+ok - pane-bound worker reuses project Space despite unrelated launcher and focus; existing panes survive
+ok - detached caller uses the same project Space and a separate worker tab
+ok - public spawn replaces only its own exactly recorded shell husk
+ok - live endpoint recorded in another Space refuses fresh spawn before any tab or record change
+ok - source checkout and same-origin clone share project identity
+ok - repeat home, projects/firstmate copy and source spawns share one project Space with separate tabs; management and source checkout are preserved
+ok - absent project Space is created once across concurrent homes, then reused by public spawn
+ok - multiple path-identified project Spaces refuse without choosing the focused one
+ok - shared project Space preserves another home same-name task endpoint
+ok - ambiguous same-name Spaces are preserved and reported
+ok - teardown closes only its recorded fixture endpoint; other workers and orchestration survive

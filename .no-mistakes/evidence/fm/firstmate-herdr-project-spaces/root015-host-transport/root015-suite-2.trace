@@ -1,0 +1,1240 @@
++ set -eu
+++ dirname tests/fm-backend-herdr-launcher-workspace-e2e.test.sh
++ . tests/herdr-project-fixture.sh
+++++ dirname tests/herdr-project-fixture.sh
++++ cd tests/..
++++ pwd
+++ ROOT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
+++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/herdr-test-safety.sh
++++ set -u
+++++ dirname /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/herdr-test-safety.sh
++++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/git-config-helpers.sh
+++++ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+++++ GIT_CONFIG_GLOBAL=/dev/null
+++++ GIT_CONFIG_NOSYSTEM=1
++++ export FM_GATE_REFUSE_BYPASS=1
++++ FM_GATE_REFUSE_BYPASS=1
++++++ dirname /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/herdr-test-safety.sh
+++++ cd /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/..
+++++ pwd
++++ HERDR_TEST_SAFETY_DIR=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
++++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-herdr-lab.sh
+++++ set -u
+++++ readonly fm_herdr_lab_viewer_timeout_seconds=5
+++++ fm_herdr_lab_viewer_timeout_seconds=5
+++++ readonly fm_herdr_lab_viewer_launcher_grace_seconds=6
+++++ fm_herdr_lab_viewer_launcher_grace_seconds=6
+++++ '[' /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-herdr-lab.sh = tests/fm-backend-herdr-launcher-workspace-e2e.test.sh ']'
+++ herdr_forget_inherited_pane
+++ unset HERDR_ENV HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH HERDR_SESSION
+++ for tool in herdr jq git
+++ command -v herdr
+++ for tool in herdr jq git
+++ command -v jq
+++ for tool in herdr jq git
+++ command -v git
+++ HERDR_LAB_HELPER=/home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh
++++ /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh name firstmate-herdr-project-spaces
+++ HERDR_LAB_SESSION=fm-lab-firstmate-herdr-1539551-17534
++++ mktemp -d /tmp/fm-herdr-project.XXXXXX
+++ TMP_ROOT=/tmp/fm-herdr-project.h6NKmt
+++ trap cleanup EXIT
+++ REAL_PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin
+++ mkdir -p /tmp/fm-herdr-project.h6NKmt/fakebin /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state /tmp/fm-herdr-project.h6NKmt/operator/firstmate/config /tmp/fm-herdr-project.h6NKmt/slots
+++ export REAL_PATH HERDR_LAB_HELPER HERDR_LAB_SESSION TMP_ROOT
+++ cat
+++ cat
+++ cat
+++ cat
+++ chmod +x /tmp/fm-herdr-project.h6NKmt/fakebin/herdr /tmp/fm-herdr-project.h6NKmt/fakebin/treehouse /tmp/fm-herdr-project.h6NKmt/shell
+++ export HERDR_CONFIG_PATH=/tmp/fm-herdr-project.h6NKmt/herdr-config.toml
+++ HERDR_CONFIG_PATH=/tmp/fm-herdr-project.h6NKmt/herdr-config.toml
+++ export HERDR_AUTOMATIC_RENAME_CONFIG=/tmp/fm-herdr-project.h6NKmt/rename-config.sh
+++ HERDR_AUTOMATIC_RENAME_CONFIG=/tmp/fm-herdr-project.h6NKmt/rename-config.sh
+++ printf 'NAME_TABS=0\nAUTO_INDEX=0\n'
+++ printf '[terminal]\ndefault_shell = "%s"\n' /tmp/fm-herdr-project.h6NKmt/shell
+++ /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh provision fm-lab-firstmate-herdr-1539551-17534
+++ export HERDR_SESSION=fm-lab-firstmate-herdr-1539551-17534 FM_HOME=/tmp/fm-herdr-project.h6NKmt/operator/firstmate FM_ROOT_OVERRIDE=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 FM_SPAWN_NO_GUARD=1
+++ HERDR_SESSION=fm-lab-firstmate-herdr-1539551-17534
+++ FM_HOME=/tmp/fm-herdr-project.h6NKmt/operator/firstmate
+++ FM_ROOT_OVERRIDE=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
+++ FM_SPAWN_NO_GUARD=1
+++ export PATH=/tmp/fm-herdr-project.h6NKmt/fakebin:/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin
+++ PATH=/tmp/fm-herdr-project.h6NKmt/fakebin:/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin
+++ lab workspace create --cwd /tmp/fm-herdr-project.h6NKmt --label fixture-shell --no-focus
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace create --cwd /tmp/fm-herdr-project.h6NKmt --label fixture-shell --no-focus
+++ (( i=0 ))
+++ (( i<100 ))
+++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/shell-launched ']'
+++ break
+++ '[' -f /tmp/fm-herdr-project.h6NKmt/shell-launched ']'
++ project_a=/tmp/fm-herdr-project.h6NKmt/alpha
++ make_project /tmp/fm-herdr-project.h6NKmt/alpha
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/alpha
++ git -C /tmp/fm-herdr-project.h6NKmt/alpha init -q -b main
++ echo fixture
++ git -C /tmp/fm-herdr-project.h6NKmt/alpha add README.md
++ git -C /tmp/fm-herdr-project.h6NKmt/alpha -c user.name=Tests -c user.email=tests@example.invalid commit -qm initial
++ git clone -q --bare /tmp/fm-herdr-project.h6NKmt/alpha /tmp/fm-herdr-project.h6NKmt/alpha.origin.git
++ git -C /tmp/fm-herdr-project.h6NKmt/alpha remote add origin /tmp/fm-herdr-project.h6NKmt/alpha.origin.git
++ project_b=/tmp/fm-herdr-project.h6NKmt/beta
++ make_project /tmp/fm-herdr-project.h6NKmt/beta
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/beta
++ git -C /tmp/fm-herdr-project.h6NKmt/beta init -q -b main
++ echo fixture
++ git -C /tmp/fm-herdr-project.h6NKmt/beta add README.md
++ git -C /tmp/fm-herdr-project.h6NKmt/beta -c user.name=Tests -c user.email=tests@example.invalid commit -qm initial
++ git clone -q --bare /tmp/fm-herdr-project.h6NKmt/beta /tmp/fm-herdr-project.h6NKmt/beta.origin.git
++ git -C /tmp/fm-herdr-project.h6NKmt/beta remote add origin /tmp/fm-herdr-project.h6NKmt/beta.origin.git
+++ lab workspace create --cwd /tmp/fm-herdr-project.h6NKmt/beta --label beta --focus
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace create --cwd /tmp/fm-herdr-project.h6NKmt/beta --label beta --focus
++ parent='{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/beta","focused":true,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/beta","pane_id":"w2:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w2:t1","terminal_id":"term_65e4ec7a0ee272","workspace_id":"w2"},"tab":{"agent_status":"unknown","focused":true,"label":"1","number":1,"pane_count":1,"tab_id":"w2:t1","workspace_id":"w2"},"type":"workspace_created","workspace":{"active_tab_id":"w2:t1","agent_status":"unknown","focused":true,"label":"beta","number":2,"pane_count":1,"tab_count":1,"workspace_id":"w2"}}}'
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/beta","focused":true,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/beta","pane_id":"w2:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w2:t1","terminal_id":"term_65e4ec7a0ee272","workspace_id":"w2"},"tab":{"agent_status":"unknown","focused":true,"label":"1","number":1,"pane_count":1,"tab_id":"w2:t1","workspace_id":"w2"},"type":"workspace_created","workspace":{"active_tab_id":"w2:t1","agent_status":"unknown","focused":true,"label":"beta","number":2,"pane_count":1,"tab_count":1,"workspace_id":"w2"}}}'
+++ jq -r .result.workspace.workspace_id
++ parent_ws=w2
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/beta","focused":true,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/beta","pane_id":"w2:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w2:t1","terminal_id":"term_65e4ec7a0ee272","workspace_id":"w2"},"tab":{"agent_status":"unknown","focused":true,"label":"1","number":1,"pane_count":1,"tab_id":"w2:t1","workspace_id":"w2"},"type":"workspace_created","workspace":{"active_tab_id":"w2:t1","agent_status":"unknown","focused":true,"label":"beta","number":2,"pane_count":1,"tab_count":1,"workspace_id":"w2"}}}'
+++ jq -r .result.tab.tab_id
++ parent_tab=w2:t1
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/beta","focused":true,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/beta","pane_id":"w2:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w2:t1","terminal_id":"term_65e4ec7a0ee272","workspace_id":"w2"},"tab":{"agent_status":"unknown","focused":true,"label":"1","number":1,"pane_count":1,"tab_id":"w2:t1","workspace_id":"w2"},"type":"workspace_created","workspace":{"active_tab_id":"w2:t1","agent_status":"unknown","focused":true,"label":"beta","number":2,"pane_count":1,"tab_count":1,"workspace_id":"w2"}}}'
+++ jq -r .result.root_pane.pane_id
++ parent_pane=w2:p1
+++ lab workspace create --cwd /tmp/fm-herdr-project.h6NKmt/alpha --label alpha --no-focus
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace create --cwd /tmp/fm-herdr-project.h6NKmt/alpha --label alpha --no-focus
++ existing='{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/alpha","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/alpha","pane_id":"w3:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w3:t1","terminal_id":"term_65e4ec7a1705a3","workspace_id":"w3"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w3:t1","workspace_id":"w3"},"type":"workspace_created","workspace":{"active_tab_id":"w3:t1","agent_status":"unknown","focused":false,"label":"alpha","number":3,"pane_count":1,"tab_count":1,"workspace_id":"w3"}}}'
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/alpha","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/alpha","pane_id":"w3:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w3:t1","terminal_id":"term_65e4ec7a1705a3","workspace_id":"w3"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w3:t1","workspace_id":"w3"},"type":"workspace_created","workspace":{"active_tab_id":"w3:t1","agent_status":"unknown","focused":false,"label":"alpha","number":3,"pane_count":1,"tab_count":1,"workspace_id":"w3"}}}'
+++ jq -r .result.workspace.workspace_id
++ existing_ws=w3
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/alpha","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/alpha","pane_id":"w3:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w3:t1","terminal_id":"term_65e4ec7a1705a3","workspace_id":"w3"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w3:t1","workspace_id":"w3"},"type":"workspace_created","workspace":{"active_tab_id":"w3:t1","agent_status":"unknown","focused":false,"label":"alpha","number":3,"pane_count":1,"tab_count":1,"workspace_id":"w3"}}}'
+++ jq -r .result.root_pane.pane_id
++ existing_pane=w3:p1
++ spawn_in_pane w2:p1 reuse /tmp/fm-herdr-project.h6NKmt/alpha
++ local command i
++ write_brief reuse
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/reuse
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ cat
++ printf -v command '%q ' bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate reuse /tmp/fm-herdr-project.h6NKmt/alpha /tmp/fm-herdr-project.h6NKmt
++ lab pane run w2:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate reuse /tmp/fm-herdr-project.h6NKmt/alpha /tmp/fm-herdr-project.h6NKmt '
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane run w2:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate reuse /tmp/fm-herdr-project.h6NKmt/alpha /tmp/fm-herdr-project.h6NKmt '
++ (( i=0 ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
++ break
++ '[' -f /tmp/fm-herdr-project.h6NKmt/reuse.rc ']'
+++ cat /tmp/fm-herdr-project.h6NKmt/reuse.rc
++ '[' 0 '!=' 0 ']'
++ case "$(field "$2" worktree)" in
+++ field reuse worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/reuse.meta
++ case "$(field "$2" worktree)" in
+++ field reuse herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/reuse.meta
++ case "$(field "$2" worktree)" in
++ '[' w3 = w3 ']'
+++ field reuse herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/reuse.meta
++ '[' w3:t2 '!=' w2:t1 ']'
++ '[' '!' -e /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/reuse.herdr-presentation ']'
+++ lab workspace list
+++ jq -r '.result.workspaces[] | select(.focused) | .workspace_id'
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace list
++ '[' w2 = w2 ']'
++ lab pane get w3:p1
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w3:p1
++ pass 'pane-bound worker reuses project Space despite unrelated launcher and focus; existing panes survive'
++ echo 'ok - pane-bound worker reuses project Space despite unrelated launcher and focus; existing panes survive'
++ spawn detached /tmp/fm-herdr-project.h6NKmt/alpha
++ write_brief detached
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/detached
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh detached /tmp/fm-herdr-project.h6NKmt/alpha 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ case "$(field "$1" worktree)" in
+++ field detached worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
++ case "$(field "$1" worktree)" in
+++ field detached herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
++ case "$(field "$1" worktree)" in
++ '[' w3 = w3 ']'
+++ field detached herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
+++ field reuse herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/reuse.meta
++ '[' w3:t3 '!=' w3:t2 ']'
++ pass 'detached caller uses the same project Space and a separate worker tab'
++ echo 'ok - detached caller uses the same project Space and a separate worker tab'
+++ field detached herdr_pane_id
+++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
++ old_detached=w3:p3
++ spawn detached /tmp/fm-herdr-project.h6NKmt/alpha
++ write_brief detached
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/detached
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh detached /tmp/fm-herdr-project.h6NKmt/alpha 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ case "$(field "$1" worktree)" in
+++ field detached worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
++ case "$(field "$1" worktree)" in
+++ field detached herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
++ case "$(field "$1" worktree)" in
++ '[' w3 = w3 ']'
+++ field detached herdr_pane_id
+++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
++ '[' w3:p4 '!=' w3:p3 ']'
++ lab pane get w3:p3
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w3:p3
+++ field reuse herdr_pane_id
+++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/reuse.meta
++ lab pane get w3:p2
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w3:p2
++ pass 'public spawn replaces only its own exactly recorded shell husk'
++ echo 'ok - public spawn replaces only its own exactly recorded shell husk'
++ spawn elsewhere /tmp/fm-herdr-project.h6NKmt/beta
++ write_brief elsewhere
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/elsewhere
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh elsewhere /tmp/fm-herdr-project.h6NKmt/beta 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ case "$(field "$1" worktree)" in
+++ field elsewhere worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta
++ case "$(field "$1" worktree)" in
+++ field elsewhere herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta
++ case "$(field "$1" worktree)" in
++ '[' w2 = w2 ']'
+++ field elsewhere herdr_pane_id
+++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta
++ live_pane=w2:p2
++ lab pane run w2:p2 'sleep 600'
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane run w2:p2 'sleep 600'
++ lab pane report-agent w2:p2 --source fm-launcher-e2e --agent fm-launcher-live-agent --state idle
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane report-agent w2:p2 --source fm-launcher-e2e --agent fm-launcher-live-agent --state idle
++ (( i=0 ))
++ (( i<50 ))
+++ bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state "$2" "$3"' _ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 fm-lab-firstmate-herdr-1539551-17534 w2:p2
++ state=live
++ '[' live '!=' live ']'
++ break
++ '[' live = live ']'
++ cp /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta /tmp/fm-herdr-project.h6NKmt/elsewhere.meta.before
+++ lab tab list --workspace w3
+++ jq -c '[.result.tabs[].tab_id]'
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 tab list --workspace w3
++ alpha_tabs='["w3:t1","w3:t2","w3:t4"]'
++ spawn elsewhere /tmp/fm-herdr-project.h6NKmt/alpha
++ write_brief elsewhere
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/elsewhere
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh elsewhere /tmp/fm-herdr-project.h6NKmt/alpha 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ cat /tmp/fm-herdr-project.h6NKmt/elsewhere.err
++ return 1
++ case "$(cat "$TMP_ROOT/elsewhere.err")" in
+++ cat /tmp/fm-herdr-project.h6NKmt/elsewhere.err
++ case "$(cat "$TMP_ROOT/elsewhere.err")" in
++ cmp -s /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta /tmp/fm-herdr-project.h6NKmt/elsewhere.meta.before
+++ lab tab list --workspace w3
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 tab list --workspace w3
+++ jq -c '[.result.tabs[].tab_id]'
++ '[' '["w3:t1","w3:t2","w3:t4"]' = '["w3:t1","w3:t2","w3:t4"]' ']'
++ lab pane get w2:p2
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w2:p2
++ pass 'live endpoint recorded in another Space refuses fresh spawn before any tab or record change'
++ echo 'ok - live endpoint recorded in another Space refuses fresh spawn before any tab or record change'
++ git clone -q /tmp/fm-herdr-project.h6NKmt/alpha.origin.git /tmp/fm-herdr-project.h6NKmt/alpha-clone
+++ container /tmp/fm-herdr-project.h6NKmt/alpha-clone
+++ bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_project_container_ensure "$2"' _ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/alpha-clone
++ raw=$'fm-lab-firstmate-herdr-1539551-17534:w3\t'
++ '[' fm-lab-firstmate-herdr-1539551-17534:w3 = fm-lab-firstmate-herdr-1539551-17534:w3 ']'
++ pass 'source checkout and same-origin clone share project identity'
++ echo 'ok - source checkout and same-origin clone share project identity'
++ firstmate=/tmp/fm-herdr-project.h6NKmt/firstmate
++ make_project /tmp/fm-herdr-project.h6NKmt/firstmate
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/firstmate
++ git -C /tmp/fm-herdr-project.h6NKmt/firstmate init -q -b main
++ echo fixture
++ git -C /tmp/fm-herdr-project.h6NKmt/firstmate add README.md
++ git -C /tmp/fm-herdr-project.h6NKmt/firstmate -c user.name=Tests -c user.email=tests@example.invalid commit -qm initial
++ git clone -q --bare /tmp/fm-herdr-project.h6NKmt/firstmate /tmp/fm-herdr-project.h6NKmt/firstmate.origin.git
++ git -C /tmp/fm-herdr-project.h6NKmt/firstmate remote add origin /tmp/fm-herdr-project.h6NKmt/firstmate.origin.git
++ git -C /tmp/fm-herdr-project.h6NKmt/operator/firstmate init -q -b main
++ git -C /tmp/fm-herdr-project.h6NKmt/operator/firstmate remote add origin /tmp/fm-herdr-project.h6NKmt/firstmate.origin.git
++ git -C /tmp/fm-herdr-project.h6NKmt/operator/firstmate -c user.name=Tests -c user.email=tests@example.invalid commit -q --allow-empty -m initial
++ git clone -q /tmp/fm-herdr-project.h6NKmt/firstmate.origin.git /tmp/fm-herdr-project.h6NKmt/operator/firstmate/projects/firstmate
+++ lab workspace create --cwd /tmp/fm-herdr-project.h6NKmt/operator/firstmate --label 'operator desk' --no-focus
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace create --cwd /tmp/fm-herdr-project.h6NKmt/operator/firstmate --label 'operator desk' --no-focus
++ main='{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/operator/firstmate","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/operator/firstmate","pane_id":"w4:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w4:t1","terminal_id":"term_65e4ec899ac518","workspace_id":"w4"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w4:t1","workspace_id":"w4"},"type":"workspace_created","workspace":{"active_tab_id":"w4:t1","agent_status":"unknown","focused":false,"label":"operator desk","number":4,"pane_count":1,"tab_count":1,"workspace_id":"w4"}}}'
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/operator/firstmate","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/operator/firstmate","pane_id":"w4:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w4:t1","terminal_id":"term_65e4ec899ac518","workspace_id":"w4"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w4:t1","workspace_id":"w4"},"type":"workspace_created","workspace":{"active_tab_id":"w4:t1","agent_status":"unknown","focused":false,"label":"operator desk","number":4,"pane_count":1,"tab_count":1,"workspace_id":"w4"}}}'
+++ jq -r .result.workspace.workspace_id
++ main_ws=w4
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/operator/firstmate","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/operator/firstmate","pane_id":"w4:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w4:t1","terminal_id":"term_65e4ec899ac518","workspace_id":"w4"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w4:t1","workspace_id":"w4"},"type":"workspace_created","workspace":{"active_tab_id":"w4:t1","agent_status":"unknown","focused":false,"label":"operator desk","number":4,"pane_count":1,"tab_count":1,"workspace_id":"w4"}}}'
+++ jq -r .result.tab.tab_id
++ main_tab=w4:t1
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/operator/firstmate","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/operator/firstmate","pane_id":"w4:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w4:t1","terminal_id":"term_65e4ec899ac518","workspace_id":"w4"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w4:t1","workspace_id":"w4"},"type":"workspace_created","workspace":{"active_tab_id":"w4:t1","agent_status":"unknown","focused":false,"label":"operator desk","number":4,"pane_count":1,"tab_count":1,"workspace_id":"w4"}}}'
+++ jq -r .result.root_pane.pane_id
++ main_pane=w4:p1
+++ lab workspace list
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace list
+++ jq '.result.workspaces | length'
++ before_count=4
++ spawn_in_pane w4:p1 home-a /tmp/fm-herdr-project.h6NKmt/operator/firstmate
++ local command i
++ write_brief home-a
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/home-a
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ cat
++ printf -v command '%q ' bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-a /tmp/fm-herdr-project.h6NKmt/operator/firstmate /tmp/fm-herdr-project.h6NKmt
++ lab pane run w4:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-a /tmp/fm-herdr-project.h6NKmt/operator/firstmate /tmp/fm-herdr-project.h6NKmt '
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane run w4:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-a /tmp/fm-herdr-project.h6NKmt/operator/firstmate /tmp/fm-herdr-project.h6NKmt '
++ (( i=0 ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
++ break
++ '[' -f /tmp/fm-herdr-project.h6NKmt/home-a.rc ']'
+++ cat /tmp/fm-herdr-project.h6NKmt/home-a.rc
++ '[' 0 '!=' 0 ']'
++ case "$(field "$2" worktree)" in
+++ field home-a worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-a.meta
++ case "$(field "$2" worktree)" in
+++ field home-a herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-a.meta
++ case "$(field "$2" worktree)" in
++ core_ws=w5
++ '[' w5 '!=' w4 ']'
+++ field home-a herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-a.meta
++ '[' w5:t2 '!=' w4:t1 ']'
+++++ field home-a worktree
+++++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-a.meta
++++ basename /tmp/fm-herdr-project.h6NKmt/slots/slot.EYXSAo
+++ cat /tmp/fm-herdr-project.h6NKmt/slot.EYXSAo.source
++ '[' /tmp/fm-herdr-project.h6NKmt/operator/firstmate = /tmp/fm-herdr-project.h6NKmt/operator/firstmate ']'
++ spawn_in_pane w4:p1 home-b /tmp/fm-herdr-project.h6NKmt/operator/firstmate
++ local command i
++ write_brief home-b
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/home-b
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ cat
++ printf -v command '%q ' bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-b /tmp/fm-herdr-project.h6NKmt/operator/firstmate /tmp/fm-herdr-project.h6NKmt
++ lab pane run w4:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-b /tmp/fm-herdr-project.h6NKmt/operator/firstmate /tmp/fm-herdr-project.h6NKmt '
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane run w4:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-b /tmp/fm-herdr-project.h6NKmt/operator/firstmate /tmp/fm-herdr-project.h6NKmt '
++ (( i=0 ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
++ break
++ '[' -f /tmp/fm-herdr-project.h6NKmt/home-b.rc ']'
+++ cat /tmp/fm-herdr-project.h6NKmt/home-b.rc
++ '[' 0 '!=' 0 ']'
++ case "$(field "$2" worktree)" in
+++ field home-b worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-b.meta
++ case "$(field "$2" worktree)" in
+++ field home-b herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-b.meta
++ case "$(field "$2" worktree)" in
++ '[' w5 = w5 ']'
+++ field home-b herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-b.meta
+++ field home-a herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-a.meta
++ '[' w5:t3 '!=' w5:t2 ']'
++ spawn_in_pane w4:p1 home-copy /tmp/fm-herdr-project.h6NKmt/operator/firstmate/projects/firstmate
++ local command i
++ write_brief home-copy
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/home-copy
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ cat
++ printf -v command '%q ' bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-copy /tmp/fm-herdr-project.h6NKmt/operator/firstmate/projects/firstmate /tmp/fm-herdr-project.h6NKmt
++ lab pane run w4:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-copy /tmp/fm-herdr-project.h6NKmt/operator/firstmate/projects/firstmate /tmp/fm-herdr-project.h6NKmt '
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane run w4:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate home-copy /tmp/fm-herdr-project.h6NKmt/operator/firstmate/projects/firstmate /tmp/fm-herdr-project.h6NKmt '
++ (( i=0 ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
++ break
++ '[' -f /tmp/fm-herdr-project.h6NKmt/home-copy.rc ']'
+++ cat /tmp/fm-herdr-project.h6NKmt/home-copy.rc
++ '[' 0 '!=' 0 ']'
++ case "$(field "$2" worktree)" in
+++ field home-copy worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-copy.meta
++ case "$(field "$2" worktree)" in
+++ field home-copy herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/home-copy.meta
++ case "$(field "$2" worktree)" in
++ '[' w5 = w5 ']'
++ spawn_in_pane w4:p1 core /tmp/fm-herdr-project.h6NKmt/firstmate
++ local command i
++ write_brief core
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/core
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ cat
++ printf -v command '%q ' bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate core /tmp/fm-herdr-project.h6NKmt/firstmate /tmp/fm-herdr-project.h6NKmt
++ lab pane run w4:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate core /tmp/fm-herdr-project.h6NKmt/firstmate /tmp/fm-herdr-project.h6NKmt '
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane run w4:p1 'bash /tmp/fm-herdr-project.h6NKmt/spawn-in-pane.sh /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/operator/firstmate core /tmp/fm-herdr-project.h6NKmt/firstmate /tmp/fm-herdr-project.h6NKmt '
++ (( i=0 ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ sleep 0.1
++ (( i++ ))
++ (( i<300 ))
++ '[' '!' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
++ break
++ '[' -f /tmp/fm-herdr-project.h6NKmt/core.rc ']'
+++ cat /tmp/fm-herdr-project.h6NKmt/core.rc
++ '[' 0 '!=' 0 ']'
++ case "$(field "$2" worktree)" in
+++ field core worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
++ case "$(field "$2" worktree)" in
+++ field core herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
++ case "$(field "$2" worktree)" in
++ '[' w5 = w5 ']'
+++ lab workspace list
+++ jq '.result.workspaces | length'
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace list
++ '[' 5 = 5 ']'
+++ field core herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
++ '[' w5:t5 '!=' w4:t1 ']'
++ spawn core-detached /tmp/fm-herdr-project.h6NKmt/firstmate
++ write_brief core-detached
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/core-detached
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh core-detached /tmp/fm-herdr-project.h6NKmt/firstmate 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ case "$(field "$1" worktree)" in
+++ field core-detached worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core-detached.meta
++ case "$(field "$1" worktree)" in
+++ field core-detached herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core-detached.meta
++ case "$(field "$1" worktree)" in
++ '[' w5 = w5 ']'
+++ field core-detached herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core-detached.meta
+++ field core herdr_tab_id
+++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
++ '[' w5:t6 '!=' w5:t5 ']'
++ lab pane get w4:p1
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w4:p1
+++ field core herdr_pane_id
+++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
++ lab pane get w5:p5
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w5:p5
++ pass 'repeat home, projects/firstmate copy and source spawns share one project Space with separate tabs; management and source checkout are preserved'
++ echo 'ok - repeat home, projects/firstmate copy and source spawns share one project Space with separate tabs; management and source checkout are preserved'
++ project_c=/tmp/fm-herdr-project.h6NKmt/gamma
++ make_project /tmp/fm-herdr-project.h6NKmt/gamma
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/gamma
++ git -C /tmp/fm-herdr-project.h6NKmt/gamma init -q -b main
++ echo fixture
++ git -C /tmp/fm-herdr-project.h6NKmt/gamma add README.md
++ git -C /tmp/fm-herdr-project.h6NKmt/gamma -c user.name=Tests -c user.email=tests@example.invalid commit -qm initial
++ git clone -q --bare /tmp/fm-herdr-project.h6NKmt/gamma /tmp/fm-herdr-project.h6NKmt/gamma.origin.git
++ git -C /tmp/fm-herdr-project.h6NKmt/gamma remote add origin /tmp/fm-herdr-project.h6NKmt/gamma.origin.git
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/home-two/state
+++ lab workspace list
+++ jq '.result.workspaces | length'
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace list
++ before_count=5
++ one=1572321
++ container /tmp/fm-herdr-project.h6NKmt/gamma
++ bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_project_container_ensure "$2"' _ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/gamma
++ two=1572322
++ FM_HOME=/tmp/fm-herdr-project.h6NKmt/home-two
++ container /tmp/fm-herdr-project.h6NKmt/gamma
++ wait 1572321
++ bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_project_container_ensure "$2"' _ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/gamma
++ wait 1572322
+++ cat /tmp/fm-herdr-project.h6NKmt/concurrent-a
++ raw_a=$'fm-lab-firstmate-herdr-1539551-17534:w6\t'
+++ cat /tmp/fm-herdr-project.h6NKmt/concurrent-b
++ raw_b=$'fm-lab-firstmate-herdr-1539551-17534:w6\tw6:t1'
++ '[' fm-lab-firstmate-herdr-1539551-17534:w6 = fm-lab-firstmate-herdr-1539551-17534:w6 ']'
+++ lab workspace list
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace list
+++ jq '.result.workspaces | length'
++ '[' 6 = 6 ']'
++ spawn absent /tmp/fm-herdr-project.h6NKmt/gamma
++ write_brief absent
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/absent
++ printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
++ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh absent /tmp/fm-herdr-project.h6NKmt/gamma 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ case "$(field "$1" worktree)" in
+++ field absent worktree
+++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/absent.meta
++ case "$(field "$1" worktree)" in
+++ field absent herdr_workspace_id
+++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/absent.meta
++ case "$(field "$1" worktree)" in
++ '[' fm-lab-firstmate-herdr-1539551-17534:w6 = fm-lab-firstmate-herdr-1539551-17534:w6 ']'
++ pass 'absent project Space is created once across concurrent homes, then reused by public spawn'
++ echo 'ok - absent project Space is created once across concurrent homes, then reused by public spawn'
+++ lab workspace create --cwd /tmp/fm-herdr-project.h6NKmt/beta --label beta --no-focus
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace create --cwd /tmp/fm-herdr-project.h6NKmt/beta --label beta --no-focus
++ duplicate='{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/beta","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/beta","pane_id":"w7:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w7:t1","terminal_id":"term_65e4eca066ac111","workspace_id":"w7"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"},"type":"workspace_created","workspace":{"active_tab_id":"w7:t1","agent_status":"unknown","focused":false,"label":"beta","number":7,"pane_count":1,"tab_count":1,"workspace_id":"w7"}}}'
++ container /tmp/fm-herdr-project.h6NKmt/beta
++ bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_project_container_ensure "$2"' _ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/beta
++ lab pane get w2:p1
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w2:p1
+++ printf %s '{"id":"cli:workspace:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.h6NKmt/beta","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.h6NKmt/beta","pane_id":"w7:p1","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w7:t1","terminal_id":"term_65e4eca066ac111","workspace_id":"w7"},"tab":{"agent_status":"unknown","focused":false,"label":"1","number":1,"pane_count":1,"tab_id":"w7:t1","workspace_id":"w7"},"type":"workspace_created","workspace":{"active_tab_id":"w7:t1","agent_status":"unknown","focused":false,"label":"beta","number":7,"pane_count":1,"tab_count":1,"workspace_id":"w7"}}}'
+++ jq -r .result.root_pane.pane_id
++ lab pane get w7:p1
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w7:p1
++ pass 'multiple path-identified project Spaces refuse without choosing the focused one'
++ echo 'ok - multiple path-identified project Spaces refuse without choosing the focused one'
+++ jq -r .result.tab.label
++++ field detached herdr_tab_id
++++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
+++ lab tab get w3:t4
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 tab get w3:t4
++ existing_label=fm-detached
++ FM_HOME=/tmp/fm-herdr-project.h6NKmt/home-two
++ bash -c $'\n  . "$1/bin/backends/herdr.sh"\n  fm_backend_herdr_create_task "$2" "$3" "$4" "" preserve-existing\n' _ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 fm-lab-firstmate-herdr-1539551-17534:w3 fm-detached /tmp/fm-herdr-project.h6NKmt/alpha
+++ field detached herdr_pane_id
+++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
++ lab pane get w3:p4
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w3:p4
++ pass 'shared project Space preserves another home same-name task endpoint'
++ echo 'ok - shared project Space preserves another home same-name task endpoint'
++ mkdir -p /tmp/fm-herdr-project.h6NKmt/unknown
++ lab workspace create --cwd /tmp/fm-herdr-project.h6NKmt/unknown --label alpha --no-focus
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace create --cwd /tmp/fm-herdr-project.h6NKmt/unknown --label alpha --no-focus
+++ lab workspace list
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace list
+++ jq -c '[.result.workspaces[] | {workspace_id,active_tab_id,pane_count,tab_count}]'
++ before='[{"workspace_id":"w1","active_tab_id":"w1:t1","pane_count":1,"tab_count":1},{"workspace_id":"w2","active_tab_id":"w2:t1","pane_count":2,"tab_count":2},{"workspace_id":"w3","active_tab_id":"w3:t1","pane_count":3,"tab_count":3},{"workspace_id":"w4","active_tab_id":"w4:t1","pane_count":1,"tab_count":1},{"workspace_id":"w5","active_tab_id":"w5:t2","pane_count":5,"tab_count":5},{"workspace_id":"w6","active_tab_id":"w6:t1","pane_count":2,"tab_count":2},{"workspace_id":"w7","active_tab_id":"w7:t1","pane_count":1,"tab_count":1},{"workspace_id":"w8","active_tab_id":"w8:t1","pane_count":1,"tab_count":1}]'
++ container /tmp/fm-herdr-project.h6NKmt/alpha
++ bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_project_container_ensure "$2"' _ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 /tmp/fm-herdr-project.h6NKmt/alpha
++ case "$(cat "$TMP_ROOT/ambiguous.err")" in
+++ cat /tmp/fm-herdr-project.h6NKmt/ambiguous.err
++ case "$(cat "$TMP_ROOT/ambiguous.err")" in
+++ lab workspace list
+++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 workspace list
++ case "$(cat "$TMP_ROOT/ambiguous.err")" in
+++ jq -c '[.result.workspaces[] | {workspace_id,active_tab_id,pane_count,tab_count}]'
++ case "$(cat "$TMP_ROOT/ambiguous.err")" in
++ case "$(cat "$TMP_ROOT/ambiguous.err")" in
++ '[' '[{"workspace_id":"w1","active_tab_id":"w1:t1","pane_count":1,"tab_count":1},{"workspace_id":"w2","active_tab_id":"w2:t1","pane_count":2,"tab_count":2},{"workspace_id":"w3","active_tab_id":"w3:t1","pane_count":3,"tab_count":3},{"workspace_id":"w4","active_tab_id":"w4:t1","pane_count":1,"tab_count":1},{"workspace_id":"w5","active_tab_id":"w5:t2","pane_count":5,"tab_count":5},{"workspace_id":"w6","active_tab_id":"w6:t1","pane_count":2,"tab_count":2},{"workspace_id":"w7","active_tab_id":"w7:t1","pane_count":1,"tab_count":1},{"workspace_id":"w8","active_tab_id":"w8:t1","pane_count":1,"tab_count":1}]' = '[{"workspace_id":"w1","active_tab_id":"w1:t1","pane_count":1,"tab_count":1},{"workspace_id":"w2","active_tab_id":"w2:t1","pane_count":2,"tab_count":2},{"workspace_id":"w3","active_tab_id":"w3:t1","pane_count":3,"tab_count":3},{"workspace_id":"w4","active_tab_id":"w4:t1","pane_count":1,"tab_count":1},{"workspace_id":"w5","active_tab_id":"w5:t2","pane_count":5,"tab_count":5},{"workspace_id":"w6","active_tab_id":"w6:t1","pane_count":2,"tab_count":2},{"workspace_id":"w7","active_tab_id":"w7:t1","pane_count":1,"tab_count":1},{"workspace_id":"w8","active_tab_id":"w8:t1","pane_count":1,"tab_count":1}]' ']'
++ pass 'ambiguous same-name Spaces are preserved and reported'
++ echo 'ok - ambiguous same-name Spaces are preserved and reported'
+++ field reuse herdr_pane_id
+++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/reuse.meta
++ pane=w3:p2
++ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-teardown.sh reuse
++ lab pane get w3:p2
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w3:p2
+++ field detached herdr_pane_id
+++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/detached.meta
++ lab pane get w3:p4
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w3:p4
++ lab pane get w2:p1
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w2:p1
++ lab pane get w4:p1
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1539551-17534 pane get w4:p1
++ pass 'teardown closes only its recorded fixture endpoint; other workers and orchestration survive'
++ echo 'ok - teardown closes only its recorded fixture endpoint; other workers and orchestration survive'
++ cleanup
++ local status=0
++ trap - EXIT
++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh teardown fm-lab-firstmate-herdr-1539551-17534
++ find /tmp/fm-herdr-project.h6NKmt -type d -exec chmod u+rwx '{}' +
++ rm -rf /tmp/fm-herdr-project.h6NKmt
++ exit 0

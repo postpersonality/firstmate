@@ -1,0 +1,67 @@
+{
+  "source_head": "a5dcdb5ff08d8070a4a475faa05d925c563201b2",
+  "native_test_prior_nonherdr_result": "root014-test-completed-inconclusive.log: retired presentation config inheritance passed against changed product and failed against base",
+  "scenarios": [
+    {
+      "scenario": "unrelated launcher/focus uses existing project Space and preserves orchestration",
+      "suite": 2,
+      "evidence": "pane-bound worker reuses project Space despite unrelated launcher and focus; existing panes survive"
+    },
+    {
+      "scenario": "detached caller shares project Space with separate worker tab",
+      "suite": 2,
+      "evidence": "detached caller uses the same project Space and a separate worker tab"
+    },
+    {
+      "scenario": "absent project created once across concurrent homes, then reused",
+      "suite": 2,
+      "evidence": "absent project Space is created once across concurrent homes, then reused by public spawn"
+    },
+    {
+      "scenario": "Firstmate home, project copy and source share project Space with separate worker tabs and preserved allocation source",
+      "suite": 2,
+      "evidence": "repeat home, projects/firstmate copy and source spawns share one project Space with separate tabs; management and source checkout are preserved"
+    },
+    {
+      "scenario": "live recorded endpoint in another Space refuses before new tab or metadata overwrite",
+      "suite": 2,
+      "evidence": "live endpoint recorded in another Space refuses fresh spawn before any tab or record change"
+    },
+    {
+      "scenario": "path duplicates and unknown same-name candidates refuse without focus-based selection or mutation",
+      "suite": 2,
+      "evidence": [
+        "multiple path-identified project Spaces refuse without choosing the focused one",
+        "ambiguous same-name Spaces are preserved and reported"
+      ]
+    },
+    {
+      "scenario": "exact own husk recovery and fixture-only teardown preserve other-home/current workers",
+      "suite": 2,
+      "evidence": [
+        "public spawn replaces only its own exactly recorded shell husk",
+        "shared project Space preserves another home same-name task endpoint",
+        "teardown closes only its recorded fixture endpoint; other workers and orchestration survive"
+      ]
+    },
+    {
+      "scenario": "legacy projection and mixed old container pass-over, legacy recovery/cleanup preserves parent focus and project workers",
+      "suite": 4,
+      "evidence": [
+        "ok - exact owned legacy projection reclaims only its saved husk and preserves parent and focus",
+        "ok - same-project transition excludes exact own projection and mixed old container, creates/reuses project Space without moving old workers",
+        "ok - legacy exact-pane cleanup preserves project worker and orchestration parent"
+      ]
+    },
+    {
+      "scenario": "persistent secondmate home Space, shared project workers, per-home recovery and teardown",
+      "suite": 3,
+      "evidence": [
+        "ok - persistent secondmate recovery retains its home Space and replaces only its own husk",
+        "ok - secondmate keeps its home Space; primary and secondmate workers share the project Space",
+        "ok - each home recovers only its own recorded endpoints inside the shared project Space",
+        "ok - teardown preserves another home worker and persistent secondmate endpoint"
+      ]
+    }
+  ]
+}

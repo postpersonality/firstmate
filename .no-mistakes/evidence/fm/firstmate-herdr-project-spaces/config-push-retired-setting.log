@@ -1,0 +1,45 @@
+### TARGET a5dcdb5f: code root /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
+primary config/herdr-presentation-spaces = off
+secondmate config/herdr-presentation-spaces before push = on
+$ FM_HOME=<world>/home FM_ROOT_OVERRIDE=<world>/main fm-config-push.sh
+config-push: <world>/home -> live secondmate homes
+secondmate sm (<world>/sm):
+  crew-dispatch.json: unchanged
+  dispatch-never-send: unchanged
+  crew-harness: unchanged
+  backlog-backend: unchanged
+  backend: unchanged
+  startup-memory-budget: unchanged
+  trace-context: unchanged - session-scoped
+  launch-env-allowlist: unchanged
+  claude-permission-mode: unchanged
+  lavish-axi-host: unchanged
+  keep-ai-trailers: unchanged
+  supervision-host-off: unchanged
+  data/captain-shared.md: unchanged
+exit=0
+secondmate config/herdr-presentation-spaces after push = on
+
+### BASE 343e7a31: code root /tmp/claude-1000/fm-base.uVm3mi
+primary config/herdr-presentation-spaces = off
+secondmate config/herdr-presentation-spaces before push = on
+$ FM_HOME=<world>/home FM_ROOT_OVERRIDE=<world>/main fm-config-push.sh
+config-push: <world>/home -> live secondmate homes
+secondmate sm (<world>/sm):
+  crew-dispatch.json: unchanged
+  dispatch-never-send: unchanged
+  crew-harness: unchanged
+  backlog-backend: unchanged
+  backend: unchanged
+  herdr-presentation-spaces: pushed
+  startup-memory-budget: unchanged
+  trace-context: unchanged - session-scoped
+  launch-env-allowlist: unchanged
+  claude-permission-mode: unchanged
+  lavish-axi-host: unchanged
+  keep-ai-trailers: unchanged
+  supervision-host-off: unchanged
+  data/captain-shared.md: unchanged
+CONFIG_REREAD: secondmate sm: send failed: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/nikolayseliverstov/.no-mistakes/repos/8d2cf6c97984.git)
+exit=1
+secondmate config/herdr-presentation-spaces after push = off

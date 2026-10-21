@@ -1,0 +1,3 @@
+ok - exact owned legacy projection reclaims only its saved husk and preserves parent and focus
+ok - same-project transition excludes exact own projection and mixed old container, creates/reuses project Space without moving old workers
+ok - legacy exact-pane cleanup preserves project worker and orchestration parent

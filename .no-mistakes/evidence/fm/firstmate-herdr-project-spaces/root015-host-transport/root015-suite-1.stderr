@@ -1,0 +1,5 @@
+tests/fm-backend-herdr.test.sh: line 2266: 1494611 Killed                     bash -c 'trap "" HUP; sleep 300'
+tests/fm-backend-herdr.test.sh: line 2304: 1495225 Killed                     bash -c 'trap "" HUP; sleep 300'
+warning: 2 exact herdr presentation token matches for task-p3 are quarantined; inspecting only for duplicate-agent risk
+warning: quarantined herdr presentation for task-p3 is dead or agent-free; exact bound reclaim may proceed, otherwise spawning flat
+error: unknown backend 'bogus' (known: tmux herdr zellij orca cmux)

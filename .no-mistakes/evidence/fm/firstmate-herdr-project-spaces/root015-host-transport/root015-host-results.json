@@ -1,0 +1,120 @@
+{
+  "at": 1792542505,
+  "run_id": "01M5DT0T26N5HWGKHN66HD74J6",
+  "source_path": "/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6",
+  "head": "a5dcdb5ff08d8070a4a475faa05d925c563201b2",
+  "git_status_porcelain": "",
+  "source_hashes_unchanged": true,
+  "helper_hash_unchanged": true,
+  "total": 4,
+  "failed": 0,
+  "skipped": 0,
+  "attempts_per_suite": 1,
+  "suite_results": [
+    {
+      "number": 1,
+      "script": "tests/fm-backend-herdr.test.sh",
+      "argv": [
+        "bash",
+        "tests/fm-backend-herdr.test.sh"
+      ],
+      "stdout": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-1.stdout",
+      "stderr": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-1.stderr",
+      "exit": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-1.exit",
+      "exit_status": 0,
+      "started_at": 1792542259,
+      "finished_at": 1792542292,
+      "duration_seconds": 33,
+      "ok_lines": 209,
+      "gate_skipped": false,
+      "stdout_sha256": "c980d0f3b05b40ad38f7803bf3f43df7a5c7918383a981f6a0875e8482bb2e8c",
+      "stderr_sha256": "61dc9f8125bbd2aacce2ce4d7854b8dbeab1899cefe6acc1e72bb8a060ed7946"
+    },
+    {
+      "number": 2,
+      "script": "tests/fm-backend-herdr-launcher-workspace-e2e.test.sh",
+      "argv": [
+        "bash",
+        "-x",
+        "tests/fm-backend-herdr-launcher-workspace-e2e.test.sh"
+      ],
+      "stdout": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-2.stdout",
+      "stderr": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-2.stderr",
+      "exit": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-2.exit",
+      "trace": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-2.trace",
+      "trace_fd": 19,
+      "trace_environment": {
+        "BASH_XTRACEFD": "19"
+      },
+      "exit_status": 0,
+      "started_at": 1792542309,
+      "finished_at": 1792542371,
+      "duration_seconds": 62,
+      "ok_lines": 11,
+      "gate_skipped": false,
+      "stdout_sha256": "141fae21af05f02960cb2b74a04353c3d87fc620581034dd95c308f10dcdee7d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "trace_sha256": "ee4634bbfd3ed59eaf356afb0b39f4fd0643c87149c10eb374ebfcfbbe385efb",
+      "lab_session": "fm-lab-firstmate-herdr-1539551-17534"
+    },
+    {
+      "number": 3,
+      "script": "tests/fm-backend-herdr-workspace-per-home-e2e.test.sh",
+      "argv": [
+        "bash",
+        "-x",
+        "tests/fm-backend-herdr-workspace-per-home-e2e.test.sh"
+      ],
+      "stdout": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-3.stdout",
+      "stderr": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-3.stderr",
+      "exit": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-3.exit",
+      "trace": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-3.trace",
+      "trace_fd": 19,
+      "trace_environment": {
+        "BASH_XTRACEFD": "19"
+      },
+      "exit_status": 0,
+      "started_at": 1792542382,
+      "finished_at": 1792542411,
+      "duration_seconds": 29,
+      "ok_lines": 4,
+      "gate_skipped": false,
+      "stdout_sha256": "73deadd73afddcb835522d6b5f51a63ae57856702a9a7770a9cb19456d8cd5b5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "trace_sha256": "90a5ca359b56db1e3e2b95f3a8f87e39759dffd38ad96980cf4c023409700393",
+      "lab_session": "fm-lab-firstmate-herdr-1599033-30342"
+    },
+    {
+      "number": 4,
+      "script": "tests/fm-backend-herdr-presentation-e2e.test.sh",
+      "argv": [
+        "bash",
+        "-x",
+        "tests/fm-backend-herdr-presentation-e2e.test.sh"
+      ],
+      "stdout": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-4.stdout",
+      "stderr": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-4.stderr",
+      "exit": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-4.exit",
+      "trace": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-4.trace",
+      "trace_fd": 19,
+      "trace_environment": {
+        "BASH_XTRACEFD": "19"
+      },
+      "exit_status": 0,
+      "started_at": 1792542420,
+      "finished_at": 1792542429,
+      "duration_seconds": 9,
+      "ok_lines": 3,
+      "gate_skipped": false,
+      "stdout_sha256": "ff02492f341292c6119bdcf1729ed7050745524215f14e324532df6cdaca17d2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "trace_sha256": "ac721147be6a2c71147e974258d931dce12bb7ceed1f33c64f839bb134d141fe",
+      "lab_session": "fm-lab-firstmate-herdr-1612429-17202"
+    }
+  ],
+  "owned_lab_sessions": [
+    "fm-lab-firstmate-herdr-1539551-17534",
+    "fm-lab-firstmate-herdr-1599033-30342",
+    "fm-lab-firstmate-herdr-1612429-17202"
+  ]
+}
