@@ -1061,8 +1061,8 @@ const operational = spawnSync(
 if (operational.status !== 0) throw new Error(`could not create operational input: ${operational.stderr}`);
 await fire("before_agent_start", { prompt: operational.stdout }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: operational.stdout } });
-// Pi raises before_agent_start when an idle custom message opens a run; these
-// events carry their message and no prompt. Cover both operational message types.
+// Idle custom-message runs carry the custom message and no prompt.
+// Exercise both operational message types seen in the main and session-start paths.
 const customRunTexts = [
   "extension note that opened its own run",
   "custom message that started an idle run",
