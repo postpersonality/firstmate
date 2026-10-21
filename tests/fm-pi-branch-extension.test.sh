@@ -1061,11 +1061,12 @@ const operational = spawnSync(
 if (operational.status !== 0) throw new Error(`could not create operational input: ${operational.stderr}`);
 await fire("before_agent_start", { prompt: operational.stdout }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: operational.stdout } });
-// Pi 1.3+ also raises before_agent_start for a run an idle custom message opens.
-const customRunText = "extension note that opened its own run";
+// Pi >= 1.2 also fires before_agent_start for a run an idle custom message
+// starts; that event carries the message and no prompt.
+const customRunText = "custom message that started an idle run";
 await fire("before_agent_start", {
   messageType: "custom",
-  message: { role: "custom", customType: "fm-branch-merge", content: customRunText, display: false },
+  message: { role: "custom", customType: "firstmate-sessionstart-nudge", content: customRunText, display: false, timestamp: 0 },
 }, mainCtx);
 const unsolicitedPrompt = "Please keep responses concise while monitoring the fleet.";
 await fire("before_agent_start", { prompt: unsolicitedPrompt }, mainCtx);
