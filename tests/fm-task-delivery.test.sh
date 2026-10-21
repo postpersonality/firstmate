@@ -47,7 +47,7 @@ write_brief() {  # <home> <id> [<recorded-mode>]
   local home=$1 id=$2 mode=${3:-}
   mkdir -p "$home/data/$id"
   {
-    printf 'You are a crewmate.\n\n# Task\n## Captain'\''s intent\nExercise the delivery contract.\n\n## Firstmate spec\nVerify the selected delivery behavior.\n\n# Definition of done\n'
+    printf 'You are a crewmate.\n\n# Task\n## Captain'\''s intent\nExercise the delivery contract.\n\n## Public intent\nVerify explicit task delivery.\n\n## Firstmate spec\nVerify the selected delivery behavior.\n\n# Definition of done\n'
     [ -z "$mode" ] || printf 'Delivery contract: mode=%s\n' "$mode"
   } > "$home/data/$id/brief.md"
 }
@@ -57,6 +57,7 @@ fill_brief_subsections() {  # <file> <intent> <spec>
   content=$(cat "$file")
   content=${content//'{TASK}'/$intent}
   content=${content//'{FIRSTMATE_SPEC}'/$spec}
+  content=${content//'{PUBLIC_INTENT}'/Verify the approved delivery behavior and preserve existing safety requirements.}
   printf '%s\n' "$content" > "$file"
 }
 
@@ -68,6 +69,125 @@ run_spawn() {  # <home> <fakebin> <spawn-args...>
     FM_PROJECTS_OVERRIDE="$TMP_ROOT/projects-unused" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_BACKEND=tmux PATH="$fakebin:$PATH" \
     "$SPAWN" "$@" 2>&1
+}
+
+# Consume only the launch contract's public validation input at a local sink.
+# The sink never invokes a model, network service, or real pipeline.
+test_public_intent_is_separate_and_required() {
+  local rec home proj fakebin id brief launch out status authorized public variant
+  rec=$(make_home public-intent)
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  id='public-intent-safe'
+  brief="$home/data/$id/brief.md"
+  public=$(printf '%s\n' 'Correct the request routing defect.' '' '### Constraints' 'Preserve existing approvals and retain a public Intent section.')
+  write_brief "$home" "$id" no-mistakes
+  cat > "$brief" <<EOF
+# Task
+## Captain's intent
+PRIVATE_DIALOGUE_SENTINEL: please fix that routing problem again.
+
+## Public intent
+$public
+
+## Firstmate spec
+PRIVATE_BUILD_SENTINEL: use the existing implementation helper.
+
+# Definition of done
+Delivery contract: mode=no-mistakes
+Pass the private words verbatim as --intent.
+EOF
+  out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
+  launch="$home/data/$id/launch-brief.md"
+  assert_present "$launch" "public wording was not serialized before backend refusal: $out"
+  authorized=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit { print }' "$launch")
+  [ "$authorized" = "$public" ] || fail "launch validation input differs from prepared public intent"
+  printf '## Intent\n%s\n' "$authorized" > "$TMP_ROOT/public-intent-sink.md"
+  assert_grep '## Intent' "$TMP_ROOT/public-intent-sink.md" "public Intent was omitted"
+  assert_grep 'Correct the request routing defect.' "$TMP_ROOT/public-intent-sink.md" "public objective was lost"
+  assert_grep 'Preserve existing approvals' "$TMP_ROOT/public-intent-sink.md" "public constraints were lost"
+  assert_no_grep 'PRIVATE_' "$TMP_ROOT/public-intent-sink.md" "private input reached the public sink"
+  assert_grep 'PRIVATE_DIALOGUE_SENTINEL' "$brief" "private source was not retained"
+
+  for variant in missing blank placeholder outside-task; do
+    id="public-intent-$variant"
+    write_brief "$home" "$id" no-mistakes
+    brief="$home/data/$id/brief.md"
+    sed '/^## Public intent$/,/^$/d' "$brief" > "$brief.tmp"; mv "$brief.tmp" "$brief"
+    case "$variant" in
+      missing) ;;
+      blank) sed '/^## Firstmate spec/i\
+## Public intent\
+ ' "$brief" > "$brief.tmp"; mv "$brief.tmp" "$brief" ;;
+      placeholder) sed '/^## Firstmate spec/i\
+## Public intent\
+{PUBLIC_INTENT}\
+' "$brief" > "$brief.tmp"; mv "$brief.tmp" "$brief" ;;
+      outside-task) printf '\n# Notes\n## Public intent\n%s\n' "$public" >> "$brief" ;;
+    esac
+    out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
+    status=$?
+    [ "$status" -ne 0 ] || fail "$variant: spawn without prepared public input succeeded"
+    assert_contains "$out" 'prepared ## Public intent' "$variant: refusal did not explain the missing public input"
+    assert_absent "$home/data/$id/launch-brief.md" "$variant: unsafe launch input was serialized"
+    assert_absent "$home/state/$id.meta" "$variant: refused spawn recorded a task"
+  done
+
+  # Legacy provenance remains private and cannot supply missing public wording.
+  for variant in '[captain]' 'Captain:' "Captain's words:"; do
+    id="public-legacy-${RANDOM}"
+    write_brief "$home" "$id" no-mistakes
+    brief="$home/data/$id/brief.md"
+    printf '# Task\n%s PRIVATE_LEGACY_SENTINEL: correct routing.\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' "$variant" > "$brief"
+    out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
+    assert_contains "$out" 'prepared ## Public intent' "legacy marker supplied unsafe fallback input"
+    assert_absent "$home/data/$id/launch-brief.md" "legacy private words were serialized"
+    printf '# Task\n%s PRIVATE_LEGACY_SENTINEL: correct routing.\n\n## Public intent\n%s\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' "$variant" "$public" > "$brief"
+    out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
+    assert_present "$home/data/$id/launch-brief.md" "legacy brief with explicit public wording was rejected: $out"
+    authorized=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit { print }' "$home/data/$id/launch-brief.md")
+    [ "$authorized" = "$public" ] || fail "legacy source replaced the prepared public payload"
+  done
+
+  id='public-intent-no-provenance'
+  write_brief "$home" "$id" no-mistakes
+  brief="$home/data/$id/brief.md"
+  printf '# Task\nUnmarked private source.\n\n## Public intent\n%s\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' "$public" > "$brief"
+  out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
+  assert_contains "$out" 'private source record' "public input bypassed existing legacy provenance validation"
+  assert_absent "$home/data/$id/launch-brief.md" "unmarked private source passed the provenance gate"
+
+  id='public-intent-promoted'
+  write_brief "$home" "$id"
+  brief="$home/data/$id/brief.md"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$home/state/$id.meta"
+  sed '/^## Public intent$/,/^$/d' "$brief" > "$brief.tmp"; mv "$brief.tmp" "$brief"
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "promotion without public wording succeeded"
+  assert_contains "$out" 'prepared ## Public intent' "promotion did not explain missing public input"
+  assert_absent "$home/data/$id/ship-instructions.md" "refused promotion serialized instructions"
+  assert_grep 'kind=scout' "$home/state/$id.meta" "refused promotion mutated the task kind"
+  cat > "$brief" <<EOF
+# Task
+## Captain's intent
+PRIVATE_PROMOTION_SENTINEL: fix that problem.
+
+## Public intent
+$public
+
+## Firstmate spec
+PRIVATE_SCOUT_SPEC_SENTINEL: investigate with the existing helper.
+EOF
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1)
+  expect_code 0 "$?" "promotion with prepared public wording failed: $out"
+  for launch in "$home/data/$id/ship-instructions.md" "$brief"; do
+    authorized=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit { print }' "$launch")
+    [ "$authorized" = "$public" ] || fail "promotion's worker or relaunch input differs from prepared public wording"
+    assert_grep 'PRIVATE_PROMOTION_SENTINEL' "$launch" "promotion lost the private original"
+  done
+  pass "public intent: prepared objective reaches the public sink; private source and missing inputs cannot"
 }
 
 # A ship spawn must stop when its delivery contract was never decided or cannot be
@@ -376,9 +496,9 @@ STUB
       || fail "$mode: ordinary ship brief generation should succeed"
     brief_dod="$TMP_ROOT/promote-dod/brief-dod-$id"
     delivered_dod="$TMP_ROOT/promote-dod/delivered-dod-$id"
-    awk '/^# Definition of done$/ { emit=1 } emit' "$home/data/$id/brief.md" > "$brief_dod"
-    awk '/^# Definition of done$/ { emit=1 } emit' "$payload" > "$delivered_dod"
-    cmp -s "$brief_dod" "$delivered_dod" \
+    awk '/^# Current no-mistakes intent contract$/ { exit } /^# Definition of done$/ { emit=1 } emit' "$home/data/$id/brief.md" > "$brief_dod"
+    awk '/^# Current no-mistakes intent contract$/ { exit } /^# Definition of done$/ { emit=1 } emit' "$payload" > "$delivered_dod"
+    diff -B "$brief_dod" "$delivered_dod" >/dev/null \
       || fail "$mode: promotion and ordinary brief generation delivered different Definitions of done"
   done
 
@@ -632,6 +752,9 @@ EOF
 [captain] Fix the legacy dispatch boundary.
 Do not copy this Firstmate-authored constraint into intent.
 
+## Public intent
+Correct the legacy dispatch boundary.
+
 # Definition of done
 Delivery contract: mode=no-mistakes
 Pass the entire Task as --intent.
@@ -644,12 +767,12 @@ EOF
   assert_grep "supersedes every earlier brief instruction about constructing \`--intent\`" \
     "$home/data/$id/launch-brief.md" \
     "marked legacy spawn did not override its stale intent instruction"
-  assert_grep "plus any later words the captain actually supplied" \
+  assert_grep "never append raw words" \
     "$home/data/$id/launch-brief.md" \
     "marked legacy launch contract excluded later captain clarifications"
-  authorized=$(awk '$0 == "## Captain intent authorized for --intent" { emit=1; next } emit && /^$/ { exit } emit { print }' "$home/data/$id/launch-brief.md")
-  assert_contains "$authorized" "Fix the legacy dispatch boundary." \
-    "marked legacy launch contract omitted captain words"
+  authorized=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit && /^$/ { exit } emit { print }' "$home/data/$id/launch-brief.md")
+  assert_contains "$authorized" "Correct the legacy dispatch boundary." \
+    "marked legacy launch contract omitted prepared public wording"
   assert_not_contains "$authorized" "Firstmate-authored constraint" \
     "marked legacy launch contract included mixed Task specification"
 
@@ -659,6 +782,9 @@ EOF
 # Task
 ## Captain's intent
 Fix the migrated dispatch boundary.
+
+## Public intent
+Correct migrated dispatch routing.
 
 ## Firstmate spec
 Preserve the existing compatibility path.
@@ -670,18 +796,18 @@ EOF
   out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
   assert_present "$home/data/$id/launch-brief.md" \
     "migrated subsection brief did not receive the current launch contract"
-  authorized=$(awk '$0 == "## Captain intent authorized for --intent" { emit=1; next } emit && /^$/ { exit } emit { print }' "$home/data/$id/launch-brief.md")
-  assert_contains "$authorized" "Fix the migrated dispatch boundary." \
-    "migrated launch contract omitted Captain's intent"
+  authorized=$(awk '$0 == "## Public intent authorized for --intent" { emit=1; next } emit && /^$/ { exit } emit { print }' "$home/data/$id/launch-brief.md")
+  assert_contains "$authorized" "Correct migrated dispatch routing." \
+    "migrated launch contract omitted prepared public wording"
   assert_not_contains "$authorized" "Preserve the existing compatibility path." \
     "migrated launch contract included Firstmate spec in intent"
   assert_grep "supersedes every earlier brief instruction about constructing \`--intent\`" \
     "$home/data/$id/launch-brief.md" \
     "migrated launch contract did not supersede its stale mixed-Task DoD"
-  assert_grep "plus any later words the captain actually supplied" \
+  assert_grep "never append raw words" \
     "$home/data/$id/launch-brief.md" \
     "migrated launch contract excluded later captain clarifications"
-  assert_grep "The Definition of done's rule that \`--intent\` must be self-sufficient still governs" \
+  assert_grep "The Definition of done's self-sufficiency, publication and payload-review requirements" \
     "$home/data/$id/launch-brief.md" \
     "migrated launch contract's overlay dropped the self-sufficiency pointer"
 
@@ -704,9 +830,9 @@ EOF
   out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "unmarked legacy no-mistakes spawn should require provenance"
-  assert_contains "$out" "has no provenance-marked captain words" \
-    "unmarked legacy no-mistakes spawn did not explain the missing intent provenance"
-  assert_contains "$out" "[captain]" "missing-provenance refusal did not name the replacement marker"
+  assert_contains "$out" "prepared ## Public intent" \
+    "legacy no-mistakes spawn did not explain the missing public input"
+  assert_contains "$out" "no private fallback" "refusal did not forbid the unsafe fallback"
   assert_not_contains "$out" "Captain:" "missing-provenance refusal still prescribes operator address"
   assert_absent "$home/data/$id/launch-brief.md" "unmarked legacy no-mistakes spawn serialized unauthorized intent"
   assert_absent "$home/state/$id.meta" "unmarked legacy no-mistakes spawn wrote task metadata"
@@ -891,33 +1017,12 @@ EOF
 # just the presence of words somewhere in its much larger launch brief.
 # No live model or pipeline is needed: spawn publishes this exact input before
 # the fixture backend refuses to create an endpoint.
-test_authorized_intent_keeps_words_without_composed_address() {
-  local rec home proj fakebin id words authorized out status marker n=0
-  rec=$(make_home intent-emission)
+test_private_provenance_address_checks_remain() {
+  local rec home proj fakebin id out status marker n=0
+  rec=$(make_home intent-address)
   IFS='|' read -r home proj fakebin <<EOF
 $rec
 EOF
-  id='intent-plain'
-  words=$(printf '%s\n' 'Keep the original request intact.' '' "Preserve its provenance, punctuation, and \`literal code\`.")
-  FM_HOME="$home" "$BRIEF" "$id" proj --mode no-mistakes >/dev/null 2>&1 \
-    || fail "intent brief should scaffold"
-  fill_brief_subsections "$home/data/$id/brief.md" "$words" 'This build constraint must not become intent.'
-  out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
-  assert_present "$home/data/$id/launch-brief.md" "plain intent was not serialized"
-  authorized=$(awk '$0 == "## Captain intent authorized for --intent" { emit=1; next } emit { print }' "$home/data/$id/launch-brief.md")
-  [ "$authorized" = "$words" ] || fail "authorized --intent must contain exactly the request, without headings, address, or contract prose: $authorized"
-
-  # The request itself may discuss an address spelling. It is data, not an
-  # invitation to scrub the user's words or synthesize a different request.
-  words=$(printf '%s\n' "Keep the literal example \`Captain, hello\` in the documentation." \
-    "Stop composing Captain:, Captain's words:, Captain's ask:, and Captain's intent: into PR bodies.")
-  write_brief "$home" intent-literal no-mistakes
-  printf '# Task\n## Captain'"'"'s intent\n%s\n\n## Firstmate spec\nDo not paraphrase.\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' "$words" > "$home/data/intent-literal/brief.md"
-  out=$(run_spawn "$home" "$fakebin" intent-literal "$proj" claude --mode no-mistakes --yolo off)
-  assert_not_contains "$out" "operator-address line" "labels mentioned mid-line were refused as address"
-  authorized=$(awk '$0 == "## Captain intent authorized for --intent" { emit=1; next } emit { print }' "$home/data/intent-literal/launch-brief.md")
-  [ "$authorized" = "$words" ] || fail "literal words in the request were scrubbed"
-
   # A body line that opens with operator address is refused, never rewritten.
   for marker in 'Captain:' "Captain's words:" "Captain's ask:" "Captain's intent:" 'Captain,'; do
     n=$((n + 1))
@@ -949,21 +1054,7 @@ EOF
   assert_absent "$home/data/$id/ship-instructions.md" "promotion published addressed intent"
   assert_grep 'kind=scout' "$home/state/$id.meta" "refused promotion changed the task record"
 
-  # New legacy briefs use neutral provenance. Previously stored labels remain
-  # readable without encouraging their use in newly composed pipeline input.
-  for marker in '[captain]' 'Captain:' "Captain's words:" "Captain's ask:" "Captain's intent:"; do
-    n=$((n + 1))
-    id="intent-marked-$n"
-    write_brief "$home" "$id" no-mistakes
-    printf '# Task\n%s %s\nDo not include this build constraint.\n%s %s\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' \
-      "$marker" 'Keep the original request intact.' "$marker" 'Preserve its provenance.' > "$home/data/$id/brief.md"
-    out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
-    assert_present "$home/data/$id/launch-brief.md" "$marker: provenance was not accepted"
-    authorized=$(awk '$0 == "## Captain intent authorized for --intent" { emit=1; next } emit { print }' "$home/data/$id/launch-brief.md")
-    words=$(printf '%s\n' 'Keep the original request intact.' 'Preserve its provenance.')
-    [ "$authorized" = "$words" ] || fail "$marker: legacy intent changed words or included provenance/build prose"
-  done
-  pass "fm-spawn/fm-promote: authorized intent preserves exact words and refuses operator-address lines"
+  pass "private provenance address checks remain separate from public intent routing"
 }
 
 test_spawn_refreshes_legacy_worker_roles() {
@@ -1513,9 +1604,9 @@ STUB
   rm "$home/data/$id/brief.md"
   FM_HOME="$home" "$BRIEF" "$id" proj --mode no-mistakes --forge gerrit >/dev/null 2>&1 \
     || fail "ordinary gerrit ship brief generation should succeed"
-  awk '/^# Definition of done$/ { emit=1 } emit' "$home/data/$id/brief.md" > "$TMP_ROOT/forge-promote/brief-dod"
-  awk '/^# Definition of done$/ { emit=1 } emit' "$payload" > "$TMP_ROOT/forge-promote/delivered-dod"
-  cmp -s "$TMP_ROOT/forge-promote/brief-dod" "$TMP_ROOT/forge-promote/delivered-dod" \
+  awk '/^# Current no-mistakes intent contract$/ { exit } /^# Definition of done$/ { emit=1 } emit' "$home/data/$id/brief.md" > "$TMP_ROOT/forge-promote/brief-dod"
+  awk '/^# Current no-mistakes intent contract$/ { exit } /^# Definition of done$/ { emit=1 } emit' "$payload" > "$TMP_ROOT/forge-promote/delivered-dod"
+  diff -B "$TMP_ROOT/forge-promote/brief-dod" "$TMP_ROOT/forge-promote/delivered-dod" >/dev/null \
     || fail "promotion and ordinary brief generation delivered different gerrit contracts"
   pass "fm-promote: a promoted worker receives the project's registered forge contract with no flag to remember"
 }
@@ -1568,7 +1659,7 @@ test_forge_gerrit_direct_pr_publishes_one_change() {
   pass "forge=gerrit: direct-PR publishes one squashed change and a stack is refused with its reason"
 }
 
-test_authorized_intent_keeps_words_without_composed_address
+test_private_provenance_address_checks_remain
 test_spawn_refreshes_legacy_worker_roles
 
 # --branch-prefix never touches the default "<mode> <yolo>" output (order- and
@@ -1624,6 +1715,7 @@ EOF
   pass "fm-project-mode: --branch-prefix resolves order-independently and defaults to the legacy fm/ prefix"
 }
 
+test_public_intent_is_separate_and_required
 test_ship_spawn_requires_a_valid_delivery_contract
 test_scout_and_secondmate_refuse_delivery_flags
 test_spawn_refuses_a_brief_mode_mismatch

@@ -89,6 +89,9 @@ make_settle_case() {
 ## Captain's intent
 Exercise settled-worktree detection for $id.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Record only the pane's stable worktree.
 EOF
