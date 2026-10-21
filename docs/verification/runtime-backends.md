@@ -1412,7 +1412,7 @@ Firstmate requires both `HERDR_PANE_ID` and `HERDR_SOCKET_PATH` before accepting
 Project placement and scoped recovery were verified on 2026-10-20 on Linux x86_64 against Herdr 0.8.2, protocol 20, through the guarded non-default lab helper:
 
 ```sh
-HERDR_LAB_HELPER=/home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh \
+HERDR_LAB_HELPER=bin/fm-herdr-lab.sh \
   bash bin/fm-test-run.sh --jobs 1 \
   tests/fm-backend-herdr.test.sh \
   tests/fm-backend-herdr-launcher-workspace-e2e.test.sh \

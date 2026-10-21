@@ -275,7 +275,7 @@ Then the journal advances atomically to the replacement endpoint before metadata
 The reclaim path never moves, closes, deletes, or renames a workspace and never touches a parent, sibling, captain, or foreign pane.
 A failed replacement rolls back only the exact response-derived new pane when focus-safe verification permits it.
 
-These cases fall back flat without mutating the old projection when duplicate-agent risk is positively absent:
+These cases fall back to ordinary project placement, which their warnings call spawning flat, without mutating the old projection when duplicate-agent risk is positively absent:
 
 - Version 1 journals.
 - Dead or missing panes.

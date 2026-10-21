@@ -1445,7 +1445,9 @@ fm_backend_herdr_workspace_prune_seeded_default_tab() {  # <session> <workspace_
 # <launcher-relationship> (3rd arg, default "launcher-home") says whether the
 # container being ensured belongs to the SAME firstmate home as the process
 # calling this:
-#   launcher-home - a crewmate or scout for the caller's own home. When the
+#   launcher-home - a compatibility caller's own home container (production
+#                   crewmates and scouts use
+#                   fm_backend_herdr_project_container_ensure). When the
 #                   caller is itself running in a herdr pane, the worker MUST
 #                   land in that exact workspace
 #                   (fm_backend_herdr_launcher_identity), never in whichever
