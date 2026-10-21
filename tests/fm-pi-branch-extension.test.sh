@@ -1061,11 +1061,19 @@ const operational = spawnSync(
 if (operational.status !== 0) throw new Error(`could not create operational input: ${operational.stderr}`);
 await fire("before_agent_start", { prompt: operational.stdout }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: operational.stdout } });
-// Pi 1.3+ also raises before_agent_start for a run an idle custom message opens.
-const customRunText = "extension note that opened its own run";
+// Pi raises before_agent_start when an idle custom message opens a run; these
+// events carry their message and no prompt. Cover both operational message types.
+const customRunTexts = [
+  "extension note that opened its own run",
+  "custom message that started an idle run",
+];
 await fire("before_agent_start", {
   messageType: "custom",
-  message: { role: "custom", customType: "fm-branch-merge", content: customRunText, display: false },
+  message: { role: "custom", customType: "fm-branch-merge", content: customRunTexts[0], display: false },
+}, mainCtx);
+await fire("before_agent_start", {
+  messageType: "custom",
+  message: { role: "custom", customType: "firstmate-sessionstart-nudge", content: customRunTexts[1], display: false, timestamp: 0 },
 }, mainCtx);
 const unsolicitedPrompt = "Please keep responses concise while monitoring the fleet.";
 await fire("before_agent_start", { prompt: unsolicitedPrompt }, mainCtx);
@@ -1127,8 +1135,9 @@ for (const content of [unsolicitedPrompt, ...requestedPrompts]) {
   if (copies !== 1) throw new Error(`current captain prompt was mirrored ${copies} times instead of once`);
 }
 if (mirroredCaptainText.some((text) =>
-  text.includes("operational watcher injection") || text.includes("FIRSTMATE_OP: give me a fresh system-resource report") ||
-  text.includes(customRunText)
+  text.includes("operational watcher injection") ||
+  text.includes("FIRSTMATE_OP: give me a fresh system-resource report") ||
+  customRunTexts.some((customRunText) => text.includes(customRunText))
 )) {
   throw new Error("operational input or a custom-message run entered captain mirror context");
 }
