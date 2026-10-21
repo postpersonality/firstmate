@@ -1637,30 +1637,33 @@ EOF
 
 # Serialize discovery and creation across homes on this session's existing
 # presentation lock. No mutable workspace mapping or global Herdr setting.
-fm_backend_herdr_project_container_ensure() (  # <project> [<session>]
-  local project=$1 session=${2:-} lock status
-  fm_backend_herdr_version_check || return 1
-  [ -n "$session" ] || session=$(fm_backend_herdr_session)
-  fm_backend_herdr_server_ensure "$session" || return 1
-  # A claimed parent must still be valid, but never selects the project Space.
-  fm_backend_herdr_launcher_identity "$session" && status=0 || status=$?
-  [ "$status" = 0 ] || [ "$status" = 2 ] || return 1
+fm_backend_herdr_project_container_ensure() {  # <project> [<session>]
   if ! declare -F fm_treehouse_project_identity >/dev/null 2>&1; then
     # shellcheck source=bin/fm-wake-lib.sh
     . "$FM_BACKEND_HERDR_ROOT/bin/fm-wake-lib.sh"
   fi
-  lock=$(fm_backend_herdr_presentation_session_lock_path "$session") || {
-    echo "error: cannot resolve herdr session/socket lock for project Space discovery in '$session'" >&2
-    return 1
-  }
-  fm_lock_acquire_wait_max "$lock" 15 || {
-    echo "error: could not lock herdr project Space discovery in session '$session'" >&2
-    return 1
-  }
-  trap 'fm_lock_release "$lock" || true' EXIT
-  fm_backend_herdr_project_workspace_ensure "$session" "$project" || return 1
-  printf '%s:%s\t%s' "$session" "$FM_BACKEND_HERDR_WS_ID" "$FM_BACKEND_HERDR_WS_SEEDED_TAB_ID"
-)
+  # The subshell scopes the lock-release EXIT trap to this call.
+  (
+    local project=$1 session=${2:-} lock status
+    fm_backend_herdr_version_check || return 1
+    [ -n "$session" ] || session=$(fm_backend_herdr_session)
+    fm_backend_herdr_server_ensure "$session" || return 1
+    # A claimed parent must still be valid, but never selects the project Space.
+    fm_backend_herdr_launcher_identity "$session" && status=0 || status=$?
+    [ "$status" = 0 ] || [ "$status" = 2 ] || return 1
+    lock=$(fm_backend_herdr_presentation_session_lock_path "$session") || {
+      echo "error: cannot resolve herdr session/socket lock for project Space discovery in '$session'" >&2
+      return 1
+    }
+    fm_lock_acquire_wait_max "$lock" 15 || {
+      echo "error: could not lock herdr project Space discovery in session '$session'" >&2
+      return 1
+    }
+    trap 'fm_lock_release "$lock" || true' EXIT
+    fm_backend_herdr_project_workspace_ensure "$session" "$project" || return 1
+    printf '%s:%s\t%s' "$session" "$FM_BACKEND_HERDR_WS_ID" "$FM_BACKEND_HERDR_WS_SEEDED_TAB_ID"
+  )
+}
 
 # fm_backend_herdr_container_ensure: home/legacy container-ensure (persistent
 # secondmates and compatibility callers; new workers use project_container_ensure).
@@ -2454,7 +2457,9 @@ fm_backend_herdr_projection_reclaim_task() {  # <session> <journal> <task-id> <h
     echo "warning: herdr presentation reclaim for $id could not publish its replacement binding; spawning flat" >&2
     return 2
   fi
+  # shellcheck disable=SC2034  # fm-spawn consumes the replacement binding
   FM_BACKEND_HERDR_PROJECTION_TAB_ID=$new_tab
+  # shellcheck disable=SC2034  # fm-spawn consumes the replacement binding
   FM_BACKEND_HERDR_PROJECTION_PANE_ID=$new_pane
   return 0
 }
