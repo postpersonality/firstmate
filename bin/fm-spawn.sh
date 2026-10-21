@@ -108,7 +108,8 @@
 #   --model <name> and --effort <low|medium|high|xhigh|max|ultra> are concrete profile
 #   axes chosen by firstmate at intake. They are only threaded into harnesses whose
 #   installed CLIs were verified to support that axis; unsupported axes are omitted
-#   from that harness's launch rather than guessed. Ultra is the explicit
+#   from that harness's launch rather than guessed, except under the worker
+#   effort pin below, which refuses such a launch. Ultra is the explicit
 #   exception: bin/fm-harness.sh validate-native-effort owns its model scope;
 #   supported Pi launches receive --codex-effort ultra, never --thinking ultra.
 #   OpenCode has no interactive effort flag, so its effort is written as the
