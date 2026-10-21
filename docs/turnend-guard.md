@@ -320,15 +320,15 @@ Native interruption cancels the synchronous return owner; an empty fleet or held
 The existing away daemon remains a legitimate alternate owner.
 
 `bin/fm-session-lock-lib.sh` partitions a shared app-server PID by its native thread id in the existing `state/.lock-session` sidecar.
-`bin/fm-lock.sh` remains its sole writer, and it writes only from a native hook outside the Linux tool sandbox, where the app-server PID is verifiable.
-Stop only revalidates the thread already recorded there; a free or stale lock is bound only by the native SessionStart hook.
+`bin/fm-lock.sh` remains its sole writer, and it records a thread only outside the Linux tool sandbox, where the app-server PID is verifiable: its nearest harness must be a `codex app-server`, and its thread id comes from the native hook payload or from matching `CODEX_THREAD_ID` and `CODEX_SESSION_ID`.
+It does not verify that its caller is a hook; native SessionStart is the ordinary lifecycle path that binds a free or stale lock, and Stop only revalidates the thread already recorded there.
 A legacy PID-only lock held by a live app-server names no thread, so no thread adopts it; it is claimed only after that app-server exits and the lock is stale.
 Native SessionStart `startup`, `clear` and `compact` run `bin/fm-session-start.sh` in the hook; `resume`, `reload` and `fork` do too unless the lock already records that thread with this app-server.
 A different recorded thread cannot acquire or park that home merely because it shares the daemon PID.
 
 Inside the native Linux tool sandbox the model's shell sees `codex-linux-sandbox` as PID 1, not the host app-server.
 There `bin/fm-lock.sh` only confirms a lock whose sidecar already records the tool's thread id beside a PID other than 1, leaving both files unchanged.
-It refuses every other lock, including a free, PID-only, stale or PID-1 lock, so a sandboxed tool never publishes PID 1 and stays read-only until a native hook records its thread.
+It refuses every other lock, including a free, PID-only, stale or PID-1 lock, so a sandboxed tool never publishes PID 1 and stays read-only until a host-side writer, ordinarily native SessionStart, records its thread.
 That confirmation compares thread ids only: the sandbox exposes nothing that names the app-server hosting the tool, so it cannot tell the recorded owner from the same thread attached to another live app-server.
 Such a duplicate's tools get `lock acquired`, and its `bin/fm-session-start.sh` runs without `READ-ONLY SESSION`, although its native hooks refuse it.
 No native run has attached one thread to two live app-servers, so whether the runtime reaches that state is unmeasured.
