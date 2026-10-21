@@ -12,7 +12,7 @@ For a no-mistakes ship, trigger validation on the same worker after its implemen
 Before accepting an implementation handoff as a milestone, load `captain-hold-lifecycle`, which alone owns its outcome review.
 The task worker that starts a no-mistakes run drives the pipeline and owns every `no-mistakes axi run` and `no-mistakes axi respond` call through the next gate or outcome.
 Firstmate never invokes `no-mistakes axi respond` for a crew-owned run.
-`bin/fm-dod-lib.sh` owns the worker-side `--intent` contract.
+Before triggering validation, verify the prepared public input and publication path under the worker-side `--intent` contract owned by `bin/fm-dod-lib.sh`.
 Once validation starts, prefer routing new requirements to follow-up work rather than expanding the current task, unless a new requirement completely invalidates the work being validated; however, the smallest downstream changes needed to keep already accepted product or engineering behavior correct, add behavioral tests where an executable contract exists, or keep documentation accurate remain within the current task even when they touch files not named at intake, and corrections required to satisfy already accepted intent are not new requirements.
 
 Only a current, explicit captain instruction that completely invalidates the work being validated keeps the task with the same worker instead of routing it to follow-up work or handing it to a replacement.

@@ -23,10 +23,10 @@
 #   placeholders, an empty Task, an incomplete pair of Task subsections, or a
 #   `## Captain's intent` line opening with a Captain label or address.
 #   Every ship or scout spawn renders `launch-brief.md`; for a no-mistakes ship
-#   it also carries the current `--intent` contract and the extracted captain
-#   intent. A legacy mixed Task is accepted there only under bin/fm-dod-lib.sh's
-#   provenance-marking rules; unmarked legacy Tasks stop for migration rather
-#   than becoming intent. That library owns the parsing and intent rules. When
+#   it also carries the current `--intent` contract and prepared public intent.
+#   Missing, blank or placeholder `## Public intent` under `# Task` is refused,
+#   including on legacy briefs and relaunches; private words are never a fallback.
+#   bin/fm-dod-lib.sh owns the parsing and intent rules. When
 #   the explicit mode carries less rigor than the project's standing posture, a
 #   loud one-line deviation notice is printed and the spawn continues.
 #   no-mistakes-prod-only is a registry policy rather than a task mode and is
@@ -3194,13 +3194,12 @@ if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
     exit 1
   fi
   if [ "$KIND" = ship ] && [ "$MODE" = no-mistakes ]; then
-    if fm_brief_task_heading_present "$BRIEF" "## Captain's intent"; then
-      CAPTAIN_INTENT=$(fm_brief_task_heading_body "$BRIEF" "## Captain's intent")
-    else
+    PUBLIC_INTENT=$(fm_brief_public_intent "$BRIEF") || exit 1
+    if ! fm_brief_task_heading_present "$BRIEF" "## Captain's intent"; then
       LEGACY_TASK_BODY=$(fm_brief_heading_body "$BRIEF" "# Task")
-      CAPTAIN_INTENT=$(fm_brief_marked_captain_words "$LEGACY_TASK_BODY")
-      if [ -z "$(printf '%s' "$CAPTAIN_INTENT" | tr -d '[:space:]')" ]; then
-        echo "error: legacy mixed # Task brief has no provenance-marked captain words for no-mistakes --intent; add [captain] lines or migrate to ## Captain's intent and ## Firstmate spec" >&2
+      CAPTAIN_WORDS=$(fm_brief_marked_captain_words "$LEGACY_TASK_BODY")
+      if [ -z "$(printf '%s' "$CAPTAIN_WORDS" | tr -d '[:space:]')" ]; then
+        echo "error: legacy mixed # Task brief has no provenance-marked captain words for the private source record; add [captain] lines or migrate to ## Captain's intent and ## Firstmate spec" >&2
         exit 1
       fi
     fi
@@ -3232,7 +3231,7 @@ if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
       printf '\n' &&
       cat "$SOURCE_BRIEF" &&
       if [ "$KIND" = ship ] && [ "$MODE" = no-mistakes ]; then
-        fm_brief_intent_overlay "$CAPTAIN_INTENT"
+        fm_brief_intent_overlay "$PUBLIC_INTENT"
       fi
   } >"$BRIEF_TMP" || {
     rm -f -- "$BRIEF_TMP"
@@ -3312,7 +3311,7 @@ if [ "$KIND" = ship ]; then
     else
       forge_scaffold="fm-brief.sh $ID $PROJ_NAME --mode $MODE --forge $STANDING_FORGE"
     fi
-    echo "error: forge mismatch for $ID: $PROJ_NAME is registered forge=$STANDING_FORGE but $SOURCE_BRIEF records forge=$BRIEF_FORGE; keep the filled ## Captain's intent and ## Firstmate spec bodies, remove $SOURCE_BRIEF, re-scaffold it with $forge_scaffold, then re-fill those two subsections, so the worker's publication matches the project's forge" >&2
+    echo "error: forge mismatch for $ID: $PROJ_NAME is registered forge=$STANDING_FORGE but $SOURCE_BRIEF records forge=$BRIEF_FORGE; keep the filled Task subsection bodies, remove $SOURCE_BRIEF, re-scaffold it with $forge_scaffold, then re-fill those subsections, so the worker's publication matches the project's forge" >&2
     exit 1
   fi
   # Merge authority on a Gerrit forge is refused rather than quietly dropped, on

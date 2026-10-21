@@ -36,6 +36,9 @@ write_promotion_brief() {  # <home> <id>
 ## Captain's intent
 Promote the selected scout.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify promotion preserves the behavior under test.
 EOF

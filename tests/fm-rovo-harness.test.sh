@@ -146,6 +146,9 @@ make_spawn_case() {
 ## Captain's intent
 Exercise Rovo dispatch.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Verify launch and delivery behavior.
 EOF

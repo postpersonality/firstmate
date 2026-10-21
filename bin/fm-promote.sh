@@ -19,7 +19,10 @@
 # a Captain label or address (bin/fm-dod-lib.sh). A pre-subsection scout
 # brief contributes only Task lines explicitly marked as captain words to intent,
 # read outside fenced blocks and indented examples so a quoted `Captain:` sample
-# never passes the provenance gate as the ask (bin/fm-dod-lib.sh).
+# never passes the provenance gate as the private ask (bin/fm-dod-lib.sh).
+# No-mistakes promotion additionally requires prepared `## Public intent` and
+# emits the same public-input overlay as spawn, including in the persisted
+# relaunch brief; private captain words are never its validation input.
 # A scout records no delivery posture, so promotion is where this task's delivery
 # contract is decided: --mode, --yolo, and the ship branch resolved from
 # --branch-prefix are written into the meta alongside the kind= flip. Firstmate resolves all three at promotion time, having just
@@ -229,6 +232,10 @@ if [ -z "$(printf '%s' "$INTENT_BODY" | tr -d '[:space:]')" ]; then
   echo "error: $SCOUT_BRIEF has no provenance-marked Captain's intent; add the captain's actual words before promotion" >&2
   exit 1
 fi
+PUBLIC_INTENT=
+if [ "$MODE" = no-mistakes ]; then
+  PUBLIC_INTENT=$(fm_brief_public_intent "$SCOUT_BRIEF") || exit 1
+fi
 
 # The promoted worker must receive the same delivery contract an ordinary ship
 # brief carries, so the mode-specific Definition of done is rendered from its
@@ -272,6 +279,9 @@ EOF
   fi
   printf '\n'
   fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH"
+  if [ "$MODE" = no-mistakes ]; then
+    fm_brief_intent_overlay "$PUBLIC_INTENT"
+  fi
 }
 mkdir -p "$DATA/$ID"
 [ ! -d "$INSTRUCTIONS" ] || { echo "error: ship instructions path is a directory: $INSTRUCTIONS" >&2; exit 1; }
@@ -284,6 +294,9 @@ Your scout task has been promoted to a ship task, mode=$MODE. Your window, workt
 ## Captain's intent
 EOF
   printf '%s\n' "$INTENT_BODY"
+  if [ "$MODE" = no-mistakes ]; then
+    printf '\n## Public intent\n%s\n' "$PUBLIC_INTENT"
+  fi
   cat <<EOF
 
 ## Firstmate spec

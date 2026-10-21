@@ -96,6 +96,9 @@ test_orca_fresh_spawn_enters_the_worktree_it_created() {
 ## Captain's intent
 Exercise an Orca-backed spawn for $id.
 
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
+
 ## Firstmate spec
 Confirm the launch enters the worktree Orca created for it.
 EOF
@@ -133,6 +136,9 @@ test_orca_relaunch_is_refused_before_the_worktree_carveout_could_run() {
 # Task
 ## Captain's intent
 Exercise a relaunch attempt against a recorded Orca task.
+
+## Public intent
+Validate the declared task behavior while preserving existing safety requirements.
 
 ## Firstmate spec
 Confirm the relaunch is refused before any worktree re-entry logic runs.

@@ -97,7 +97,7 @@ make_project() {
 }
 write_brief() { # <id>
   mkdir -p "$FM_HOME/data/$1"
-  printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n' > "$FM_HOME/data/$1/brief.md"
+  printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Public intent\nValidate project placement while preserving existing safety requirements.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n' > "$FM_HOME/data/$1/brief.md"
 }
 spawn() { # <id> <project>
   write_brief "$1"
