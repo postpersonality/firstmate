@@ -16,6 +16,8 @@
 # "supervision-host:" line other than the park boundary passes through as a
 # wake; the boundary alone is the ordinary quiet checkpoint. On a home that
 # does not run the host nothing below changes.
+# --hard-bound keeps the entire host park inside --seconds, including away
+# posture and engine turns, for a synchronous Stop owner's shorter deadline.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,14 +26,16 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 SECONDS_ARG=${FM_CODEX_WATCH_CHECKPOINT:-180}
+HARD_BOUND=0
 
 usage() {
   cat <<'EOF'
-Usage: fm-watch-checkpoint.sh [--seconds <n>]
+Usage: fm-watch-checkpoint.sh [--seconds <n>] [--hard-bound]
 
 Run bin/fm-watch.sh in the foreground for a bounded checkpoint.
 On an actionable watcher wake, pass through the watcher output and exit 0.
 On a quiet checkpoint, print "checkpoint: no actionable wake within <n>s" and exit 124.
+--hard-bound forbids a longer away park or an engine turn beyond that bound.
 EOF
 }
 
@@ -46,6 +50,7 @@ while [ "$#" -gt 0 ]; do
       SECONDS_ARG=${1#--seconds=}
       shift
       ;;
+    --hard-bound) HARD_BOUND=1; shift ;;
     -h|--help)
       usage
       exit 0
@@ -70,43 +75,14 @@ ERR=$(mktemp "${TMPDIR:-/tmp}/fm-watch-checkpoint.err.XXXXXX") || {
 }
 trap 'rm -f "$OUT" "$ERR"' EXIT
 
-run_with_perl_timeout() {  # <seconds> <command...>
-  perl -e '
-    my $seconds = shift;
-    my $pid = fork;
-    die "fork failed\n" unless defined $pid;
-    if (!$pid) {
-      setpgrp(0, 0);
-      exec @ARGV;
-      die "exec failed: $!\n";
-    }
-    local $SIG{ALRM} = sub {
-      kill "TERM", -$pid;
-      my $grace = $ENV{FM_SIGNAL_GRACE} || 5;
-      local $SIG{ALRM} = sub {
-        kill "KILL", -$pid;
-        waitpid $pid, 0;
-        exit 124;
-      };
-      alarm $grace;
-      waitpid $pid, 0;
-      exit 124;
-    };
-    alarm $seconds;
-    waitpid $pid, 0;
-    alarm 0;
-    exit($? >> 8);
-  ' "$@"
-}
-
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$SCRIPT_DIR/fm-timeout-lib.sh"
 run_bounded() {  # <seconds> <command...>
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$@"
-  elif command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "$@"
-  else
-    run_with_perl_timeout "$@"
-  fi
+  local bound=$1
+  shift
+  # The watcher permits zero signal grace; the shared timeout owner requires
+  # a positive kill grace. Preserve the watcher setting and bound its cleanup.
+  (fm_exec_timed "$bound" "$(positive_or "${FM_SIGNAL_GRACE:-5}" 1)" "$@")
 }
 
 positive_or() {  # <value> <default>
@@ -117,7 +93,7 @@ positive_or() {  # <value> <default>
 . "$SCRIPT_DIR/fm-supervision-engine-lib.sh"
 if fm_supervision_host_enabled "$CONFIG" codex; then
   BOUND=$SECONDS_ARG
-  if [ -f "$STATE/.afk-contract" ] \
+  if [ "$HARD_BOUND" -eq 0 ] && [ -f "$STATE/.afk-contract" ] \
     && [ "$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-afk-contract.sh" mode 2>/dev/null)" != quiet ]; then
     AWAY_BOUND=$(positive_or "${FM_CODEX_WATCH_CHECKPOINT_AWAY:-}" 3600)
     [ "$AWAY_BOUND" -le "$BOUND" ] 2>/dev/null || BOUND=$AWAY_BOUND
@@ -125,11 +101,13 @@ if fm_supervision_host_enabled "$CONFIG" codex; then
   # The host's park boundary stays below the 28800-second registration.
   [ "$BOUND" -lt 27000 ] 2>/dev/null || BOUND=27000
   LIMIT=$(( BOUND + $(positive_or "${FM_SUPERVISION_HOST_TURN_TIMEOUT:-}" 1200) + $(positive_or "${FM_SUPERVISION_ENGINE_GRACE:-}" 30) ))
+  OUTER_LIMIT=$((LIMIT + 120))
+  if [ "$HARD_BOUND" -eq 1 ]; then LIMIT=$BOUND; OUTER_LIMIT=$BOUND; fi
   set +e
   # The host ends its own park; the outer bound only catches a host that
   # outlived every one of its own bounds.
   FM_SUPERVISION_HOST_PRIMARY=codex FM_SUPERVISION_HOST_PARK_SECONDS=$BOUND FM_SUPERVISION_HOST_PARK_LIMIT=$LIMIT \
-    run_bounded $((LIMIT + 120)) "$SCRIPT_DIR/fm-supervision-host.sh" park >"$OUT" 2>"$ERR"
+    run_bounded "$OUTER_LIMIT" "$SCRIPT_DIR/fm-supervision-host.sh" park >"$OUT" 2>"$ERR"
   RC=$?
   set -e
   if grep -E '^(signal:|stale:|check:|heartbeat($|:)|supervision-host:)' "$OUT" 2>/dev/null \
@@ -144,7 +122,11 @@ if fm_supervision_host_enabled "$CONFIG" codex; then
   fi
   [ ! -s "$OUT" ] || cat "$OUT"
   [ ! -s "$ERR" ] || cat "$ERR" >&2
-  if [ "$RC" -eq 124 ]; then
+  if fm_timed_out "$RC"; then
+    if [ "$HARD_BOUND" -eq 1 ]; then
+      printf 'checkpoint: no actionable wake within %ss\n' "$BOUND"
+      exit 124
+    fi
     echo "checkpoint: the supervision host outlived its own bound of ${BOUND}s" >&2
     exit 1
   fi
@@ -170,7 +152,7 @@ if grep -E '^watcher: already running' "$OUT" "$ERR" >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ "$RC" -eq 124 ]; then
+if fm_timed_out "$RC"; then
   printf 'checkpoint: no actionable wake within %ss\n' "$SECONDS_ARG"
   exit 124
 fi

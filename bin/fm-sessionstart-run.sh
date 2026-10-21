@@ -33,6 +33,9 @@
 #                           this process still holds the lock (the nudge stays
 #                           silent) and a plain instruction is enough when a new
 #                           process resumed an old session (the nudge fires).
+#                           A native Codex API thread whose lock does not record
+#                           it with this app-server gets the full digest here
+#                           instead: its sandboxed tools cannot claim the lock.
 #
 # Every ordinary transport path exits 0, exactly like the nudge wrapper: a
 # Claude SessionStart exit 2 blocks session initialization, so a failed session
@@ -128,6 +131,14 @@ if [ -z "$SOURCE" ] && [ ! -t 0 ]; then
   if fm_hook_payload_is_foreign_host "$PAYLOAD"; then
     exit 0
   fi
+  # Native API hooks carry their thread identity in the event, not the shell
+  # environment. Keep the shared daemon's lock partitioned before startup.
+  if fm_session_lock_codex_api_pid >/dev/null \
+    && command -v jq >/dev/null 2>&1 \
+    && printf '%s' "$PAYLOAD" | jq -e '.hook_event_name == "SessionStart" and (.session_id | type == "string" and length > 0)' >/dev/null 2>&1; then
+    FM_CODEX_HOOK_SESSION_ID=$(printf '%s' "$PAYLOAD" | jq -r '.session_id')
+    export FM_CODEX_HOOK_SESSION_ID
+  fi
   SOURCE=$(printf '%s' "$PAYLOAD" | awk '
     BEGIN { RS = "\"" }
     seen == 2 { print; exit }
@@ -139,7 +150,10 @@ fi
 
 case "$SOURCE" in
   resume|reload|fork)
-    exec "$SCRIPT_DIR/fm-sessionstart-nudge.sh"
+    if [ -z "${FM_CODEX_HOOK_SESSION_ID:-}" ] || fm_session_lock_same_session "$STATE"; then
+      exec "$SCRIPT_DIR/fm-sessionstart-nudge.sh"
+    fi
+    "$SCRIPT_DIR/fm-session-start.sh" --source "$SOURCE" || true
     ;;
   clear|compact)
     if session_start_completed; then

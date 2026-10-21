@@ -6,6 +6,59 @@ This record supports current session-start, turn-end, watcher-continuity, superv
 Operator behavior and active limits remain in the linked current guides.
 Task-specific chronology, temporary paths, run identifiers, and delivery transcripts remain in private reports or PR evidence.
 
+## Native Codex API Stop delivery
+
+Verified on 2026-10-21 with codex-cli 0.163.0 on Linux, `gpt-6.1-sol` at `xhigh`, the native `app-server --stdio` event path, and the installed Perl timeout owner.
+The isolated proof used three newly owned homes, the existing login, and three separately reviewed fixture hooks, one SessionStart and two Stop, with invocation-local `bypass_hook_trust=true`.
+Each home replaced only the session-start digest with the production lock writer, so the real session-open router classified every native SessionStart.
+It created no login and changed no global hook, trust store, persistent vendor setting, shared daemon, or live fleet.
+The terminal read/send boundary was synthetic; the native model actually executed the production lock, checkpoint, drain, acknowledgement, and public `fm-send` commands.
+
+With `native_bin` set to the reviewed native binary and `lab` to a newly owned evidence directory, the exact proof command was:
+
+```sh
+FM_CODEX_STOP_LIVE_HOOKS_REVIEWED=1 \
+FM_CODEX_STOP_LIVE_BIN="$native_bin" \
+python3 tests/fm-codex-stop-watch-native.py "$PWD" "$lab"
+```
+
+Observed output:
+
+```text
+ok - codex-cli 0.163.0: old API Stop stayed idle after the late worker completion
+ok - codex-cli 0.163.0: quiet and late API Stop continuations performed one worker validation; interruption stayed stopped
+ok - codex-cli 0.163.0: SessionStart bound the host lock; sandboxed tools only confirmed it, refused legacy and free locks, ran drain/ack/send/checkpoint; another actual thread's native SessionStart refused
+ok - codex-cli 0.163.0: owned app-server restart; native resume SessionStart rebound the persisted thread to the new host, sandboxed tools only confirmed it, and one native continuation handled the pending worker completion
+ok - codex-cli 0.163.0: empty API primary completed without supervision work
+```
+
+The worker was recorded in flight before the ordinary short reply.
+The control completed its native turn before the late completion and performed no next action.
+The changed owner returned a quiet checkpoint through native exit-2 feedback, handled the subsequent completion despite another hook's true `stop_hook_active`, sent one durable validation instruction, and acknowledged the printed generation before interruption.
+The owned worker consumed that instruction and ran `bash -n` on its fixture.
+No additional client prompt drove that continuation.
+The primary's sandboxed tools confirmed the SessionStart-bound lock without changing it, and refused a free lock and a PID-only copy held by the live host, writing neither a sidecar nor PID 1.
+A second actual thread in the same app-server, told to stay read-only, had its native SessionStart refused, and the primary host PID and sidecar stayed unchanged.
+The driver then ended its app-server, confirmed that host had exited, and resumed the persisted primary thread in a new one.
+One client recovery turn asked that thread only to reply and, on its next continuation, to follow its handler with a new instruction text.
+The native `resume` SessionStart rebound the thread's stale lock to the new host PID, sandboxed tools only confirmed it, and one native exit-2 continuation sent and acknowledged one instruction for the worker completion recorded before the restart.
+An interrupted primary produced no further Stops or leftover watcher; an empty primary completed with guard exit 0 and no watcher beacon.
+
+[`runtime-backends.md`](runtime-backends.md#native-codex-api-primary-identity) records the measured hook/tool identity distinction.
+The portable regression covers an existing healthy watcher, pending delivery across the boundary, idempotent acknowledgement, fail-closed repeated watcher failure, unhandled duplicate wakes and checkpoint-lock contention, foreign ownership, a read-only Stop of the recorded thread attached to another app-server, free, stale, PID-1 and legacy PID-only locks that Stop never adopts with its one-block guard and an empty fleet keeps silent, a live legacy PID-only lock that no thread adopts, host-side SessionStart resume binding after an app-server restart, a sandboxed lock writer in a real PID namespace that confirms a host-bound lock by thread id alone and never publishes PID 1 or replaces a PID-only, stale or PID-1 lock, a timeout fallback whose kill escalation returns 137, and held-only backlog.
+The native proof above covers pending delivery across the boundary with one acknowledged instruction per completion, native SessionStart binding including resume of a stale lock that already recorded the thread, another thread's refused SessionStart, sandboxed confirmation and refusal of live legacy and free locks, and an empty fleet; the remaining cases, including takeover of a legacy PID-only lock after a restart, rely on the portable regression:
+
+```sh
+bash bin/fm-test-run.sh --jobs 1 \
+  tests/fm-codex-stop-watch.test.sh tests/fm-watch-checkpoint.test.sh
+```
+
+Observed result: `FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0`.
+That sandbox does not run under the app-server holding the lock, so its confirmation shows thread-id matching, not attachment exclusivity; no check covers the sandboxed tools of a duplicate attachment, and the hook-side refusal does not extend to them.
+The opt-in `tests/fm-codex-stop-watch-live-e2e.test.sh` refreshes native evidence after its generated hooks and invocation-local trust scope are separately reviewed.
+This proves the supported native return path with an executing trusted hook and functioning handler; it does not deploy or establish hook trust for any current client.
+The exact guarantee and failure boundary remain in [Codex API Stop ownership](../turnend-guard.md#codex-api-stop-ownership).
+
 ## Native session-start delivery
 
 The cross-harness transport pass ran on 2026-07-17 with Codex 0.144.4, Grok 0.2.103, OpenCode 1.17.18, Pi 0.80.10, and the tracked Claude hook wiring.
@@ -640,6 +693,7 @@ Deterministic entry points:
 
 ```sh
 tests/fm-supervision-host.test.sh
+tests/fm-supervision-host-engine.test.sh
 tests/fm-claude-stop-autoarm.test.sh
 tests/fm-afk-launch.test.sh
 tests/fm-supervision-instructions.test.sh
@@ -693,6 +747,7 @@ Deterministic entry points:
 
 ```sh
 tests/fm-supervision-host.test.sh
+tests/fm-supervision-host-engine.test.sh
 tests/fm-wake-queue.test.sh
 tests/fm-cursor-primary.test.sh
 tests/fm-pi-watch-extension.test.sh
@@ -765,6 +820,7 @@ Deterministic entry points:
 
 ```sh
 tests/fm-supervision-host.test.sh
+tests/fm-supervision-host-engine.test.sh
 tests/fm-afk-return.test.sh
 tests/fm-branch-supervision.test.sh
 ```
