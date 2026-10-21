@@ -1,4 +1,6 @@
-# Test-phase notes (run 01M5CB1FM3S4GJGSJ45M4DMDBH)
+<!-- Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md. -->
+
+# Test-phase notes (run <run-1>)
 
 ## What was driven
 

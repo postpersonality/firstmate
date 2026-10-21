@@ -1,7 +1,8 @@
 {
+  "_privacy_review": "Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.",
   "at": "2026-10-20T23:50:50.475618+00:00",
   "native_version": "2.1.305 (Claude Code)",
-  "native_executable": "/home/nikolayseliverstov/.local/share/claude/versions/2.1.305",
+  "native_executable": "<home>/.local/share/claude/versions/2.1.305",
   "native_executable_sha256": "86cb722ab68348877dba7971e4d0c659919e05e6228c05e006e83da320e656ef",
   "fixture_sha256": "a8611d14bbc4e04edc60b505444c5ffdd64ec60da1489041df58e39f79a489ed",
   "head": "ac9cca539256a1c00dc88f7a53f7b03230302cf3",
@@ -11,7 +12,7 @@
       "expected": "SELF_RESOLVE",
       "verdict": "SELF_RESOLVE",
       "exit_code": 1,
-      "session": "852eeb5d-eec5-4f6a-96ca-e300e708d19e",
+      "session": "<session-17>",
       "models": {
         "claude-opus-5-5": {
           "inputTokens": 2,
@@ -35,7 +36,7 @@
       "expected": "NEEDS_CAPTAIN",
       "verdict": "NEEDS_CAPTAIN",
       "exit_code": 0,
-      "session": "7d56f420-edda-4a7e-a641-59d667e23f66",
+      "session": "<session-14>",
       "models": {
         "claude-opus-5-5": {
           "inputTokens": 2,
@@ -59,7 +60,7 @@
       "expected": "SELF_RESOLVE",
       "verdict": "SELF_RESOLVE",
       "exit_code": 1,
-      "session": "c6d61302-147e-479a-b74f-1e8730f354dd",
+      "session": "<session-24>",
       "models": {
         "claude-opus-5-5": {
           "inputTokens": 2,
@@ -83,7 +84,7 @@
       "expected": "SELF_RESOLVE",
       "verdict": "SELF_RESOLVE",
       "exit_code": 1,
-      "session": "f18e46cf-024a-438f-bf8d-3e65db39ef41",
+      "session": "<session-30>",
       "models": {
         "claude-opus-5-5": {
           "inputTokens": 2,

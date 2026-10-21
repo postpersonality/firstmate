@@ -1,10 +1,11 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 # Preflight for the Root034 one-time native acceptance (not executed); 2026-10-20T23:58:23Z
 ## head and tracked content
 HEAD=3a6c5afa3681035eab84b37188d4d2356fbec483
 tracked_changes=0
 ## fixture pins (read-only replay of run.sh assertions, without affinity or claim)
-04d1ca3cf770c770bef267f029dfe4973c0da0a4988c7b5e0462e69dbd961d22  /home/nikolayseliverstov/Projects/firstmate/data/firstmate-supervision-continuity/native-review-3a6c5afa/run.sh
-a40730dc2811126fc9b557da59f5faacd0f7878682e0a9175b52997badaffcd4  /home/nikolayseliverstov/Projects/firstmate/data/firstmate-supervision-continuity/native-review-3a6c5afa/pins.json
+04d1ca3cf770c770bef267f029dfe4973c0da0a4988c7b5e0462e69dbd961d22  <task-record>/native-review-3a6c5afa/run.sh
+a40730dc2811126fc9b557da59f5faacd0f7878682e0a9175b52997badaffcd4  <task-record>/native-review-3a6c5afa/pins.json
 source_pins=226 mismatches=[] binary_pin_ok=True
 free_GiB=25.3 MemAvailable_GiB=52.1 SwapTotal=0
 execution.claimed exists: no

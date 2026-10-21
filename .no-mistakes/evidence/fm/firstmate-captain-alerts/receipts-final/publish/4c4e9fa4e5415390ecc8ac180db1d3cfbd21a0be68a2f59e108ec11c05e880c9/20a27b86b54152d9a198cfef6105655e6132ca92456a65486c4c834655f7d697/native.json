@@ -1,7 +1,8 @@
 {
+  "_privacy_review": "Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.",
   "duration_api_ms": 32478,
   "stop_reason": "tool_use",
-  "session_id": "0600c248-e563-47ef-81bd-454912a791cb",
+  "session_id": "<session-4>",
   "total_cost_usd": 0.21645019999999998,
   "usage": {
     "input_tokens": 2,
@@ -123,7 +124,7 @@
   "ttft_ms": 25249,
   "type": "result",
   "duration_ms": 32667,
-  "uuid": "ac96a798-4149-4b4b-90de-88694594c057",
+  "uuid": "<session-21>",
   "ttft_stream_ms": 2487,
   "time_to_request_ms": 186,
   "first_content_frame_ms": 2487,

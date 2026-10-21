@@ -1,12 +1,13 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 FM_TEST_BEGIN 2026-10-20T23:50:50Z tests/fm-captain-alert-live.test.sh family=live-harness-optin expected_gate_skip=live-capability
 2.1.305 (Claude Code)
-critic publish-b: SELF_RESOLVE; session=852eeb5d-eec5-4f6a-96ca-e300e708d19e; models=claude-opus-5-5
-critic human-annotation: NEEDS_CAPTAIN; session=7d56f420-edda-4a7e-a641-59d667e23f66; models=claude-opus-5-5
-critic q23: SELF_RESOLVE; session=c6d61302-147e-479a-b74f-1e8730f354dd; models=claude-opus-5-5
-critic nextstep: SELF_RESOLVE; session=f18e46cf-024a-438f-bf8d-3e65db39ef41; models=claude-opus-5-5
+critic publish-b: SELF_RESOLVE; session=<session-17>; models=claude-opus-5-5
+critic human-annotation: NEEDS_CAPTAIN; session=<session-14>; models=claude-opus-5-5
+critic q23: SELF_RESOLVE; session=<session-24>; models=claude-opus-5-5
+critic nextstep: SELF_RESOLVE; session=<session-30>; models=claude-opus-5-5
 FM_TEST_END 2026-10-20T23:51:53Z tests/fm-captain-alert-live.test.sh exit=0 duration_ms=62676 gate_skip=false
 FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=62877
 FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=1 duration_ms=62676 failed=0
 FM_TEST_SLOWEST rank=1 script=tests/fm-captain-alert-live.test.sh duration_ms=62676
-fm-test-run: wrote timing artifact: /home/nikolayseliverstov/.no-mistakes/evidence/01M5DT12HGTBKEBGCA1BVDQT91/native-run.json
+fm-test-run: wrote timing artifact: <home>/.no-mistakes/evidence/<run-5>/native-run.json
 runner_exit=0

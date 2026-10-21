@@ -1,5 +1,6 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 Test phase, round 3: evidence-only reanalysis of the completed Root035 host-assisted native run
-Run 01M5D83GNC4CC1P2G37V5KDSZQ, HEAD 3a6c5afa3681035eab84b37188d4d2356fbec483 (re-checked: tracked tree clean).
+Run <run-2>, HEAD 3a6c5afa3681035eab84b37188d4d2356fbec483 (re-checked: tracked tree clean).
 No native invocation in this phase: run.sh, host-assist.sh, the opt-in driver, app-server, model turns and probes were not executed.
 Source, tests and pins were not modified.
 

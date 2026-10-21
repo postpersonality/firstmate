@@ -1,4 +1,5 @@
-### TARGET a5dcdb5f: code root /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
+### TARGET a5dcdb5f: code root <validation-worktree>
 primary config/herdr-presentation-spaces = off
 secondmate config/herdr-presentation-spaces before push = on
 $ FM_HOME=<world>/home FM_ROOT_OVERRIDE=<world>/main fm-config-push.sh
@@ -40,6 +41,6 @@ secondmate sm (<world>/sm):
   keep-ai-trailers: unchanged
   supervision-host-off: unchanged
   data/captain-shared.md: unchanged
-CONFIG_REREAD: secondmate sm: send failed: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/nikolayseliverstov/.no-mistakes/repos/8d2cf6c97984.git)
+CONFIG_REREAD: secondmate sm: send failed: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (<home>/.no-mistakes/repos/8d2cf6c97984.git)
 exit=1
 secondmate config/herdr-presentation-spaces after push = off

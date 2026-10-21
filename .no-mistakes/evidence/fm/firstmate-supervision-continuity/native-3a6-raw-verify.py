@@ -1,10 +1,11 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 """Read-only re-verification of the Root035 host-assisted native run at 3a6c5afa.
 Starts no process except git; reads only the retained lab, the review bundle and this worktree."""
 import hashlib, json, os, subprocess, sys
 from pathlib import Path
 
 W = Path(sys.argv[1])
-B = Path('/home/nikolayseliverstov/Projects/firstmate/data/firstmate-supervision-continuity/native-review-3a6c5afa')
+B = Path(os.environ['FIRSTMATE_REVIEW_BUNDLE'])
 L = Path((B / 'last-lab-path').read_text().strip())
 ok = True
 def check(cond, label):

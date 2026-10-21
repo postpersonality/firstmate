@@ -1,3 +1,4 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 # Live lab transcript: config/crew-effort pin (tmux backend, real fm-spawn.sh / fm-control.sh, real claude CLI 2.1.305)
 # Lab home: disposable FM_HOME minted by bin/fm-lab-home.sh, private tmux socket, private pid+mount namespace
 
@@ -21,7 +22,7 @@ effort=xhigh
 [script exit=0]
 
 ################ 1b. argv of the launched claude worker
---- real claude process 2632 (/home/nikolayseliverstov/.local/share/claude/versions/2.1.305) argv flags:
+--- real claude process 2632 (<home>/.local/share/claude/versions/2.1.305) argv flags:
 --model sonnet
 --effort xhigh
 [script exit=0]
@@ -108,7 +109,7 @@ worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/note
 harness=claude
 model=sonnet
 effort=medium
---- real claude process 9385 (/home/nikolayseliverstov/.local/share/claude/versions/2.1.305) argv flags:
+--- real claude process 9385 (<home>/.local/share/claude/versions/2.1.305) argv flags:
 --model sonnet
 --effort medium
 [script exit=0]
@@ -178,7 +179,7 @@ worktree=/tmp/claude-1000/fm-lab.upfGEw/treehouse/.treehouse/notes-1e2729/2/note
 harness=claude
 model=sonnet
 effort=xhigh
---- real claude process 12835 (/home/nikolayseliverstov/.local/share/claude/versions/2.1.305) argv flags:
+--- real claude process 12835 (<home>/.local/share/claude/versions/2.1.305) argv flags:
 --model sonnet
 --effort xhigh
 [script exit=0]
@@ -208,7 +209,7 @@ harness=claude
 model=sonnet
 effort=xhigh
 secondmate home config/crew-effort: xhigh
---- real claude process 15217 (/home/nikolayseliverstov/.local/share/claude/versions/2.1.305) argv flags:
+--- real claude process 15217 (<home>/.local/share/claude/versions/2.1.305) argv flags:
 --model sonnet
 --effort xhigh
 [script exit=0]

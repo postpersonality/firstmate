@@ -1,3 +1,4 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 + case "$(field "$2" worktree)" in
 ++ field core herdr_workspace_id
 ++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
@@ -5,7 +6,7 @@
 + '[' w5 = w5 ']'
 ++ lab workspace list
 ++ jq '.result.workspaces | length'
-++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linu
+++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linu
 + '[' 5 = 5 ']'
 ++ field core herdr_tab_id
 ++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
@@ -14,7 +15,7 @@
 + write_brief core-detached
 + mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/core-detached
 + printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
-+ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh core-detached /tmp/fm-herdr-project.h6NKmt/firstmate 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ <validation-worktree>/bin/fm-spawn.sh core-detached /tmp/fm-herdr-project.h6NKmt/firstmate 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
 + case "$(field "$1" worktree)" in
 ++ field core-detached worktree
 ++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core-detached.meta
@@ -29,9 +30,9 @@
 ++ sed -n 's/^herdr_tab_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
 + '[' w5:t6 '!=' w5:t5 ']'
 + lab pane get w4:p1
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux
 ++ field core herdr_pane_id
 ++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/core.meta
 + lab pane get w5:p5
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux
 + pass 'repeat home, projects/firstmate copy and source spawns share one project Space with separate tabs; management and source checkout are preserved'

@@ -1,16 +1,17 @@
-# Document-phase supplemental validation (DOC-F1 / TEST-FOLLOWUP-1), run 01M5CB1FM3S4GJGSJ45M4DMDBH
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
+# Document-phase supplemental validation (DOC-F1 / TEST-FOLLOWUP-1), run <run-1>
 # Owned scratch: /tmp/claude-1000/fm-docf1-validate.zyTrWV (dev:inode 43:3709985, mode 700, created empty by mktemp -d in this invocation; removed afterwards)
 # Driver: validate.sh run as: TMPDIR=$OWN timeout 300 taskset -c 0,1 validate.sh <worktree> $OWN -> driver_exit=1
 # The one FAIL is the driver's own follow-up assertion: teardown exited 3 at 'no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)' before reaching the completion gate, so the teardown outcome-gate branch is UNEXERCISED here, not a product failure.
 # tests/lib.sh probe: TMPDIR=$OWN bash -c '. tests/lib.sh' -> source_rc=1 (fm_test_pid_identity: namespace PID not visible in host /proc).
 
 ==== A. DOC-F1: generated scout brief ====
-$ env FM_HOME=/tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home FM_ROOT_OVERRIDE=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/bin/fm-brief.sh sample-investigation sample --scout
+$ env FM_HOME=/tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home FM_ROOT_OVERRIDE=<validation-worktree> <validation-worktree>/bin/fm-brief.sh sample-investigation sample --scout
   | scaffolded: /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
 PASS [exit 0]: fm-brief.sh scaffolds a scout brief
 
-$ grep_out /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/.agents/skills/captain-hold-lifecycle/SKILL.md /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
-  | Before reporting done, read `/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
+$ grep_out <validation-worktree>/.agents/skills/captain-hold-lifecycle/SKILL.md /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
+  | Before reporting done, read `<validation-worktree>/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
 PASS [exit 0]: brief names the lifecycle skill (tests/fm-brief.test.sh assertion 1)
 
 $ grep_out pass its shared completion gate for the report and any visual review /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
@@ -18,7 +19,7 @@ $ grep_out pass its shared completion gate for the report and any visual review 
 PASS [exit 0]: brief keeps the visual-review cross-reference (tests/fm-brief.test.sh assertion 2)
 
 $ grep_out through its `hold` with `--origin sample-investigation` /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
-  | Before reporting done, read `/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
+  | Before reporting done, read `<validation-worktree>/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
 PASS [exit 0]: brief tells the worker to hold captain calls against its own origin
 
 $ grep_out Never run its `complete` or declare this task's outcome yourself: firstmate must review the report /tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/brief.md
@@ -32,7 +33,7 @@ PASS [exit 1]: brief no longer tells the worker to pass the gate itself
   > Write your findings to `/tmp/claude-1000/fm-docf1-validate.zyTrWV/fx/brief-home/data/sample-investigation/report.md`.
   > The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.
   > If your deliverable is a visual artifact the captain will review and iterate on, use the lavish-axi rule: arm your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled <source-id> <sequence> to conclude and retire your board.
-  > Before reporting done, read `/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
+  > Before reporting done, read `<validation-worktree>/.agents/skills/captain-hold-lifecycle/SKILL.md`, hold each unresolved captain call your report or any visual review leaves through its `hold` with `--origin sample-investigation`, and name the held task ids in the report.
   > Never run its `complete` or declare this task's outcome yourself: firstmate must review the report against the original ask and pass its shared completion gate for the report and any visual review.
   > When the report is complete, append `done [at=<epoch>]: {one-line conclusion}` to the status file and stop.
   > If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.

@@ -1,5 +1,6 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 # Sourced by lab drivers: plain FM_HOME=<lab>, no overrides, private tmux socket.
-ROOT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH
+ROOT=<validation-worktree>
 LAB=$(cat "$TMPDIR/fm-lab-path"); W="$TMPDIR/fmtest"; P="$LAB/projects/sample"
 export FM_HOME="$LAB" PATH="$W/tmuxshim:$W/stubs:$PATH" TMUX_TMPDIR="$LAB/tmux"
 unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE TMUX TMUX_PANE

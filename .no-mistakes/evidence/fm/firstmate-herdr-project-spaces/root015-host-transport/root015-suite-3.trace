@@ -1,30 +1,31 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 + set -eu
 ++ dirname tests/fm-backend-herdr-workspace-per-home-e2e.test.sh
 + . tests/herdr-project-fixture.sh
 ++++ dirname tests/herdr-project-fixture.sh
 +++ cd tests/..
 +++ pwd
-++ ROOT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
-++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/herdr-test-safety.sh
+++ ROOT=<validation-worktree>
+++ . <validation-worktree>/tests/herdr-test-safety.sh
 +++ set -u
-++++ dirname /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/herdr-test-safety.sh
-+++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/git-config-helpers.sh
+++++ dirname <validation-worktree>/tests/herdr-test-safety.sh
++++ . <validation-worktree>/tests/git-config-helpers.sh
 ++++ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 ++++ GIT_CONFIG_GLOBAL=/dev/null
 ++++ GIT_CONFIG_NOSYSTEM=1
 +++ export FM_GATE_REFUSE_BYPASS=1
 +++ FM_GATE_REFUSE_BYPASS=1
-+++++ dirname /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/herdr-test-safety.sh
-++++ cd /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/tests/..
++++++ dirname <validation-worktree>/tests/herdr-test-safety.sh
+++++ cd <validation-worktree>/tests/..
 ++++ pwd
-+++ HERDR_TEST_SAFETY_DIR=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
-+++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-herdr-lab.sh
++++ HERDR_TEST_SAFETY_DIR=<validation-worktree>
++++ . <validation-worktree>/bin/fm-herdr-lab.sh
 ++++ set -u
 ++++ readonly fm_herdr_lab_viewer_timeout_seconds=5
 ++++ fm_herdr_lab_viewer_timeout_seconds=5
 ++++ readonly fm_herdr_lab_viewer_launcher_grace_seconds=6
 ++++ fm_herdr_lab_viewer_launcher_grace_seconds=6
-++++ '[' /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-herdr-lab.sh = tests/fm-backend-herdr-workspace-per-home-e2e.test.sh ']'
+++++ '[' <validation-worktree>/bin/fm-herdr-lab.sh = tests/fm-backend-herdr-workspace-per-home-e2e.test.sh ']'
 ++ herdr_forget_inherited_pane
 ++ unset HERDR_ENV HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH HERDR_SESSION
 ++ for tool in herdr jq git
@@ -33,13 +34,13 @@
 ++ command -v jq
 ++ for tool in herdr jq git
 ++ command -v git
-++ HERDR_LAB_HELPER=/home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh
-+++ /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh name firstmate-herdr-project-spaces
-++ HERDR_LAB_SESSION=fm-lab-firstmate-herdr-1599033-30342
+++ HERDR_LAB_HELPER=<checkout>/bin/fm-herdr-lab.sh
++++ <checkout>/bin/fm-herdr-lab.sh name firstmate-herdr-project-spaces
+++ HERDR_LAB_SESSION=<lab-session-2>
 +++ mktemp -d /tmp/fm-herdr-project.XXXXXX
 ++ TMP_ROOT=/tmp/fm-herdr-project.fTznoa
 ++ trap cleanup EXIT
-++ REAL_PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin
+++ REAL_PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.asdf/bin:<home>/.asdf/shims:<home>/.bun/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin
 ++ mkdir -p /tmp/fm-herdr-project.fTznoa/fakebin /tmp/fm-herdr-project.fTznoa/operator/firstmate/state /tmp/fm-herdr-project.fTznoa/operator/firstmate/config /tmp/fm-herdr-project.fTznoa/slots
 ++ export REAL_PATH HERDR_LAB_HELPER HERDR_LAB_SESSION TMP_ROOT
 ++ cat
@@ -53,16 +54,16 @@
 ++ HERDR_AUTOMATIC_RENAME_CONFIG=/tmp/fm-herdr-project.fTznoa/rename-config.sh
 ++ printf 'NAME_TABS=0\nAUTO_INDEX=0\n'
 ++ printf '[terminal]\ndefault_shell = "%s"\n' /tmp/fm-herdr-project.fTznoa/shell
-++ /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh provision fm-lab-firstmate-herdr-1599033-30342
-++ export HERDR_SESSION=fm-lab-firstmate-herdr-1599033-30342 FM_HOME=/tmp/fm-herdr-project.fTznoa/operator/firstmate FM_ROOT_OVERRIDE=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 FM_SPAWN_NO_GUARD=1
-++ HERDR_SESSION=fm-lab-firstmate-herdr-1599033-30342
+++ <checkout>/bin/fm-herdr-lab.sh provision <lab-session-2>
+++ export HERDR_SESSION=<lab-session-2> FM_HOME=/tmp/fm-herdr-project.fTznoa/operator/firstmate FM_ROOT_OVERRIDE=<validation-worktree> FM_SPAWN_NO_GUARD=1
+++ HERDR_SESSION=<lab-session-2>
 ++ FM_HOME=/tmp/fm-herdr-project.fTznoa/operator/firstmate
-++ FM_ROOT_OVERRIDE=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
+++ FM_ROOT_OVERRIDE=<validation-worktree>
 ++ FM_SPAWN_NO_GUARD=1
-++ export PATH=/tmp/fm-herdr-project.fTznoa/fakebin:/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin
-++ PATH=/tmp/fm-herdr-project.fTznoa/fakebin:/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin
+++ export PATH=/tmp/fm-herdr-project.fTznoa/fakebin:<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.asdf/bin:<home>/.asdf/shims:<home>/.bun/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin
+++ PATH=/tmp/fm-herdr-project.fTznoa/fakebin:<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.asdf/bin:<home>/.asdf/shims:<home>/.bun/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin
 ++ lab workspace create --cwd /tmp/fm-herdr-project.fTznoa --label fixture-shell --no-focus
-++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1599033-30342 workspace create --cwd /tmp/fm-herdr-project.fTznoa --label fixture-shell --no-focus
+++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.asdf/bin:<home>/.asdf/shims:<home>/.bun/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin <checkout>/bin/fm-herdr-lab.sh run <lab-session-2> workspace create --cwd /tmp/fm-herdr-project.fTznoa --label fixture-shell --no-focus
 ++ (( i=0 ))
 ++ (( i<100 ))
 ++ '[' '!' -f /tmp/fm-herdr-project.fTznoa/shell-launched ']'
@@ -92,7 +93,7 @@
 + echo 'Run fixture command only.'
 + FM_SKIP_SECONDMATE_SYNC=1
 + FM_SKIP_SECONDMATE_INHERIT=1
-+ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh mate /tmp/fm-herdr-project.fTznoa/secondmate 'sh -c '\''echo secondmate-fixture'\''' --secondmate --backend herdr
++ <validation-worktree>/bin/fm-spawn.sh mate /tmp/fm-herdr-project.fTznoa/secondmate 'sh -c '\''echo secondmate-fixture'\''' --secondmate --backend herdr
 ++ field mate herdr_workspace_id
 ++ sed -n 's/^herdr_workspace_id=//p' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta
 + mate_ws=w2
@@ -102,7 +103,7 @@
 + old_mate_pane=w2:p2
 + FM_SKIP_SECONDMATE_SYNC=1
 + FM_SKIP_SECONDMATE_INHERIT=1
-+ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh mate /tmp/fm-herdr-project.fTznoa/secondmate 'sh -c '\''echo secondmate-fixture'\''' --secondmate --backend herdr
++ <validation-worktree>/bin/fm-spawn.sh mate /tmp/fm-herdr-project.fTznoa/secondmate 'sh -c '\''echo secondmate-fixture'\''' --secondmate --backend herdr
 ++ field mate herdr_pane_id
 ++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta
 + mate_pane=w2:p3
@@ -111,14 +112,14 @@
 + '[' w2 = w2 ']'
 + '[' w2:p3 '!=' w2:p2 ']'
 + lab pane get w2:p2
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1599033-30342 pane get w2:p2
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.asdf/bin:<home>/.asdf/shims:<home>/.bun/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin <checkout>/bin/fm-herdr-lab.sh run <lab-session-2> pane get w2:p2
 + pass 'persistent secondmate recovery retains its home Space and replaces only its own husk'
 + echo 'ok - persistent secondmate recovery retains its home Space and replaces only its own husk'
 + spawn primary-worker /tmp/fm-herdr-project.fTznoa/shared-project
 + write_brief primary-worker
 + mkdir -p /tmp/fm-herdr-project.fTznoa/operator/firstmate/data/primary-worker
 + printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
-+ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh primary-worker /tmp/fm-herdr-project.fTznoa/shared-project 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ <validation-worktree>/bin/fm-spawn.sh primary-worker /tmp/fm-herdr-project.fTznoa/shared-project 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
 + case "$(field "$1" worktree)" in
 ++ field primary-worker worktree
 ++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta
@@ -133,7 +134,7 @@
 + write_brief child-worker
 + mkdir -p /tmp/fm-herdr-project.fTznoa/secondmate/data/child-worker
 + printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
-+ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh child-worker /tmp/fm-herdr-project.fTznoa/shared-project 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ <validation-worktree>/bin/fm-spawn.sh child-worker /tmp/fm-herdr-project.fTznoa/shared-project 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
 + case "$(field "$1" worktree)" in
 ++ field child-worker worktree
 ++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta
@@ -145,17 +146,17 @@
 + '[' w3 = w3 ']'
 + pass 'secondmate keeps its home Space; primary and secondmate workers share the project Space'
 + echo 'ok - secondmate keeps its home Space; primary and secondmate workers share the project Space'
-+ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-backend.sh
-++ FM_BACKEND_SCRIPT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-backend.sh
-++++ dirname /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-backend.sh
-+++ cd /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin
++ . <validation-worktree>/bin/fm-backend.sh
+++ FM_BACKEND_SCRIPT=<validation-worktree>/bin/fm-backend.sh
+++++ dirname <validation-worktree>/bin/fm-backend.sh
++++ cd <validation-worktree>/bin
 +++ pwd
-++ FM_BACKEND_LIB_DIR=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin
+++ FM_BACKEND_LIB_DIR=<validation-worktree>/bin
 ++ unset FM_BACKEND_SCRIPT
-+++ cd /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/..
++++ cd <validation-worktree>/bin/..
 +++ pwd
-++ FM_BACKEND_DEFAULT_ROOT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
-++ FM_ROOT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
+++ FM_BACKEND_DEFAULT_ROOT=<validation-worktree>
+++ FM_ROOT=<validation-worktree>
 ++ FM_HOME=/tmp/fm-herdr-project.fTznoa/operator/firstmate
 ++ FM_BACKEND_CONFIG_DIR=/tmp/fm-herdr-project.fTznoa/operator/firstmate/config
 ++ FM_BACKEND_KNOWN='tmux herdr zellij orca cmux'
@@ -173,48 +174,48 @@
 + case " $list " in
 + return 0
 + return 0
-+ adapter=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends/herdr.sh
++ adapter=<validation-worktree>/bin/backends/herdr.sh
 + case "$name" in
 + set -- fm-composer-lib.sh fm-transition-lib.sh fm-agent-process-lib.sh fm-session-lock-lib.sh fm-gemini-lib.sh
-+ fm_backend_source_readable /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends/herdr.sh
-+ '[' -f /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends/herdr.sh ']'
-+ '[' -r /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends/herdr.sh ']'
++ fm_backend_source_readable <validation-worktree>/bin/backends/herdr.sh
++ '[' -f <validation-worktree>/bin/backends/herdr.sh ']'
++ '[' -r <validation-worktree>/bin/backends/herdr.sh ']'
 + for rel in "$@"
-+ sibling=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-composer-lib.sh
-+ fm_backend_source_readable /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-composer-lib.sh
-+ '[' -f /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-composer-lib.sh ']'
-+ '[' -r /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-composer-lib.sh ']'
++ sibling=<validation-worktree>/bin/fm-composer-lib.sh
++ fm_backend_source_readable <validation-worktree>/bin/fm-composer-lib.sh
++ '[' -f <validation-worktree>/bin/fm-composer-lib.sh ']'
++ '[' -r <validation-worktree>/bin/fm-composer-lib.sh ']'
 + for rel in "$@"
-+ sibling=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-transition-lib.sh
-+ fm_backend_source_readable /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-transition-lib.sh
-+ '[' -f /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-transition-lib.sh ']'
-+ '[' -r /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-transition-lib.sh ']'
++ sibling=<validation-worktree>/bin/fm-transition-lib.sh
++ fm_backend_source_readable <validation-worktree>/bin/fm-transition-lib.sh
++ '[' -f <validation-worktree>/bin/fm-transition-lib.sh ']'
++ '[' -r <validation-worktree>/bin/fm-transition-lib.sh ']'
 + for rel in "$@"
-+ sibling=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-agent-process-lib.sh
-+ fm_backend_source_readable /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-agent-process-lib.sh
-+ '[' -f /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-agent-process-lib.sh ']'
-+ '[' -r /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-agent-process-lib.sh ']'
++ sibling=<validation-worktree>/bin/fm-agent-process-lib.sh
++ fm_backend_source_readable <validation-worktree>/bin/fm-agent-process-lib.sh
++ '[' -f <validation-worktree>/bin/fm-agent-process-lib.sh ']'
++ '[' -r <validation-worktree>/bin/fm-agent-process-lib.sh ']'
 + for rel in "$@"
-+ sibling=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-session-lock-lib.sh
-+ fm_backend_source_readable /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-session-lock-lib.sh
-+ '[' -f /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-session-lock-lib.sh ']'
-+ '[' -r /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-session-lock-lib.sh ']'
++ sibling=<validation-worktree>/bin/fm-session-lock-lib.sh
++ fm_backend_source_readable <validation-worktree>/bin/fm-session-lock-lib.sh
++ '[' -f <validation-worktree>/bin/fm-session-lock-lib.sh ']'
++ '[' -r <validation-worktree>/bin/fm-session-lock-lib.sh ']'
 + for rel in "$@"
-+ sibling=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-gemini-lib.sh
-+ fm_backend_source_readable /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-gemini-lib.sh
-+ '[' -f /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-gemini-lib.sh ']'
-+ '[' -r /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-gemini-lib.sh ']'
++ sibling=<validation-worktree>/bin/fm-gemini-lib.sh
++ fm_backend_source_readable <validation-worktree>/bin/fm-gemini-lib.sh
++ '[' -f <validation-worktree>/bin/fm-gemini-lib.sh ']'
++ '[' -r <validation-worktree>/bin/fm-gemini-lib.sh ']'
 + case "$name" in
 + '[' -z '' ']'
-+ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends/herdr.sh
-+++ d=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends
-+++ '[' /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends '!=' /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends/herdr.sh ']'
-+++ cd /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/backends/../..
++ . <validation-worktree>/bin/backends/herdr.sh
++++ d=<validation-worktree>/bin/backends
++++ '[' <validation-worktree>/bin/backends '!=' <validation-worktree>/bin/backends/herdr.sh ']'
++++ cd <validation-worktree>/bin/backends/../..
 +++ pwd
-++ FM_BACKEND_HERDR_ROOT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
-++ FM_ROOT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6
+++ FM_BACKEND_HERDR_ROOT=<validation-worktree>
+++ FM_ROOT=<validation-worktree>
 ++ FM_HOME=/tmp/fm-herdr-project.fTznoa/operator/firstmate
-++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-composer-lib.sh
+++ . <validation-worktree>/bin/fm-composer-lib.sh
 +++ FM_COMPOSER_UNICODE_SPACES=()
 +++ for _fm_composer_space_octal in '\0302\0205' '\0302\0240' '\0341\0232\0200' '\0342\0200\0200' '\0342\0200\0201' '\0342\0200\0202' '\0342\0200\0203' '\0342\0200\0204' '\0342\0200\0205' '\0342\0200\0206' '\0342\0200\0207' '\0342\0200\0210' '\0342\0200\0211' '\0342\0200\0212' '\0342\0200\0250' '\0342\0200\0251' '\0342\0200\0257' '\0342\0201\0237' '\0343\0200\0200'
 +++ printf -v _fm_composer_space_utf8 %b '\0302\0205'
@@ -298,15 +299,15 @@
 +++ FM_COMPOSER_CAPTURE_LINES=20
 +++ FM_COMPOSER_PI_MAX_LINES=8
 +++ FM_COMPOSER_GROK_TITLE_OVERHANG=3
-++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-transition-lib.sh
+++ . <validation-worktree>/bin/fm-transition-lib.sh
 +++ FM_TRANSITION_FIELD_SEP=$'\t'
-++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-agent-process-lib.sh
-+++ _FM_AGENT_PROCESS_LIB_DIR=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin
-+++ '[' /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin '!=' /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-agent-process-lib.sh ']'
-+++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-session-lock-lib.sh
-++++ _FM_SESSION_LOCK_LIB_DIR=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin
-++++ '[' /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin '!=' /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-session-lock-lib.sh ']'
-++++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-cursor-lib.sh
+++ . <validation-worktree>/bin/fm-agent-process-lib.sh
++++ _FM_AGENT_PROCESS_LIB_DIR=<validation-worktree>/bin
++++ '[' <validation-worktree>/bin '!=' <validation-worktree>/bin/fm-agent-process-lib.sh ']'
++++ . <validation-worktree>/bin/fm-session-lock-lib.sh
+++++ _FM_SESSION_LOCK_LIB_DIR=<validation-worktree>/bin
+++++ '[' <validation-worktree>/bin '!=' <validation-worktree>/bin/fm-session-lock-lib.sh ']'
+++++ . <validation-worktree>/bin/fm-cursor-lib.sh
 +++++ FM_CURSOR_PROBE_TIMEOUT=10
 ++++ unset _FM_SESSION_LOCK_LIB_DIR
 ++++ FM_HARNESS_RE='claude|codex|opencode|grok|kimi|^pi$|^pi-signed$|^omp$'
@@ -316,7 +317,7 @@
 ++++ FM_LOCK_INSPECT_STATE=unknown
 ++++ FM_LOCK_INSPECT_PID=
 ++++ FM_LOCK_INSPECT_LIVE_HARNESS=unknown
-+++ . /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-gemini-lib.sh
++++ . <validation-worktree>/bin/fm-gemini-lib.sh
 +++ unset _FM_AGENT_PROCESS_LIB_DIR
 ++ FM_BACKEND_HERDR_MIN_PROTOCOL=14
 ++ FM_BACKEND_HERDR_MIN_EVENTS_PROTOCOL=16
@@ -328,8 +329,8 @@
 ++ FM_BACKEND_HERDR_SUBMIT_MIN_SLEEP=0.6
 ++ FM_BACKEND_HERDR_SHELL_PROMPT_POLLS=50
 + _FM_BACKEND_HERDR_SOURCED=1
-++ fm_backend_herdr_list_live fm-lab-firstmate-herdr-1599033-30342
-++ local session=fm-lab-firstmate-herdr-1599033-30342 state=/tmp/fm-herdr-project.fTznoa/operator/firstmate/state meta target pane tab workspace info
+++ fm_backend_herdr_list_live <lab-session-2>
+++ local session=<lab-session-2> state=/tmp/fm-herdr-project.fTznoa/operator/firstmate/state meta target pane tab workspace info
 ++ for meta in "$state"/*.meta
 ++ '[' -f /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta ']'
 ++ '[' '!' -L /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta ']'
@@ -351,10 +352,10 @@
 +++ '[' 1 -eq 1 ']'
 ++++ grep '^herdr_session=' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta
 ++++ cut -d= -f2-
-+++ value=fm-lab-firstmate-herdr-1599033-30342
-+++ '[' -n fm-lab-firstmate-herdr-1599033-30342 ']'
-+++ printf %s fm-lab-firstmate-herdr-1599033-30342
-++ '[' fm-lab-firstmate-herdr-1599033-30342 = fm-lab-firstmate-herdr-1599033-30342 ']'
++++ value=<lab-session-2>
++++ '[' -n <lab-session-2> ']'
++++ printf %s <lab-session-2>
+++ '[' <lab-session-2> = <lab-session-2> ']'
 +++ fm_backend_meta_exact_value /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta window
 +++ local meta=/tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta key=window count value
 ++++ grep -c '^window=' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta
@@ -362,10 +363,10 @@
 +++ '[' 1 -eq 1 ']'
 ++++ grep '^window=' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta
 ++++ cut -d= -f2-
-+++ value=fm-lab-firstmate-herdr-1599033-30342:w2:p3
-+++ '[' -n fm-lab-firstmate-herdr-1599033-30342:w2:p3 ']'
-+++ printf %s fm-lab-firstmate-herdr-1599033-30342:w2:p3
-++ target=fm-lab-firstmate-herdr-1599033-30342:w2:p3
++++ value=<lab-session-2>:w2:p3
++++ '[' -n <lab-session-2>:w2:p3 ']'
++++ printf %s <lab-session-2>:w2:p3
+++ target=<lab-session-2>:w2:p3
 +++ fm_backend_meta_exact_value /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta herdr_pane_id
 +++ local meta=/tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta key=herdr_pane_id count value
 ++++ grep -c '^herdr_pane_id=' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta
@@ -402,15 +403,15 @@
 ++ '[' -n w2:p3 ']'
 ++ '[' -n w2:t3 ']'
 ++ '[' -n w2 ']'
-++ '[' fm-lab-firstmate-herdr-1599033-30342:w2:p3 = fm-lab-firstmate-herdr-1599033-30342:w2:p3 ']'
-+++ fm_backend_herdr_cli fm-lab-firstmate-herdr-1599033-30342 pane get w2:p3
-+++ local session=fm-lab-firstmate-herdr-1599033-30342 rc=0 err failed_bin selected_bin client_bin=herdr
+++ '[' <lab-session-2>:w2:p3 = <lab-session-2>:w2:p3 ']'
++++ fm_backend_herdr_cli <lab-session-2> pane get w2:p3
++++ local session=<lab-session-2> rc=0 err failed_bin selected_bin client_bin=herdr
 +++ shift
-+++ '[' '' = fm-lab-firstmate-herdr-1599033-30342 ']'
++++ '[' '' = <lab-session-2> ']'
 +++ '[' pane = server ']'
 +++ failed_bin=herdr
-++++ HERDR_SESSION=fm-lab-firstmate-herdr-1599033-30342
-++++ herdr pane get w2:p3 --session fm-lab-firstmate-herdr-1599033-30342
+++++ HERDR_SESSION=<lab-session-2>
+++++ herdr pane get w2:p3 --session <lab-session-2>
 +++ err=
 +++ '[' 0 -ne 0 ']'
 +++ '[' -z '' ']'
@@ -419,7 +420,7 @@
 ++ printf %s '{"id":"cli:pane:get","result":{"pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.fTznoa/secondmate","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.fTznoa/secondmate","pane_id":"w2:p3","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w2:t3","terminal_id":"term_65e4ecc1a6b224","workspace_id":"w2"},"type":"pane_info"}}'
 ++ jq -e --arg pane w2:p3 --arg tab w2:t3 --arg ws w2 $'\n      .result.pane.pane_id == $pane and .result.pane.tab_id == $tab and .result.pane.workspace_id == $ws\n    '
 +++ basename /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/mate.meta .meta
-++ printf '%s\tfm-%s\n' fm-lab-firstmate-herdr-1599033-30342:w2:p3 mate
+++ printf '%s\tfm-%s\n' <lab-session-2>:w2:p3 mate
 ++ for meta in "$state"/*.meta
 ++ '[' -f /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta ']'
 ++ '[' '!' -L /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta ']'
@@ -441,10 +442,10 @@
 +++ '[' 1 -eq 1 ']'
 ++++ grep '^herdr_session=' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta
 ++++ cut -d= -f2-
-+++ value=fm-lab-firstmate-herdr-1599033-30342
-+++ '[' -n fm-lab-firstmate-herdr-1599033-30342 ']'
-+++ printf %s fm-lab-firstmate-herdr-1599033-30342
-++ '[' fm-lab-firstmate-herdr-1599033-30342 = fm-lab-firstmate-herdr-1599033-30342 ']'
++++ value=<lab-session-2>
++++ '[' -n <lab-session-2> ']'
++++ printf %s <lab-session-2>
+++ '[' <lab-session-2> = <lab-session-2> ']'
 +++ fm_backend_meta_exact_value /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta window
 +++ local meta=/tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta key=window count value
 ++++ grep -c '^window=' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta
@@ -452,10 +453,10 @@
 +++ '[' 1 -eq 1 ']'
 ++++ grep '^window=' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta
 ++++ cut -d= -f2-
-+++ value=fm-lab-firstmate-herdr-1599033-30342:w3:p2
-+++ '[' -n fm-lab-firstmate-herdr-1599033-30342:w3:p2 ']'
-+++ printf %s fm-lab-firstmate-herdr-1599033-30342:w3:p2
-++ target=fm-lab-firstmate-herdr-1599033-30342:w3:p2
++++ value=<lab-session-2>:w3:p2
++++ '[' -n <lab-session-2>:w3:p2 ']'
++++ printf %s <lab-session-2>:w3:p2
+++ target=<lab-session-2>:w3:p2
 +++ fm_backend_meta_exact_value /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta herdr_pane_id
 +++ local meta=/tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta key=herdr_pane_id count value
 ++++ grep -c '^herdr_pane_id=' /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta
@@ -492,15 +493,15 @@
 ++ '[' -n w3:p2 ']'
 ++ '[' -n w3:t2 ']'
 ++ '[' -n w3 ']'
-++ '[' fm-lab-firstmate-herdr-1599033-30342:w3:p2 = fm-lab-firstmate-herdr-1599033-30342:w3:p2 ']'
-+++ fm_backend_herdr_cli fm-lab-firstmate-herdr-1599033-30342 pane get w3:p2
-+++ local session=fm-lab-firstmate-herdr-1599033-30342 rc=0 err failed_bin selected_bin client_bin=herdr
+++ '[' <lab-session-2>:w3:p2 = <lab-session-2>:w3:p2 ']'
++++ fm_backend_herdr_cli <lab-session-2> pane get w3:p2
++++ local session=<lab-session-2> rc=0 err failed_bin selected_bin client_bin=herdr
 +++ shift
-+++ '[' '' = fm-lab-firstmate-herdr-1599033-30342 ']'
++++ '[' '' = <lab-session-2> ']'
 +++ '[' pane = server ']'
 +++ failed_bin=herdr
-++++ HERDR_SESSION=fm-lab-firstmate-herdr-1599033-30342
-++++ herdr pane get w3:p2 --session fm-lab-firstmate-herdr-1599033-30342
+++++ HERDR_SESSION=<lab-session-2>
+++++ herdr pane get w3:p2 --session <lab-session-2>
 +++ err=
 +++ '[' 0 -ne 0 ']'
 +++ '[' -z '' ']'
@@ -509,11 +510,11 @@
 ++ printf %s '{"id":"cli:pane:get","result":{"pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.fTznoa/slots/slot.0yS8yR","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.fTznoa/slots/slot.0yS8yR","pane_id":"w3:p2","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w3:t2","terminal_id":"term_65e4ecc35fd6e6","workspace_id":"w3"},"type":"pane_info"}}'
 ++ jq -e --arg pane w3:p2 --arg tab w3:t2 --arg ws w3 $'\n      .result.pane.pane_id == $pane and .result.pane.tab_id == $tab and .result.pane.workspace_id == $ws\n    '
 +++ basename /tmp/fm-herdr-project.fTznoa/operator/firstmate/state/primary-worker.meta .meta
-++ printf '%s\tfm-%s\n' fm-lab-firstmate-herdr-1599033-30342:w3:p2 primary-worker
-+ primary_live=$'fm-lab-firstmate-herdr-1599033-30342:w2:p3\tfm-mate\nfm-lab-firstmate-herdr-1599033-30342:w3:p2\tfm-primary-worker'
+++ printf '%s\tfm-%s\n' <lab-session-2>:w3:p2 primary-worker
++ primary_live=$'<lab-session-2>:w2:p3\tfm-mate\n<lab-session-2>:w3:p2\tfm-primary-worker'
 ++ FM_HOME=/tmp/fm-herdr-project.fTznoa/secondmate
-++ fm_backend_herdr_list_live fm-lab-firstmate-herdr-1599033-30342
-++ local session=fm-lab-firstmate-herdr-1599033-30342 state=/tmp/fm-herdr-project.fTznoa/secondmate/state meta target pane tab workspace info
+++ fm_backend_herdr_list_live <lab-session-2>
+++ local session=<lab-session-2> state=/tmp/fm-herdr-project.fTznoa/secondmate/state meta target pane tab workspace info
 ++ for meta in "$state"/*.meta
 ++ '[' -f /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta ']'
 ++ '[' '!' -L /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta ']'
@@ -535,10 +536,10 @@
 +++ '[' 1 -eq 1 ']'
 ++++ grep '^herdr_session=' /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta
 ++++ cut -d= -f2-
-+++ value=fm-lab-firstmate-herdr-1599033-30342
-+++ '[' -n fm-lab-firstmate-herdr-1599033-30342 ']'
-+++ printf %s fm-lab-firstmate-herdr-1599033-30342
-++ '[' fm-lab-firstmate-herdr-1599033-30342 = fm-lab-firstmate-herdr-1599033-30342 ']'
++++ value=<lab-session-2>
++++ '[' -n <lab-session-2> ']'
++++ printf %s <lab-session-2>
+++ '[' <lab-session-2> = <lab-session-2> ']'
 +++ fm_backend_meta_exact_value /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta window
 +++ local meta=/tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta key=window count value
 ++++ grep -c '^window=' /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta
@@ -546,10 +547,10 @@
 +++ '[' 1 -eq 1 ']'
 ++++ grep '^window=' /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta
 ++++ cut -d= -f2-
-+++ value=fm-lab-firstmate-herdr-1599033-30342:w3:p3
-+++ '[' -n fm-lab-firstmate-herdr-1599033-30342:w3:p3 ']'
-+++ printf %s fm-lab-firstmate-herdr-1599033-30342:w3:p3
-++ target=fm-lab-firstmate-herdr-1599033-30342:w3:p3
++++ value=<lab-session-2>:w3:p3
++++ '[' -n <lab-session-2>:w3:p3 ']'
++++ printf %s <lab-session-2>:w3:p3
+++ target=<lab-session-2>:w3:p3
 +++ fm_backend_meta_exact_value /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta herdr_pane_id
 +++ local meta=/tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta key=herdr_pane_id count value
 ++++ grep -c '^herdr_pane_id=' /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta
@@ -586,15 +587,15 @@
 ++ '[' -n w3:p3 ']'
 ++ '[' -n w3:t3 ']'
 ++ '[' -n w3 ']'
-++ '[' fm-lab-firstmate-herdr-1599033-30342:w3:p3 = fm-lab-firstmate-herdr-1599033-30342:w3:p3 ']'
-+++ fm_backend_herdr_cli fm-lab-firstmate-herdr-1599033-30342 pane get w3:p3
-+++ local session=fm-lab-firstmate-herdr-1599033-30342 rc=0 err failed_bin selected_bin client_bin=herdr
+++ '[' <lab-session-2>:w3:p3 = <lab-session-2>:w3:p3 ']'
++++ fm_backend_herdr_cli <lab-session-2> pane get w3:p3
++++ local session=<lab-session-2> rc=0 err failed_bin selected_bin client_bin=herdr
 +++ shift
-+++ '[' '' = fm-lab-firstmate-herdr-1599033-30342 ']'
++++ '[' '' = <lab-session-2> ']'
 +++ '[' pane = server ']'
 +++ failed_bin=herdr
-++++ HERDR_SESSION=fm-lab-firstmate-herdr-1599033-30342
-++++ herdr pane get w3:p3 --session fm-lab-firstmate-herdr-1599033-30342
+++++ HERDR_SESSION=<lab-session-2>
+++++ herdr pane get w3:p3 --session <lab-session-2>
 +++ err=
 +++ '[' 0 -ne 0 ']'
 +++ '[' -z '' ']'
@@ -603,28 +604,28 @@
 ++ printf %s '{"id":"cli:pane:get","result":{"pane":{"agent_status":"unknown","cwd":"/tmp/fm-herdr-project.fTznoa/slots/slot.BRTw0m","focused":false,"foreground_cwd":"/tmp/fm-herdr-project.fTznoa/slots/slot.BRTw0m","pane_id":"w3:p3","revision":0,"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,"viewport_rows":39},"tab_id":"w3:t3","terminal_id":"term_65e4ecc65094a7","workspace_id":"w3"},"type":"pane_info"}}'
 ++ jq -e --arg pane w3:p3 --arg tab w3:t3 --arg ws w3 $'\n      .result.pane.pane_id == $pane and .result.pane.tab_id == $tab and .result.pane.workspace_id == $ws\n    '
 +++ basename /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta .meta
-++ printf '%s\tfm-%s\n' fm-lab-firstmate-herdr-1599033-30342:w3:p3 child-worker
-+ child_live=$'fm-lab-firstmate-herdr-1599033-30342:w3:p3\tfm-child-worker'
+++ printf '%s\tfm-%s\n' <lab-session-2>:w3:p3 child-worker
++ child_live=$'<lab-session-2>:w3:p3\tfm-child-worker'
 + case "$primary_live" in
 + case "$primary_live" in
 + case "$child_live" in
 + case "$child_live" in
 + pass 'each home recovers only its own recorded endpoints inside the shared project Space'
 + echo 'ok - each home recovers only its own recorded endpoints inside the shared project Space'
-+ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-teardown.sh primary-worker
++ <validation-worktree>/bin/fm-teardown.sh primary-worker
 ++ FM_HOME=/tmp/fm-herdr-project.fTznoa/secondmate
 ++ field child-worker herdr_pane_id
 ++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.fTznoa/secondmate/state/child-worker.meta
 + lab pane get w3:p3
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1599033-30342 pane get w3:p3
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.asdf/bin:<home>/.asdf/shims:<home>/.bun/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin <checkout>/bin/fm-herdr-lab.sh run <lab-session-2> pane get w3:p3
 + lab pane get w2:p3
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh run fm-lab-firstmate-herdr-1599033-30342 pane get w2:p3
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.asdf/bin:<home>/.asdf/shims:<home>/.bun/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin <checkout>/bin/fm-herdr-lab.sh run <lab-session-2> pane get w2:p3
 + pass 'teardown preserves another home worker and persistent secondmate endpoint'
 + echo 'ok - teardown preserves another home worker and persistent secondmate endpoint'
 + cleanup
 + local status=0
 + trap - EXIT
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.asdf/bin:/home/nikolayseliverstov/.asdf/shims:/home/nikolayseliverstov/.bun/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/miniconda3/condabin:/home/nikolayseliverstov/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin:/home/nikolayseliverstov/.lmstudio/bin /home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh teardown fm-lab-firstmate-herdr-1599033-30342
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux/codex-arg0Tmfjeb:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.asdf/bin:<home>/.asdf/shims:<home>/.bun/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/miniconda3/condabin:<home>/.local/bin:/usr/share/Modules/bin:/opt/devkitpro/tools/bin:/usr/lib64/ccache:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin:<home>/.lmstudio/bin <checkout>/bin/fm-herdr-lab.sh teardown <lab-session-2>
 + find /tmp/fm-herdr-project.fTznoa -type d -exec chmod u+rwx '{}' +
 + rm -rf /tmp/fm-herdr-project.fTznoa
 + exit 0

@@ -1,55 +1,56 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 
 ===== S1-refusals-before-any-native-review  [2026-10-20T19:15:19Z] smtp-mode=ok
 --- legacy unreviewed send entrypoints
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh send owner@example.invalid Bypass unreviewed body
+$ bash <validation-worktree>/bin/fm-mail.sh send owner@example.invalid Bypass unreviewed body
 fm-mail: unreviewed send is closed; use alert <request.json> for mandatory independent review
 exit=1
-$ python3 /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.py send owner@example.invalid Bypass unreviewed body
+$ python3 <validation-worktree>/bin/fm-mail.py send owner@example.invalid Bypass unreviewed body
 fm-mail: unreviewed send is closed; use fm-mail.sh alert
 exit=1
 --- caller-authored verdict / caller-chosen evidence
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/forged-verdict.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/forged-verdict.json
 NO_MAIL: request keys are exactly id, task, decision, subject, body, analysis; the gate reads the evidence
 exit=1
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/own-sources.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/own-sources.json
 NO_MAIL: request keys are exactly id, task, decision, subject, body, analysis; the gate reads the evidence
 exit=1
 --- critic resolved through PATH (relative name) with a forged claude first on PATH
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
 NO_MAIL: critic must be an absolute path; PATH is never searched
 exit=1
 forged PATH critic ran: no
 --- critic process fails (/bin/false)
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
 NO_MAIL: native critic failed or exceeded bound; repair the gate critic and resubmit
 exit=1
 --- self-authored approval without native session evidence
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
 NO_MAIL: missing successful native session/model evidence; repair the gate critic
 exit=1
 --- shared .env (0644) holding the credential
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
 NO_MAIL: chmod 600 $FM_HOME/.env; it holds the sending credential
 exit=1
 --- critic not configured
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
 NO_MAIL: configure FM_CAPTAIN_ALERT_CLAUDE in $FM_HOME/.env
 exit=1
 600
 --- unreadable later steering record
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/records.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/records.json
 NO_MAIL: cannot read state/records.inbox/002.msg
 exit=1
 --- unreadable task record (.meta)
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/records.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/records.json
 NO_MAIL: cannot read state/records.meta
 exit=1
 --- task without canonical brief
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/ghost.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/ghost.json
 NO_MAIL: task ghost lacks its canonical brief record
 exit=1
 --- decision key that is not open
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/closed.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/closed.json
 NO_MAIL: decision other is not an open blocked or needs-decision record of task publish; email only a currently open blocker
 exit=1
 --- SMTP capture log lines after all refusals: 0
@@ -69,7 +70,7 @@ exit=1
 
 ===== S2-native-self-resolvable  [2026-10-20T19:15:41Z] smtp-mode=ok
 --- native critic: q23
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
 NO_MAIL: critic citation is absent from the task records; resubmit for review
 exit=1
 elapsed=16s
@@ -77,12 +78,12 @@ review.json:
 
 transport.json:
 {
-  "command": "/home/nikolayseliverstov/.local/share/claude/versions/2.1.304",
+  "command": "<home>/.local/share/claude/versions/2.1.304",
   "executable_sha256": "ea0f135784631619a7a409d07322ecec964f9cc4fd377508ed1ba3f141f27912",
   "exit_code": 0,
   "stdout_sha256": "ce752aa3ba9794146ba7215f4b3b4193af88e3648cea8ad65cb99873131003bd",
   "request_sha256": "7448d62abbc6801c92a91f27b0d775edf25a918075552ecddad8cfd32c829aea",
-  "session_id": "64e3643f-ada1-49a7-a1c7-575c64c9de6c",
+  "session_id": "<session-12>",
   "modelUsage": {
     "claude-opus-5-5": {
       "inputTokens": 2,
@@ -101,7 +102,7 @@ transport.json:
   }
 }
 --- native critic: nextstep
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/nextstep.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/nextstep.json
 SELF_RESOLVE: Don't send the email. Steer the worker on task nextstep (generation s1.1.1) with `bin/fm-send.sh` and `--resolve-key default`, which closes the open blocker in the same step. Message: "The instructions already require covering --dry-run in bin/export.sh with a regression test, so no further approval is needed. Write the regression test now, make sure it passes, and continue through the selected delivery path." Then keep supervising as usual. Contact the captain only when the work is ready for review or merge.
 exit=1
 elapsed=14s
@@ -137,12 +138,12 @@ review.json:
 }
 transport.json:
 {
-  "command": "/home/nikolayseliverstov/.local/share/claude/versions/2.1.304",
+  "command": "<home>/.local/share/claude/versions/2.1.304",
   "executable_sha256": "ea0f135784631619a7a409d07322ecec964f9cc4fd377508ed1ba3f141f27912",
   "exit_code": 0,
   "stdout_sha256": "dbe5ec17b9234cb4d04795ff678755cfe91d1102d314e59e765f4c04de68c16e",
   "request_sha256": "00727fa5134cde2e165ae6fa9b1384330083eb19fb7924fc718055afc9fa3ab7",
-  "session_id": "a2084577-9e86-4012-95f6-16710c0e76bf",
+  "session_id": "<session-20>",
   "modelUsage": {
     "claude-opus-5-5": {
       "inputTokens": 2,
@@ -161,11 +162,11 @@ transport.json:
   }
 }
 --- replay unchanged q23 request (expect same verdict, no new native session)
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
 SELF_RESOLVE: Send no captain email. Through fm-send with --resolve-key default, steer the Q23 worker (spawn generation s1.1.1) to make the accepted fix on its isolated branch: correct the question-authority trigger in bin/fm-ask.sh and add its regression test. Because bin/ is shared tracked material, require the worker to load firstmate-coding-guidelines before editing. Ship it through this repo's selected delivery path and PR route, then continue with ordinary in-scope work without asking again. This grants no merge authority: merging the resulting PR still follows the project's configured merge posture and needs the captain's explicit approval unless yolo applies.
 exit=1
 elapsed=17s
-native session before=[64e3643f-ada1-49a7-a1c7-575c64c9de6c] after=[53817a82-674b-4e5e-ac41-5d46e136174f] same=NO
+native session before=[<session-12>] after=[<session-8>] same=NO
 --- SMTP capture log lines: 0
 --- newest inbox notes:
 --
@@ -179,9 +180,9 @@ Receipt: /tmp/claude-1000/fm-lab.G3m9mX/state/captain-alerts/nextstep/440342d8b5
 
 ===== S3-native-needs-captain-concurrent-dedup  [2026-10-20T19:16:51Z] smtp-mode=ok
 --- replay unchanged q23 after its SELF_RESOLVE (expect replay, no new native session)
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/q23.json
 SELF_RESOLVE: Send no captain email. Through fm-send with --resolve-key default, steer the Q23 worker (spawn generation s1.1.1) to m
-q23 native session before=[53817a82-674b-4e5e-ac41-5d46e136174f ] after=[53817a82-674b-4e5e-ac41-5d46e136174f ] same=yes
+q23 native session before=[<session-8> ] after=[<session-8> ] same=yes
 --- two different caller ids for ONE open publish blocker, launched concurrently
 both finished in 21s
 SENT: this open decision was already mailed; deduplicated
@@ -189,9 +190,9 @@ publish-a exit=0
 SENT: SMTP accepted the notification (inbox arrival unverified)
 publish-b exit=0
 SMTP messages captured: 1
-native critic sessions for publish: 1  [- 7dfc69d0-2d20-4999-93fa-cd9a9d472222 ]
+native critic sessions for publish: 1  [- <session-15> ]
 --- a third caller id, sequential replay
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
 SENT: this open decision was already mailed; deduplicated
 exit=0
 SMTP messages captured: 1  native sessions: 1
@@ -240,19 +241,19 @@ SMTP messages captured: 1  native sessions: 1
 ===== S4-occurrence-and-generation  [2026-10-20T19:17:31Z] smtp-mode=ok
 --- (i) the same open blocker restamped by the worker
 blocked [at=1792523900]: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published.
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
 SENT: this open decision was already mailed; deduplicated
 exit=0
 SMTP messages=1 native sessions=1
 --- (ii) closed, then reopened with byte-identical text
 resolved: captain asked to keep it local until the security review of the site finishes
 blocked: Release-notes draft is complete and saved locally. Publishing to the public site is the only remaining step; neither the brief nor any steering grants publication permission, and nothing has been published.
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-a.json
 SELF_RESOLVE: Do not send the email. Close the repeated blocker using the captain's recorded answer: keep the v2 release-notes draft local and change the open blocker into a declared wait for the site security review to finish. Before raising this again, check the task's actual current state with bin/fm-crew-state.sh. Ask the captain again only when there is evidence that the security review is complete. That new request must cite the earlier answer and the finished review.
 exit=1
 SMTP messages=1 native sessions=2
 --- (iii) same caller id, new task generation
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/publish-c.json
 SELF_RESOLVE: Don't send the email. Keep the v2 release-notes draft local and publish nothing. Close the reopened 'default' blocker on task 'publish' and record the wait as a captain hold: bin/fm-captain-hold.sh hold publish --reason "Captain: keep the v2 release notes local until the site security review finishes; publishing still needs explicit captain permission". Check current state with bin/fm-crew-state.sh first. Escalate again only once there is evidence that the site security review has finished. Any later email must say the review is done and ask only for the explicit publish permission.
 exit=1
 SMTP messages=1 native sessions=3
@@ -273,18 +274,18 @@ fc0224e54e96 db386a3ac914 SENT
 
 ===== S5-presend-retry-and-no-resend  [2026-10-20T19:18:46Z] smtp-mode=ok
 --- (1) SMTP server rejects login (pre-send failure); connects so far=1
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-1.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-1.json
 NO_MAIL: SMTP connection or login failed before sending; repair the service or credentials and resubmit for a fresh review
 exit=1
-native session=[39b974ba-62e9-443b-9a8c-0fb40f58b65e ] attempted.json=0 connects=2 messages=1
+native session=[<session-6> ] attempted.json=0 connects=2 messages=1
 verdict: NEEDS_CAPTAIN
 --- (2) service repaired but drops the connection at DATA (attempted, delivery uncertain)
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-1.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-1.json
 NO_MAIL: SMTP failed; delivery unconfirmed, no automatic retry; verify the service before a new event
 exit=1
-native session=[4968dad4-3ee3-412b-86d3-5b30e99ad18e ] fresh_review=yes attempted.json=1 connects=3 messages=1
+native session=[<session-7> ] fresh_review=yes attempted.json=1 connects=3 messages=1
 --- (3) service fully healthy; another caller id for the same decision
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-2.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/login-2.json
 NO_MAIL: SMTP was already attempted for this open decision; delivery may be uncertain. Inspect its receipt before a new event.
 exit=1
 native session unchanged=yes new SMTP connections=0 messages=1
@@ -310,7 +311,7 @@ exit=1
 critic verdict on the frozen records: NEEDS_CAPTAIN
 SMTP messages=1
 --- (2) resubmit: the critic now reads the new steering
-$ bash /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5D8D75ZE287WBJSEMRCMM5H/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/change-1.json
+$ bash <validation-worktree>/bin/fm-mail.sh alert /tmp/claude-1000/fm-alert-tools.Wx1YnU/req/change-1.json
 SELF_RESOLVE: Cancel the proposed email to owner@example.invalid. Have the worker for task 'change' (generation s1.1.1) process the unhandled steering message state/change.inbox/001.msg. It should then publish only the completed v2 release-notes draft in data/change/notes.md, and only to the public project site, as the captain authorized. Publish nothing else and nowhere else. After publishing, close the open blocker with key 'default', for example by passing --resolve-key default with fm-send or writing the worker's resolving status entry. Record the published outcome, including the public URL, and give the captain a one-line report of the result.
 exit=1
 SMTP messages=1

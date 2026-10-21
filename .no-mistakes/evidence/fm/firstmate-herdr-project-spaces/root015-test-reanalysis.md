@@ -1,4 +1,6 @@
-# Test reanalysis of Root015 host-transport evidence (run 01M5DT0T26N5HWGKHN66HD74J6)
+<!-- Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md. -->
+
+# Test reanalysis of Root015 host-transport evidence (run <run-4>)
 
 Native Test owner, evidence-only. No lab, suite, code or sandbox change was made in this pass.
 
@@ -11,7 +13,7 @@ The user selected the existing Codex task worker as host execution transport for
 - Worktree HEAD is `a5dcdb5ff08d8070a4a475faa05d925c563201b2`, equal to the recorded HEAD.
 - `root015-source-hashes.json` has 708 entries (704 files, 4 symlinks). They equal `git ls-files` at this
   worktree one for one, and every file sha256 matches the current bytes. 0 mismatches, 0 missing.
-- The absolute helper `/home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh` hashes to
+- The absolute helper `<checkout>/bin/fm-herdr-lab.sh` hashes to
   `e862f079...f317`, identical to this worktree's `bin/fm-herdr-lab.sh`.
 - The sha256 of every suite stdout, stderr and trace equals the value recorded in `root015-host-results.json`.
   Every `.exit` file reads `0`.

@@ -1,3 +1,4 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 == provenance
 PASS worktree HEAD 3a6c5afa3681035eab84b37188d4d2356fbec483
 PASS tracked tree clean
@@ -17,15 +18,15 @@ PASS before/bin equals HEAD bin (control guard = base 343e7a31) except the drive
 PASS after/bin equals HEAD bin (control guard = base 343e7a31) except the driver shim ['bin/fm-session-start.sh']
 PASS empty/bin equals HEAD bin (control guard = base 343e7a31) except the driver shim ['bin/fm-session-start.sh']
 == S2 negative control: base guard in native app-server (before home)
-PASS SessionStart bound primary thread 01a15bc6-e8a1-7203-b293-c1da5d1e5188: lock acquired: harness pid 1018247
+PASS SessionStart bound primary thread <session-1>: lock acquired: harness pid 1018247
 PASS base guard: Stop#1 exit 2, Stop#2 (stop_hook_active=true) exit 0
 PASS turn completed; no further turn started after the late worker completion
 PASS worker.status=done yet no worker.inbox and no terminal send: primary stayed idle
 == after home: owned primary S1, foreign S2, restart/resume
-   S1=01a15bc7-58ba-7c20-a99e-bce2c462b7e1 S2=01a15bc8-0ba4-78e0-9687-411afca9af93
+   S1=<session-2> S2=<session-3>
 PASS SessionStart rows: S1 startup, S2 startup, S1 resume
 PASS S1 bound host 1027103 at startup and new host 1048126 at resume (no PID 1)
-PASS S2 native SessionStart refused: error: another live firstmate session holds the lock (pid 1027103, session 01a15bc7-58ba-7c20-a99e-bce2c462b7e1); operate read-only until resolved
+PASS S2 native SessionStart refused: error: another live firstmate session holds the lock (pid 1027103, session <session-2>); operate read-only until resolved
 PASS Stop rows: S1 quiet exit 2, S1 stop_hook_active=true exit 2, S2 exit 0, resumed S1 exit 2
 PASS S1 Stop#1: quiet checkpoint continuation names drain + exact ACK
 PASS S1 Stop#2 under stop_hook_active=true: guard alone (primer already spent) delivered the late worker.status wake

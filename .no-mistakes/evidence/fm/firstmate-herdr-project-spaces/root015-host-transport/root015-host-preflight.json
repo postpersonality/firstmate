@@ -1,6 +1,7 @@
 {
+  "_privacy_review": "Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.",
   "at": 1792542222,
-  "source_path": "/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6",
+  "source_path": "<validation-worktree>",
   "head": "a5dcdb5ff08d8070a4a475faa05d925c563201b2",
   "git_status_porcelain": "",
   "source_manifest_sha256": "476072cb08c9ae3ec0d386e3db689e05f2e46882d9fc73fbadd81bc8f7406b44",
@@ -8,13 +9,13 @@
   "proc_self": 1448487,
   "proc_pid_stat_pid": 1448487,
   "pid_namespace_coherent": true,
-  "lab_config_path": "/home/nikolayseliverstov/.config/herdr",
+  "lab_config_path": "<home>/.config/herdr",
   "lab_config_is_directory": true,
   "lab_config_os_write_execute_access": true,
   "lab_config_mount_readonly": false,
   "disk_available_bytes": 27022823424,
   "mem_available_bytes": 56307605504,
-  "helper_path": "/home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh",
+  "helper_path": "<checkout>/bin/fm-herdr-lab.sh",
   "helper_sha256": "e862f07947698ae19feb99529538dffc7710d21c6f06182c9d868142e750f317",
   "preflight_passed": true
 }

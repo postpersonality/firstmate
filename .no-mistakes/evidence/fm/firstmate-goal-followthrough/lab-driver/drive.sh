@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 # Live lab driver for the completion follow-through change. Runs the real
 # firstmate scripts from the gate worktree against a disposable marked lab home
 # (plain FM_HOME, no FM_*_OVERRIDE, private tmux server). Only external tools
@@ -6,7 +7,7 @@
 # answers #{pane_current_path} because the sandbox PID namespace hides
 # /proc/<pane-pid>/cwd from tmux. Everything else is real.
 set -u
-ROOT=/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5CB1FM3S4GJGSJ45M4DMDBH
+ROOT=<validation-worktree>
 W="$TMPDIR/fmtest"
 cd "$ROOT" || exit 1
 

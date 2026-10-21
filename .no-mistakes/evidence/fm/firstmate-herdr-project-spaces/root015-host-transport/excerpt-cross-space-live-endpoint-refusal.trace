@@ -1,9 +1,10 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 + echo 'ok - public spawn replaces only its own exactly recorded shell husk'
 + spawn elsewhere /tmp/fm-herdr-project.h6NKmt/beta
 + write_brief elsewhere
 + mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/elsewhere
 + printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
-+ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh elsewhere /tmp/fm-herdr-project.h6NKmt/beta 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ <validation-worktree>/bin/fm-spawn.sh elsewhere /tmp/fm-herdr-project.h6NKmt/beta 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
 + case "$(field "$1" worktree)" in
 ++ field elsewhere worktree
 ++ sed -n 's/^worktree=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta
@@ -16,12 +17,12 @@
 ++ sed -n 's/^herdr_pane_id=//p' /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta
 + live_pane=w2:p2
 + lab pane run w2:p2 'sleep 600'
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux
 + lab pane report-agent w2:p2 --source fm-launcher-e2e --agent fm-launcher-live-agent --state idle
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux
 + (( i=0 ))
 + (( i<50 ))
-++ bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state "$2" "$3"' _ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6 fm-lab-firstmate-herdr-1539551-17534 w2:p2
+++ bash -c '. "$1/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state "$2" "$3"' _ <validation-worktree> <lab-session-1> w2:p2
 + state=live
 + '[' live '!=' live ']'
 + break
@@ -29,13 +30,13 @@
 + cp /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta /tmp/fm-herdr-project.h6NKmt/elsewhere.meta.before
 ++ lab tab list --workspace w3
 ++ jq -c '[.result.tabs[].tab_id]'
-++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linu
+++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linu
 + alpha_tabs='["w3:t1","w3:t2","w3:t4"]'
 + spawn elsewhere /tmp/fm-herdr-project.h6NKmt/alpha
 + write_brief elsewhere
 + mkdir -p /tmp/fm-herdr-project.h6NKmt/operator/firstmate/data/elsewhere
 + printf '# Task\n## Captain\x27s intent\nExercise project placement.\n\n## Firstmate spec\nRun the fixture command in an isolated copy.\n'
-+ /home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6/bin/fm-spawn.sh elsewhere /tmp/fm-herdr-project.h6NKmt/alpha 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
++ <validation-worktree>/bin/fm-spawn.sh elsewhere /tmp/fm-herdr-project.h6NKmt/alpha 'sh -c '\''echo placement-fixture-ran'\''' --mode no-mistakes --yolo off --backend herdr
 + cat /tmp/fm-herdr-project.h6NKmt/elsewhere.err
 + return 1
 + case "$(cat "$TMP_ROOT/elsewhere.err")" in
@@ -43,9 +44,9 @@
 + case "$(cat "$TMP_ROOT/elsewhere.err")" in
 + cmp -s /tmp/fm-herdr-project.h6NKmt/operator/firstmate/state/elsewhere.meta /tmp/fm-herdr-project.h6NKmt/elsewhere.meta.before
 ++ lab tab list --workspace w3
-++ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linu
+++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linu
 ++ jq -c '[.result.tabs[].tab_id]'
 + '[' '["w3:t1","w3:t2","w3:t4"]' = '["w3:t1","w3:t2","w3:t4"]' ']'
 + lab pane get w2:p2
-+ env PATH=/home/nikolayseliverstov/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.kimi-code/bin:/home/nikolayseliverstov/.grok/bin:/home/nikolayseliverstov/.local/bin:/home/nikolayseliverstov/.local/bin:/opt/devkitpro/tools/bin:/home/nikolayseliverstov/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:/home/nikolayseliverstov/.codex/tmp/arg0-linux
++ env PATH=<home>/bin:<home>/.local/bin:<home>/.kimi-code/bin:<home>/.grok/bin:<home>/.local/bin:<home>/.local/bin:/opt/devkitpro/tools/bin:<home>/.codex/packages/standalone/releases/0.163.0-x86_64-unknown-linux-musl/codex-path:<home>/.codex/tmp/arg0-linux
 + pass 'live endpoint recorded in another Space refuses fresh spawn before any tab or record change'

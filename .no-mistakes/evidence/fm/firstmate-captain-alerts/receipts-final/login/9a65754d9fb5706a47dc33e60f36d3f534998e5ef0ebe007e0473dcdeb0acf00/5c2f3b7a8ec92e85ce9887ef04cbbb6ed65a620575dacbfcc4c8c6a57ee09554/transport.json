@@ -1,10 +1,11 @@
 {
-  "command": "/home/nikolayseliverstov/.local/share/claude/versions/2.1.304",
+  "_privacy_review": "Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.",
+  "command": "<home>/.local/share/claude/versions/2.1.304",
   "executable_sha256": "ea0f135784631619a7a409d07322ecec964f9cc4fd377508ed1ba3f141f27912",
   "exit_code": 0,
   "stdout_sha256": "44049b7012738d879dde621d9974a0842f5ede823b46e7ef1848e0be26654c81",
   "request_sha256": "5c2f3b7a8ec92e85ce9887ef04cbbb6ed65a620575dacbfcc4c8c6a57ee09554",
-  "session_id": "4968dad4-3ee3-412b-86d3-5b30e99ad18e",
+  "session_id": "<session-7>",
   "modelUsage": {
     "claude-opus-5-5": {
       "inputTokens": 2,

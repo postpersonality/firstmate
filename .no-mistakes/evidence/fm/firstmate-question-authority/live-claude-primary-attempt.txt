@@ -1,10 +1,11 @@
+# Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.
 claude -p (Claude Code 2.1.304) started from an exported plain checkout of d639c06 with FM_HOME=<disposable lab home>.
 SessionStart hook results reported by the CLI stream:
- - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '/home/nikolayseliverstov/.claude/session-env/5a59a74b-eee2-4533-a92f-8aaac9f3e26f'
- - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '/home/nikolayseliverstov/.claude/session-env/5a59a74b-eee2-4533-a92f-8aaac9f3e26f'
- - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '/home/nikolayseliverstov/.claude/session-env/5a59a74b-eee2-4533-a92f-8aaac9f3e26f'
- - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '/home/nikolayseliverstov/.claude/session-env/5a59a74b-eee2-4533-a92f-8aaac9f3e26f'
- - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '/home/nikolayseliverstov/.claude/session-env/5a59a74b-eee2-4533-a92f-8aaac9f3e26f'
- - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '/home/nikolayseliverstov/.claude/session-env/5a59a74b-eee2-4533-a92f-8aaac9f3e26f'
+ - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '<session-env>/<session-id>'
+ - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '<session-env>/<session-id>'
+ - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '<session-env>/<session-id>'
+ - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '<session-env>/<session-id>'
+ - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '<session-env>/<session-id>'
+ - SessionStart:startup => Failed to run: EROFS: read-only file system, mkdir '<session-env>/<session-id>'
 assistant answer to "quote the Question authority line": ['**Как я понял задачу:** Quote the startup-digest line that begins with "Question authority (mandatory)" or write NONE. Then say yes or no to publishing the continue-or-stop question and name the one rule behind the answer.', '**1) NONE.**', 'My context holds no output of `bin/fm-session-start.sh`, so it contains no line beginning with "Question authority (mandatory)".']
 result: success turns 1

@@ -1,11 +1,12 @@
 {
-  "cwd": "/home/nikolayseliverstov/.no-mistakes/worktrees/8d2cf6c97984/01M5DT0T26N5HWGKHN66HD74J6",
+  "_privacy_review": "Privacy-reviewed historical copy: paths and runtime identifiers are normalized; this is not a new test run. Recorded checksums refer to originals. See PRIVACY-NOTICE.md.",
+  "cwd": "<validation-worktree>",
   "expected_head": "a5dcdb5ff08d8070a4a475faa05d925c563201b2",
   "transport": "existing Codex task host, Root015",
   "timeout_owner": "bin/fm-timeout-lib.sh:fm_run_timed",
   "per_suite_bound_seconds": 600,
   "environment": {
-    "HERDR_LAB_HELPER": "/home/nikolayseliverstov/Projects/firstmate/bin/fm-herdr-lab.sh"
+    "HERDR_LAB_HELPER": "<checkout>/bin/fm-herdr-lab.sh"
   },
   "suites": [
     {
@@ -15,9 +16,9 @@
         "bash",
         "tests/fm-backend-herdr.test.sh"
       ],
-      "stdout": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-1.stdout",
-      "stderr": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-1.stderr",
-      "exit": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-1.exit",
+      "stdout": "<task-record>/root015-suite-1.stdout",
+      "stderr": "<task-record>/root015-suite-1.stderr",
+      "exit": "<task-record>/root015-suite-1.exit",
       "exact_bounded_command_argv": [
         "fm_run_timed",
         "600",
@@ -33,10 +34,10 @@
         "-x",
         "tests/fm-backend-herdr-launcher-workspace-e2e.test.sh"
       ],
-      "stdout": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-2.stdout",
-      "stderr": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-2.stderr",
-      "exit": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-2.exit",
-      "trace": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-2.trace",
+      "stdout": "<task-record>/root015-suite-2.stdout",
+      "stderr": "<task-record>/root015-suite-2.stderr",
+      "exit": "<task-record>/root015-suite-2.exit",
+      "trace": "<task-record>/root015-suite-2.trace",
       "trace_fd": 19,
       "trace_environment": {
         "BASH_XTRACEFD": "19"
@@ -59,10 +60,10 @@
         "-x",
         "tests/fm-backend-herdr-workspace-per-home-e2e.test.sh"
       ],
-      "stdout": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-3.stdout",
-      "stderr": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-3.stderr",
-      "exit": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-3.exit",
-      "trace": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-3.trace",
+      "stdout": "<task-record>/root015-suite-3.stdout",
+      "stderr": "<task-record>/root015-suite-3.stderr",
+      "exit": "<task-record>/root015-suite-3.exit",
+      "trace": "<task-record>/root015-suite-3.trace",
       "trace_fd": 19,
       "trace_environment": {
         "BASH_XTRACEFD": "19"
@@ -85,10 +86,10 @@
         "-x",
         "tests/fm-backend-herdr-presentation-e2e.test.sh"
       ],
-      "stdout": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-4.stdout",
-      "stderr": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-4.stderr",
-      "exit": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-4.exit",
-      "trace": "/home/nikolayseliverstov/Projects/firstmate/data/firstmate-herdr-project-spaces/root015-suite-4.trace",
+      "stdout": "<task-record>/root015-suite-4.stdout",
+      "stderr": "<task-record>/root015-suite-4.stderr",
+      "exit": "<task-record>/root015-suite-4.exit",
+      "trace": "<task-record>/root015-suite-4.trace",
       "trace_fd": 19,
       "trace_environment": {
         "BASH_XTRACEFD": "19"
