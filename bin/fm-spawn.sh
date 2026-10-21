@@ -3299,7 +3299,7 @@ if [ "$KIND" = ship ]; then
     else
       forge_scaffold="fm-brief.sh $ID $PROJ_NAME --mode $MODE --forge $STANDING_FORGE"
     fi
-    echo "error: forge mismatch for $ID: $PROJ_NAME is registered forge=$STANDING_FORGE but $SOURCE_BRIEF records forge=$BRIEF_FORGE; keep the filled Task subsection bodies, remove $SOURCE_BRIEF, re-scaffold it with $forge_scaffold, then re-fill those subsections, so the worker's publication matches the project's forge" >&2
+    echo "error: forge mismatch for $ID: $PROJ_NAME is registered forge=$STANDING_FORGE but $SOURCE_BRIEF records forge=$BRIEF_FORGE; keep the filled ## Captain's intent, ## Firstmate spec and any ## Public intent bodies, remove $SOURCE_BRIEF, re-scaffold it with $forge_scaffold, then re-fill those subsections, so the worker's publication matches the project's forge" >&2
     exit 1
   fi
   # Merge authority on a Gerrit forge is refused rather than quietly dropped, on
