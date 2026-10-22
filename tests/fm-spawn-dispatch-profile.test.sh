@@ -2326,6 +2326,36 @@ test_effort_pin_resolves_an_omitted_effort() {
   pass "the worker effort pin launches an omitted effort on the pinned level"
 }
 
+test_effort_pin_accepts_max_for_luna_and_refuses_unsupported_models() {
+  local rec id out status
+  id="effort-pin-max-luna-z55"
+  rec=$(make_spawn_case effort-pin-max-luna codex "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" max
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --harness codex --model gpt-5.6-luna --effort max)
+  status=$?
+  expect_code 0 "$status" "a max pin should allow Luna's native max setting"$'\n'"$out"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" codex gpt-5.6-luna max
+  assert_contains "$(cat "$LAUNCH_LOG")" "codex --model 'gpt-5.6-luna' -c 'model_reasoning_effort=\"max\"'" \
+    "the max pin did not reach Luna's native effort setting"
+
+  id="effort-pin-max-unsupported-z56"
+  rec=$(make_spawn_case effort-pin-max-unsupported codex "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" max
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --harness codex --model gpt-5)
+  status=$?
+  expect_code 1 "$status" "a max pin must refuse for a Codex model without native max support"
+  assert_contains "$out" "the codex runtime with model gpt-5 has no verified native setting for it" \
+    "the refusal must name the unsupported model"
+  assert_refused_before_launch "$id" "a max pin for an unsupported model"
+  pass "the max effort pin uses Luna's native setting and refuses unsupported models"
+}
+
 test_effort_pin_refuses_a_different_effort_before_any_launch() {
   local rec id out status effort
   for effort in medium high; do
@@ -2389,13 +2419,13 @@ test_effort_pin_malformed_file_refuses_and_removal_restores_choice() {
   rec=$(make_spawn_case effort-pin-malformed claude "$id")
   read_case_record "$rec"
   log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
-  for bad in 'xhigh high' extreme XHIGH '' medium max; do
+  for bad in 'xhigh high' extreme XHIGH '' medium; do
     n=$((n + 1))
     pin_worker_effort "$HOME_DIR" "$bad"
     out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
     status=$?
     expect_code 1 "$status" "malformed pin '$bad' must refuse"
-    assert_contains "$out" "config/crew-effort must hold exactly xhigh (got '$bad')" \
+    assert_contains "$out" "config/crew-effort must hold exactly xhigh or max (got '$bad')" \
       "the refusal must quote the malformed pin '$bad'"
     assert_refused_before_launch "$id" "malformed pin $n"
   done
@@ -2585,6 +2615,7 @@ test_keep_ai_trailers_reaches_secondmate_crew_launches
 test_claude_secondmate_launch_carries_the_attribution_policy
 test_active_dispatch_profile_does_not_block_secondmate_launch
 test_effort_pin_resolves_an_omitted_effort
+test_effort_pin_accepts_max_for_luna_and_refuses_unsupported_models
 test_effort_pin_refuses_a_different_effort_before_any_launch
 test_effort_pin_refuses_a_runtime_that_cannot_carry_it
 test_effort_pin_malformed_file_refuses_and_removal_restores_choice

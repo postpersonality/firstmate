@@ -883,7 +883,7 @@ test_effort_pin_binds_a_relaunch_before_the_agent_stops() {
     case "$args" in
     --effort*) assert_contains "$out" "config/crew-effort pins worker effort to xhigh, but this launch requests ${args#--effort }" "the '$args' refusal must name the pin" ;;
     --harness*) assert_contains "$out" "the grok runtime has no verified native setting for it" "the grok refusal must name the runtime" ;;
-    *) assert_contains "$out" "config/crew-effort must hold exactly xhigh (got 'medium')" "a former level in the pin must refuse as malformed" ;;
+    *) assert_contains "$out" "config/crew-effort must hold exactly xhigh or max (got 'medium')" "a former level in the pin must refuse as malformed" ;;
     esac
     [ "$(cat "$dir/fake/command")" = claude ] || fail "a refused '$args' relaunch stopped the running agent"
     [ ! -s "$dir/fake/literal" ] || fail "a refused '$args' relaunch sent lifecycle input"

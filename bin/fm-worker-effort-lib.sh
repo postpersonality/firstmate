@@ -134,7 +134,7 @@ fm_effort_flag_for_harness() {
 
 # fm_worker_effort_pin <config-dir>: print the pinned effort, empty when
 # config/crew-effort is absent. Non-zero with the reason on stderr when the
-# file is unreadable or does not hold exactly xhigh.
+# file is unreadable or does not hold exactly xhigh or max.
 fm_worker_effort_pin() {
   local file=$1/crew-effort present value
   present=$(perl -MErrno=ENOENT -e '
@@ -154,9 +154,9 @@ fm_worker_effort_pin() {
   value=${value#"${value%%[![:space:]]*}"}
   value=${value%"${value##*[![:space:]]}"}
   case "$value" in
-  xhigh) printf '%s' "$value" ;;
+  xhigh | max) printf '%s' "$value" ;;
   *)
-    echo "error: config/crew-effort must hold exactly xhigh (got '$value'); fix or remove the file" >&2
+    echo "error: config/crew-effort must hold exactly xhigh or max (got '$value'); fix or remove the file" >&2
     return 1
     ;;
   esac
