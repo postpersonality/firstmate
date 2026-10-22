@@ -281,7 +281,8 @@ fm_brief_marked_captain_words() {  # <task-body>
 }
 
 fm_brief_public_intent() {  # <brief> -> prepared public validation input
-  local public private
+  local public private legacy
+  private=
   public=$(fm_brief_task_heading_body "$1" '## Public intent')
   case "$(printf '%s' "$public" | tr -d '[:space:]')" in
     ''|'{PUBLIC_INTENT}')
@@ -290,11 +291,11 @@ fm_brief_public_intent() {  # <brief> -> prepared public validation input
   esac
   if fm_brief_task_heading_present "$1" "## Captain's intent"; then
     private=$(fm_brief_task_heading_body "$1" "## Captain's intent")
-  else
-    private=$(fm_brief_marked_captain_words "$(fm_brief_heading_body "$1" '# Task')")
   fi
-  if [ "$(printf '%s' "$public" | tr -d '[:space:]')" = "$(printf '%s' "$private" | tr -d '[:space:]')" ]; then
-    echo "error: ## Public intent copies the complete private Captain's intent; replace it with a reviewed formal technical paraphrase before validation" >&2
+  legacy=$(fm_brief_marked_captain_words "$(fm_brief_heading_body "$1" '# Task')")
+  if [ "$(printf '%s' "$public" | tr -d '[:space:]')" = "$(printf '%s' "$private" | tr -d '[:space:]')" ] ||
+    [ "$(printf '%s' "$public" | tr -d '[:space:]')" = "$(printf '%s' "$legacy" | tr -d '[:space:]')" ]; then
+    echo "error: ## Public intent copies the complete private Captain's intent or retained legacy captain words; replace it with a reviewed formal technical paraphrase before validation" >&2
     return 1
   fi
   printf '%s\n' "$public"
