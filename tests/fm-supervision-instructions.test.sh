@@ -8,6 +8,45 @@ set -u
 TMP_ROOT=$(fm_test_tmproot fm-supervision-instructions)
 RENDER="$ROOT/bin/fm-supervision-instructions.sh"
 
+test_question_authority_reaches_every_primary() {
+  local harness out owner="$ROOT/.agents/skills/ask-user-authority/SKILL.md"
+  for harness in unknown claude codex cursor grok opencode omp pi pi-signed; do
+    out=$("$RENDER" --harness "$harness") || fail "$harness: instruction rendering failed"
+    assert_equals "$(printf '%s\n' "$out" | grep -cF "$owner")" 1 \
+      "$harness: startup must point to the question authority owner exactly once"
+    assert_not_contains "$out" 'is missing or empty' "$harness: present policy rendered the missing-owner diagnostic"
+  done
+  pass "every primary protocol, including unknown/API, points to question authority"
+}
+
+# Test the rendering dependency, not the wording or the agent's semantic judgment.
+test_question_policy_pointer_keeps_protocol() {
+  local root owner script out
+  root="$TMP_ROOT/policy-root"
+  owner="$root/.agents/skills/ask-user-authority/SKILL.md"
+  script="$root/bin/fm-supervision-instructions.sh"
+  mkdir -p "$root/bin" "$root/docs/supervision-protocols" "$(dirname "$owner")"
+  cp "$RENDER" "$root/bin/"
+  printf 'fixture harness protocol\n' > "$root/docs/supervision-protocols/unknown.md"
+  printf '# ask-user-authority\nfixture policy body\n' > "$owner"
+  out=$(bash "$script" --harness unknown) || fail "fixture render failed"
+  assert_contains "$out" "$owner" "renderer did not point to its policy owner"
+  assert_not_contains "$out" 'is missing or empty' "present policy rendered the missing-owner diagnostic"
+  assert_not_contains "$out" 'fixture policy body' "renderer embedded the policy body instead of pointing to it"
+  rm "$owner"
+  out=$(bash "$script" --harness unknown) || fail "missing policy blocked the watcher protocol"
+  assert_contains "$out" 'fixture harness protocol' "missing policy dropped the watcher protocol"
+  assert_contains "$out" "$owner is missing or empty" "missing policy diagnostic omitted its owner"
+  : > "$owner"
+  out=$(bash "$script" --harness unknown) || fail "empty policy blocked the watcher protocol"
+  assert_contains "$out" 'fixture harness protocol' "empty policy dropped the watcher protocol"
+  assert_contains "$out" "$owner is missing or empty" "empty policy diagnostic omitted its owner"
+  pass "renderer points to the policy owner and keeps the watcher protocol when it is absent or empty"
+}
+
+test_question_authority_reaches_every_primary
+test_question_policy_pointer_keeps_protocol
+
 test_selected_harness_block_only() {
   local out
   out=$("$RENDER" --harness codex)
