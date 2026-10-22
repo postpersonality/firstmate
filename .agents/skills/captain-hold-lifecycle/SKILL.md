@@ -13,6 +13,7 @@ metadata:
 A decision is not a separate thing: it is simply a task waiting on the captain.
 The one primitive is an ordinary backlog task held for the captain through `bin/fm-captain-hold.sh hold`; its identity is the task id, and that wrapper owns the deterministic mechanics this policy relies on.
 The agent performs the semantic inventory because scripts must not infer captain calls from report prose, visual-review artifacts, terminal output, or chat.
+Before publishing or holding a proposed question, apply `ask-user-authority`, the semantic owner that determines whether the call actually requires the captain.
 
 ## Policy
 

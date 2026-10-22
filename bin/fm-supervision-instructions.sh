@@ -8,8 +8,13 @@
 # adds one state line and the host's main-side protocol
 # (docs/supervision-protocols/supervision-host.md, whose lines tagged
 # "{<harness>,...} " render only for the listed harnesses), and Grok's arm
-# command becomes the host; on a home that does not run it the output is
-# unchanged.
+# command becomes the host; a home that does not run it keeps its ordinary
+# harness protocol.
+# Every full block also carries one mandatory pointer to the ask-user-authority
+# semantic owner before question publication, including on unknown/API primaries.
+# This delivers instructions, not a hook on native question tools. A missing or
+# empty owner turns the pointer into a diagnostic line naming it; the watcher
+# protocol still renders.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,6 +37,7 @@ usage() {
 Usage: fm-supervision-instructions.sh [--harness <name>] [--read-only 0|1] [--afk 0|1] [--afk-mode away|quiet] [--x-mode 0|1] [--repair-line] [--queue-pending 0|1]
 
 Print the current primary harness's supervision operating instructions.
+Full output points every harness to the required question-authority policy.
 With --repair-line, print one concise repair instruction for guard and hook messages.
 --afk-mode only matters when --afk 1 (present); it selects the away-mode vs
 quiet-mode (kunchenguid/firstmate#2356) wording, and defaults to away.
@@ -274,6 +280,13 @@ fi
 ordinary_wake_line
 printf '\n'
 render_snippet
+printf '\n'
+AUTHORITY="$REPO_ROOT/.agents/skills/ask-user-authority/SKILL.md"
+if [ -s "$AUTHORITY" ]; then
+  printf 'Question authority (mandatory): before deciding an ask-user finding or publishing any question through a native question tool such as functions.request_user_input_async, chat, a board, or a captain hold, load and apply the ask-user-authority skill (%s); it decides whether the call needs the captain, and no hook intercepts native question tools.\n' "$AUTHORITY"
+else
+  printf 'Question authority (mandatory): the ask-user-authority policy owner %s is missing or empty; restore it before deciding an ask-user finding or publishing any question.\n' "$AUTHORITY"
+fi
 printf '\n'
 if [ -n "$HOST_SNIPPET" ]; then
   render_snippet "$HOST_SNIPPET"
