@@ -285,8 +285,11 @@ fm_brief_public_intent() {  # <brief> -> prepared public validation input
   private=
   public=$(fm_brief_task_heading_body "$1" '## Public intent')
   case "$(printf '%s' "$public" | tr -d '[:space:]')" in
-    ''|'{PUBLIC_INTENT}')
+    '')
       echo 'error: no-mistakes requires a prepared ## Public intent under # Task; preserve the original privately and add a reviewed formal technical paraphrase before validation (no private fallback)' >&2
+      return 1 ;;
+    *'{PUBLIC_INTENT}'*)
+      echo 'error: no-mistakes requires prepared ## Public intent without the {PUBLIC_INTENT} placeholder token' >&2
       return 1 ;;
   esac
   if fm_brief_task_heading_present "$1" "## Captain's intent"; then

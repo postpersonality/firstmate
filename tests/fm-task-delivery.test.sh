@@ -111,7 +111,7 @@ EOF
   assert_grep 'the latest such replacement wins' "$launch" "the launch contract did not order public intent replacements"
   assert_grep 'PRIVATE_DIALOGUE_SENTINEL' "$brief" "private source was not retained"
 
-  for variant in missing blank placeholder outside-task; do
+  for variant in missing blank placeholder partial-placeholder outside-task; do
     id="public-intent-$variant"
     write_brief "$home" "$id" no-mistakes
     brief="$home/data/$id/brief.md"
@@ -124,6 +124,10 @@ EOF
       placeholder) sed '/^## Firstmate spec/i\
 ## Public intent\
 {PUBLIC_INTENT}\
+' "$brief" > "$brief.tmp"; mv "$brief.tmp" "$brief" ;;
+      partial-placeholder) sed '/^## Firstmate spec/i\
+## Public intent\
+Retain approved constraints around {PUBLIC_INTENT}.\
 ' "$brief" > "$brief.tmp"; mv "$brief.tmp" "$brief" ;;
       outside-task) printf '\n# Notes\n## Public intent\n%s\n' "$public" >> "$brief" ;;
     esac
@@ -215,6 +219,22 @@ EOF
   [ "$status" -ne 0 ] || fail "promotion with a hybrid legacy copy succeeded"
   assert_contains "$out" 'copies the complete private' "promotion did not reject copied hybrid legacy words"
   assert_absent "$home/data/$id/ship-instructions.md" "promotion serialized copied hybrid instructions"
+  cat > "$brief" <<'EOF'
+# Task
+## Captain's intent
+Fix that problem.
+
+## Public intent
+Retain approved constraints around {PUBLIC_INTENT}.
+
+## Firstmate spec
+Use the existing implementation helper.
+EOF
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "promotion with a partial public placeholder succeeded"
+  assert_contains "$out" 'placeholder token' "promotion did not explain the public placeholder"
+  assert_absent "$home/data/$id/ship-instructions.md" "promotion serialized a public placeholder"
   cat > "$brief" <<EOF
 # Task
 ## Captain's intent
