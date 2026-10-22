@@ -38,6 +38,12 @@ focus_tab=$(printf '%s' "$focus" | jq -r '.result.tab.tab_id')
 # Exact recovery waits past the default bounded attempt only when explicitly
 # requested; it then replaces its saved husk without taking parent or focus.
 write_brief "$id"
+# Exact journal recovery is authorized only by this home's ordinary task
+# record binding the same session, workspace, tab and pane. The journal alone
+# must remain a quarantined legacy Space.
+printf 'backend=herdr\nwindow=%s:%s\nherdr_session=%s\nherdr_workspace_id=%s\nherdr_tab_id=%s\nherdr_pane_id=%s\n' \
+  "$HERDR_LAB_SESSION" "$pane" "$HERDR_LAB_SESSION" "$workspace" "$tab" "$pane" \
+  > "$FM_HOME/state/$id.meta"
 lock=$(fm_backend_herdr_presentation_session_lock_path "$HERDR_LAB_SESSION")
 fm_lock_try_acquire "$lock" || fail 'could not acquire legacy fixture lock'
 "$ROOT/bin/fm-spawn.sh" "$id" "$project" "sh -c 'echo placement-fixture-ran'" \

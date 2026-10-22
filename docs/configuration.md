@@ -62,7 +62,7 @@ Other transient consumers retain their existing shell-relative behavior.
 
 | Backend | Effect of the operational home |
 | --- | --- |
-| herdr | `FM_HOME` determines the adapter's workspace label. |
+| herdr | `FM_HOME` determines the persistent secondmate home-container label; worker tabs use project Spaces ([Herdr backend](herdr-backend.md#project-space-identity)). |
 | zellij | `FM_HOME` determines the readable home prefix in visible tab titles, but does not split containers; use `FM_ZELLIJ_SESSION` for a separate session; the full home label also includes a short hash of the resolved `FM_ROOT` path. |
 | cmux | `FM_HOME` determines the default config path and readable home prefix in workspace titles; `FM_CONFIG_OVERRIDE` overrides where `config/cmux-socket-password` is read; the full home label also includes a short hash of the resolved `FM_ROOT` path; there is no per-home container split. |
 
