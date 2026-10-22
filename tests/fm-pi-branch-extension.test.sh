@@ -1046,11 +1046,12 @@ const requestedPrompts = [...longRequests, "FIRSTMATE give me a fresh system-res
 // the expanded prompt before _runAgentPrompt appends its user message to the
 // SessionManager. Keeping entries stale at the hook boundary is the regression.
 const entries = [];
+let mainEntryReads = 0;
 const mainCtx = {
   model: { provider: "anthropic", id: "main-model" },
   sessionManager: {
     getSessionFile: () => `${home}/main.jsonl`,
-    getEntries: () => entries,
+    getEntries: () => { mainEntryReads += 1; return entries; },
   },
 };
 const operational = spawnSync(
@@ -1071,11 +1072,16 @@ const customRunMessages = [
   { customType: "fm-branch-merge", content: customRunTexts[0], display: false },
   { customType: "firstmate-sessionstart-nudge", content: customRunTexts[1], display: false, timestamp: 0 },
 ];
-for (const message of customRunMessages) {
+for (const [index, message] of customRunMessages.entries()) {
+  const customEntryReadCount = mainEntryReads;
   await fire("before_agent_start", {
     messageType: "custom",
     message: { role: "custom", ...message },
   }, mainCtx);
+  if (mainEntryReads !== customEntryReadCount) {
+    const name = index === 0 ? "an unrelated custom run" : "an unrelated session-start nudge";
+    throw new Error(`${name} scanned main dialog`);
+  }
 }
 const unsolicitedPrompt = "Please keep responses concise while monitoring the fleet.";
 await fire("before_agent_start", { prompt: unsolicitedPrompt }, mainCtx);

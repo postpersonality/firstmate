@@ -1670,6 +1670,11 @@ ${context.command}
   // synchronous read it replaces did. The generation is captured before that
   // await so a session replaced while it runs cannot be staged into.
   pi.on?.("before_agent_start", async (event, ctx) => {
+    const opened = event.messageType === "custom" ? event.message.content : event.prompt;
+    processingOpenedThisRun = event.messageType === "custom" &&
+      queuedProcessingContent !== null && opened === queuedProcessingContent;
+    if (event.messageType === "custom" && !processingOpenedThisRun) return;
+
     rememberMainModel(ctx);
     currentMainSession = ctx?.sessionManager ?? null;
     const promptGeneration = generation;
@@ -1682,8 +1687,6 @@ ${context.command}
     // Stage it verbatim and remember the future persisted index for turn_end's
     // duplicate suppression. Operational extension injections are not dialog,
     // and neither is a run Pi starts from an idle custom message (no prompt).
-    const opened = event.messageType === "custom" ? event.message.content : event.prompt;
-    processingOpenedThisRun = queuedProcessingContent !== null && opened === queuedProcessingContent;
     if (event.messageType === "custom") return;
     const prompt = event.prompt;
     const trimmed = prompt.trim();
