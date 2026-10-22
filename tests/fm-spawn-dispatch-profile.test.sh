@@ -2317,6 +2317,62 @@ assert_refused_before_launch() {  # <id> <what>
   assert_no_endpoint_calls "$CASE_DIR/endpoint.log" "$2"
 }
 
+test_effort_pin_preserves_unpinned_dsh_and_refuses_before_provisioning() {
+  local rec id out status config dshroot dshbin herdrlog
+  [ "$(uname -s)" = Linux ] || { pass "DSH effort-pin preflight is Linux-only"; return; }
+
+  # The shared mapper is the exact route fm-spawn uses for an unpinned DSH
+  # request; the bridge's ACP behavior is exercised by fm-dsh-worker.test.sh.
+  # shellcheck source=bin/fm-worker-effort-lib.sh
+  . "$ROOT/bin/fm-worker-effort-lib.sh"
+  config="$TMP_ROOT/dsh-unpinned-config"
+  mkdir -p "$config"
+  out=$(fm_worker_effort_apply "$config" low dsh litellm/test 0) \
+    || fail "an unpinned DSH request was refused"
+  [ "$out" = low ] || fail "an unpinned DSH request changed from low to '$out'"
+  out=$(fm_effort_flag_for_harness dsh "$out" litellm/test)
+  [ "$out" = "--effort 'low' " ] || fail "the unpinned DSH route lost its native effort request: $out"
+
+  id="effort-pin-dsh-refused-z58"
+  rec=$(make_spawn_case effort-pin-dsh-refused dsh "$id")
+  read_case_record "$rec"
+  pin_worker_effort "$HOME_DIR" xhigh
+  dshroot="$CASE_DIR/dsh/node_modules/@deepseek-ai/dsh"
+  mkdir -p "$dshroot/lib"
+  printf '%s\n' '{"name":"@deepseek-ai/dsh","version":"0.2.1-rc.2"}' > "$dshroot/package.json"
+  dshbin="$dshroot/lib/bin.js"
+  cat > "$dshbin" <<'JS'
+#!/usr/bin/env node
+if (process.argv.includes('--version')) console.log('0.2.1-rc.2');
+JS
+  chmod +x "$dshbin"
+  ln -s "$dshbin" "$FAKEBIN_DIR/dsh"
+  herdrlog="$CASE_DIR/herdr.log"
+  cat > "$FAKEBIN_DIR/herdr" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FM_TEST_HERDR_LOG"
+if [ "${1:-}" = status ] && [ "${2:-}" = --json ]; then
+  printf '%s\n' '{"client":{"protocol":14,"version":"0.7.1"},"server":{"running":false}}'
+fi
+exit 0
+SH
+  chmod +x "$FAKEBIN_DIR/herdr"
+  log_endpoint_calls "$FAKEBIN_DIR" "$CASE_DIR/endpoint.log"
+  out=$(FM_TEST_HERDR_LOG="$herdrlog" run_ship_spawn "$HOME_DIR" "$WT_DIR" \
+    "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --harness dsh --model litellm/test --backend herdr)
+  status=$?
+  expect_code 1 "$status" "a strict pin must refuse DSH before provisioning"
+  assert_contains "$out" "DSH reports selected-model effort support only after ACP session setup" \
+    "the refusal must explain why Firstmate cannot verify DSH's pin before launch"
+  assert_refused_before_launch "$id" "a pinned DSH spawn"
+  assert_absent "$HOME_DIR/state/$id.busy-gen" "a pinned DSH spawn still armed a worker"
+  if [ -s "$herdrlog" ] && grep -Eq '(^| )(server|workspace create|tab create|pane run|pane send-text)( |$)' "$herdrlog"; then
+    fail "a pinned DSH spawn reached an effectful Herdr operation:"$'\n'"$(cat "$herdrlog")"
+  fi
+  pass "unpinned DSH effort remains intact and a pinned DSH launch refuses before provisioning"
+}
+
 test_effort_pin_resolves_an_omitted_effort() {
   local rec id out status
   id="effort-pin-claude-z40"
@@ -2670,6 +2726,7 @@ test_keep_ai_trailers_omits_attribution_settings_and_strip_hooks
 test_keep_ai_trailers_reaches_secondmate_crew_launches
 test_claude_secondmate_launch_carries_the_attribution_policy
 test_active_dispatch_profile_does_not_block_secondmate_launch
+test_effort_pin_preserves_unpinned_dsh_and_refuses_before_provisioning
 test_effort_pin_resolves_an_omitted_effort
 test_effort_pin_pi_refuses_a_model_that_would_clamp
 test_effort_pin_accepts_max_for_luna_and_refuses_unsupported_models

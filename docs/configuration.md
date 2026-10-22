@@ -1004,6 +1004,7 @@ A pinned launch must carry its level through the runtime's own verified setting,
 | --- | --- |
 | `claude`, `codex`, `pi`, `pi-signed`, `omp`, `muse` | Launches with the runtime's native effort setting. For `pi` and `pi-signed`, the selected model must also report the pinned level in Pi's native supported-level list. |
 | `opencode` | Launches only with an `openai/<id>` model, whose variant list carries `xhigh`; any other model refuses. |
+| `dsh` | Refuses with a pin: DSH may support the level, but its ACP session reports model-specific effort options only after setup, too late for Firstmate to verify the pin before provisioning or stopping a worker. Unpinned launches retain the existing `--effort` request and native-default fallback. |
 | `grok`, `agy`, `rovo`, `kimi`, `cursor`, `gemini`, `devin` | Refuses, because the runtime has no verified `xhigh` setting. |
 | A raw launch command | Refuses, because Firstmate cannot verify which effort a raw command applies. |
 

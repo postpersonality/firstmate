@@ -212,7 +212,7 @@ fm_worker_effort_apply() {
     return 1
   fi
   if [ "$harness" = dsh ]; then
-    echo "error: config/crew-effort pins worker effort to $pin, but DSH reports selected-model effort support only after ACP session setup; refusing before launch rather than risk using the native default" >&2
+    echo "error: config/crew-effort pins worker effort to $pin, but DSH reports selected-model effort support only after ACP session setup; refusing before provisioning or stopping a worker rather than risk using the native default" >&2
     return 1
   fi
   case "$model" in - | default) model= ;; esac
