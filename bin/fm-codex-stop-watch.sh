@@ -26,7 +26,8 @@
 # each return another continuation. Another thread's Stop never parks here,
 # and a duplicate attachment while the owning app-server lives is never blocked.
 # Interrupting the native turn cancels its synchronous hook and its foreground
-# checkpoint. Empty homes and a verified away daemon do not park here.
+# checkpoint. Empty homes and a verified away daemon with a fresh watcher
+# beacon do not park here.
 # FM_CODEX_STOP_CHECKPOINT may shorten the bound (1..20), never raise it.
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,7 +71,7 @@ lock_status=0
 owned || (fm_exec_timed 8 1 "$SCRIPT_DIR/fm-lock.sh") >/dev/null 2>&1 || lock_status=$?
 fm_supervision_status "$STATE"
 if [ "$FM_SUP_NEEDED" = false ] && [ "$FM_SUP_QUEUE_PENDING" = false ]; then exit 0; fi
-if fm_afk_daemon_owns_supervision "$STATE"; then exit 0; fi
+if fm_afk_daemon_owns_supervision "$STATE" && [ "$FM_SUP_WATCHER_FRESH" = true ]; then exit 0; fi
 
 continuation() {
   mine || { notice 'FIRSTMATE SUPERVISION: session-lock ownership changed during Stop; checkpoint feedback withheld.'; exit 0; }

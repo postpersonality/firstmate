@@ -65,6 +65,37 @@ assert_contains "$(cat "$home/err")" 'checkpoint:' 'quiet checkpoint was not del
 assert_absent "$home/state/.watch.lock/pid" 'quiet Stop leaked a watcher'
 pass 'Codex API Stop: a quiet checkpoint returns an executable continuation, despite the old loop flag'
 
+prepare_live_away_daemon() {
+  local home=$1 identity
+  printf 'away\n' > "$home/state/.afk"
+  mkdir -p "$home/state/.supervise-daemon.lock"
+  printf '%s\n' "$$" > "$home/state/.supervise-daemon.lock/pid"
+  identity=$(bash -c '. "$1/bin/fm-wake-lib.sh"; fm_pid_identity "$2"' _ "$ROOT" "$$")
+  [ -n "$identity" ] || fail 'could not identify the live fixture daemon owner'
+  printf '%s\n' "$identity" > "$home/state/.supervise-daemon.lock/pid-identity"
+}
+
+home=$(make_home afk-fresh-beacon)
+prepare_live_away_daemon "$home"
+touch "$home/state/.last-watcher-beat"
+status=0
+run_stop "$home" || status=$?
+expect_code 0 "$status" 'a live away daemon with a fresh watcher beacon must remain the alternate owner'
+[ ! -s "$home/out" ] && [ ! -s "$home/err" ] || fail 'fresh away-daemon ownership produced a continuation'
+assert_absent "$home/state/.watch.lock/pid" 'fresh away-daemon ownership started another watcher'
+pass 'Codex API Stop: a fresh beacon permits the live away daemon to own supervision'
+
+home=$(make_home afk-stale-beacon)
+prepare_live_away_daemon "$home"
+touch "$home/state/.last-watcher-beat"
+sleep 2
+status=0
+FM_GUARD_GRACE=1 run_stop "$home" || status=$?
+expect_code 2 "$status" 'a live away daemon with a stale watcher beacon must fall back to the native checkpoint'
+assert_contains "$(cat "$home/err")" 'checkpoint:' 'stale away-daemon fallback did not return a checkpoint continuation'
+assert_absent "$home/state/.watch.lock/pid" 'stale away-daemon fallback started a second watcher'
+pass 'Codex API Stop: a stale beacon prevents the live away daemon from suppressing the checkpoint'
+
 home=$(make_home cli-argument)
 cat > "$home/exec" <<'SH'
 . "$TEST_ROOT/bin/fm-session-lock-lib.sh"
