@@ -53,7 +53,13 @@ printf 'fixture\n' > "$REMOTE_ROOT/AGENTS.md"
 cp "$ROOT/bin/fm-remote-entrypoint.sh" "$ROOT/bin/fm-remote-job-lib.sh" \
   "$ROOT/bin/fm-remote-job-worker.sh" "$ROOT/bin/fm-remote-file.sh" \
   "$ROOT/bin/fm-backlog-receive.sh" "$ROOT/bin/fm-tasks-axi-lib.sh" \
-  "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-path-lib.sh" "$REMOTE_ROOT/bin/"
+  "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-path-lib.sh" \
+  "$ROOT/bin/fm-captain-hold.sh" "$ROOT/bin/fm-tasks-axi.sh" \
+  "$ROOT/bin/fm-backlog-transition-lib.sh" "$ROOT/bin/fm-hold-reason-lib.sh" \
+  "$ROOT/bin/fm-parent-channel-lib.sh" "$ROOT/bin/fm-secondmate-parent-lib.sh" \
+  "$ROOT/bin/fm-classify-lib.sh" "$ROOT/bin/fm-secondmate-registry-lib.sh" \
+  "$ROOT/bin/fm-timeout-lib.sh" \
+  "$ROOT/bin/fm-pr-lib.sh" "$REMOTE_ROOT/bin/"
 ln -s "$(command -v tasks-axi)" "$REMOTE_ROOT/bin/tasks-axi"
 ln -s "$(command -v node)" "$REMOTE_ROOT/bin/node"
 chmod +x "$REMOTE_ROOT/bin"/*.sh
@@ -214,6 +220,58 @@ $1
 ## Done
 EOF
 }
+
+test_completion_owner_follows_remote_handoff() {
+  local origin=remote-completion-origin continuation=remote-completion-work
+  cat > "$PARENT/.tasks.toml" <<'EOF'
+backend = "markdown"
+[markdown]
+path = "data/backlog.md"
+EOF
+  cat > "$REMOTE/.tasks.toml" <<'EOF'
+backend = "markdown"
+[markdown]
+path = "data/backlog.md"
+EOF
+  write_backlog "- [ ] $continuation - remote continuation (repo: alpha)"
+  tasks-axi add "$origin" "Review the delivered milestone" --kind scout --file "$PARENT/data/backlog.md" >/dev/null
+  tasks-axi start "$origin" --file "$PARENT/data/backlog.md" >/dev/null
+  fm_write_meta "$PARENT/state/$origin.meta" \
+    "window=firstmate:fm-$origin" "endpoint_task_id=$origin" "kind=scout" \
+    "spawn_gen=fixture-$origin" "completion_required=1"
+  tasks-axi add "$continuation" "Continue the authorized work" --kind ship --file "$PARENT/data/backlog.md" >/dev/null
+  handoff_env "$ROOT/bin/fm-captain-hold.sh" complete "$origin" --none --remaining "$continuation" >/dev/null \
+    || fail "the source continuation could not be recorded before remote handoff"
+
+  handoff_env "$ROOT/bin/fm-backlog-handoff.sh" ios "$continuation" \
+    > "$TMP_ROOT/completion-handoff.out" 2>&1 \
+    || fail "remote handoff failed: $(cat "$TMP_ROOT/completion-handoff.out")"
+  assert_grep "completion_work=secondmate:ios:$continuation" "$PARENT/state/$origin.meta" \
+    "remote handoff left the source continuation without its registered owner"
+  handoff_env "$ROOT/bin/fm-captain-hold.sh" verify "$origin" >/dev/null \
+    || fail "the source completion gate could not verify queued work at its remote secondmate"
+
+  FM_HOME="$REMOTE" tasks-axi start "$continuation" --file "$REMOTE/data/backlog.md" >/dev/null
+  if handoff_env "$ROOT/bin/fm-captain-hold.sh" verify "$origin" > "$TMP_ROOT/orphan-remote.out" 2>&1; then
+    fail "remote in-flight work without a paired worker record passed verification"
+  fi
+  fm_write_meta "$REMOTE/state/$continuation.meta" \
+    "window=firstmate:fm-$continuation" "endpoint_task_id=$continuation" \
+    "worktree=$TMP_ROOT/absent-worktree" "project=$TMP_ROOT/absent-project" \
+    "harness=claude" "kind=ship" "spawn_gen=fixture-$continuation"
+  handoff_env "$ROOT/bin/fm-captain-hold.sh" verify "$origin" >/dev/null \
+    || fail "paired remote in-flight work was not accepted as stopped-but-owned"
+
+  FM_HOME="$REMOTE" FM_DATA_OVERRIDE="$REMOTE/data" \
+    "$REMOTE_ROOT/bin/fm-tasks-axi.sh" "done" "$continuation" --keep 0 >/dev/null
+  handoff_env "$ROOT/bin/fm-captain-hold.sh" verify "$origin" >/dev/null \
+    || fail "the source completion gate could not verify Done work in the remote archive"
+  pass "remote handoff preserves the registered owner through queued, paired, and archived completion"
+}
+
+test_completion_owner_follows_remote_handoff
+: > "$SSH_COUNT"
+: > "$WAKE_LOG"
 
 # Completion can become unknown after the remote atomic move. The local outbox
 # remains the whole recovery record, the primary dispatch queue is already

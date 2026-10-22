@@ -27,6 +27,8 @@
 # automatic backend without compatible tasks-axi refuses before cleanup.
 # Before unforced teardown, bin/fm-captain-hold.sh verify checks scouts and
 # completion_required=1 ships for their outcome and captain-call inventory.
+# Every fresh ship/scout incarnation carries that flag even when this home's
+# backlog transitions are manual or disabled; the gate records no queue change.
 # None of this loosens the landed-work gates below: the transition runs only on
 # the paths that already proceed to remove the record.
 # The close - and only the close - is replaced by `tasks-axi reopen` with the

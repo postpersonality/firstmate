@@ -31,6 +31,8 @@
 #   fm-captain-hold.sh complete <origin-id> (--none | <task-id>...) \
 #     [--fulfilled | --remaining <task-id> | --firstmate-action <task-id>]...
 #   fm-captain-hold.sh verify <origin-id>
+#   fm-captain-hold.sh completion-task <task-id>
+#   fm-captain-hold.sh handoff-completion <secondmate-id> <task-id>...
 #   fm-captain-hold.sh open <task-id> [--identity] [--distinguish-absent]
 #   fm-captain-hold.sh diverged
 #   fm-captain-hold.sh reconcile list
@@ -153,16 +155,18 @@
 # `captain-held [key=...]` status close naming the inventory. Later review
 # passes may add ids. A post-teardown visual review can complete against the
 # surviving report and tasks without recreating task state.
-# New automatic-backlog ship/scout launches set completion_required=1. Their `complete` also
-# requires --fulfilled (the requested outcome is achieved) OR one or more
-# --remaining <id> / --firstmate-action <id> references to ordinary tasks in
-# this home's backlog. The supervisor judges outcome and authority from the
-# original ask; no prose classifier can prove either. References are unioned
-# into completion_work= as worker:<id> or firstmate:<id> before checking their
-# disposition, so a refused handoff survives a retry. Self references and
-# conflicting owners are refused. --firstmate-action also sets kind=firstmate on
-# unfinished referenced tasks, keeping their owner visible after origin cleanup;
-# such rows cannot dispatch to workers. Queued/running worker work stays actionable;
+# New ship/scout launches set completion_required=1 independently of automatic
+# backlog transitions. Their `complete` requires --fulfilled (the requested
+# outcome is achieved) OR one or more --remaining <id> / --firstmate-action <id>
+# references. The supervisor judges outcome and authority from the original ask;
+# no prose classifier can prove either. References are unioned into
+# completion_work= as worker:<id>, firstmate:<id>, or, after the existing
+# secondmate handoff, secondmate:<mate-id>:<id>. A refused handoff preserves its
+# source reference for retry. Self references and conflicting owners are refused.
+# --firstmate-action also sets kind=firstmate on unfinished referenced tasks,
+# keeping their owner visible after origin cleanup; such rows cannot dispatch
+# to workers. Queued worker work stays actionable; in-flight worker work needs
+# its exact paired task record with one valid spawn generation.
 # a firstmate action must be Done or genuinely gated by a captain/external hold,
 # future hold-until date, or unresolved dependency on a task other than its
 # origin. An undated generic future/parked/load hold is not such a condition.
@@ -175,7 +179,9 @@
 # records keep the captain-inventory-only compatibility unless explicitly
 # reviewed with the new flags. --remaining requires live origin metadata.
 # A completed reference pruned from a markdown backlog is read through
-# fm-tasks-axi.sh archive show; missing or unreadable evidence refuses.
+# fm-tasks-axi.sh archive show in its recorded home; missing or unreadable
+# evidence refuses. A secondmate owner is resolved only through the registered
+# local home or fm-on remote route.
 # `verify` is read-only and is called by teardown, so teardown cannot
 # erase a source before this gate has succeeded: every recorded inventory
 # entry must still satisfy the same durability and origin checks as `complete`,
@@ -266,6 +272,9 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # shellcheck source=bin/fm-parent-channel-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-parent-channel-lib.sh"
+# shellcheck source=bin/fm-secondmate-registry-lib.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 
 PARENT_HOLD_PUBLISHED=0
 publish_parent_hold() {  # <task-id> <occurrence> <verb> <note>
@@ -466,6 +475,7 @@ show_field_value() {  # <show-output> <field>
 origin_exists_here() {  # <origin-id>
   [ -f "$STATE/$1.meta" ] && return 0
   [ -f "$DATA/$1/report.md" ] && return 0
+  require_tasks_axi
   task_show "$1"
 }
 
@@ -1768,36 +1778,262 @@ reconcile_note() {
   printf 'still-open: %s\n' "$id"
 }
 
-# Read pruned Done work through the existing archive interface, only after an
-# authoritative NOT_FOUND (never after a read failure or timeout).
-completion_task_show() {  # <task-id>; sets show
-  if task_show "$1"; then
-    show=$TASK_SHOW_OUTPUT
-    return 0
-  fi
-  printf '%s\n' "$TASK_SHOW_OUTPUT" | grep -q '^code: NOT_FOUND$' \
-    || fail "could not read remaining task $1"
-  show=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
-    "$SCRIPT_DIR/fm-tasks-axi.sh" archive show "$1" --full) \
-    || fail "remaining task $1 is absent or unreadable in this home's backlog and archive"
-  [ "$(show_field_value "$show" state)" = "done" ] \
-    || fail "archived remaining task $1 is not Done"
+# Read ordinary or archived work through tasks-axi. In-flight worker rows need
+# the exact paired metadata record; stale-but-owned records are not liveness
+# claims, while orphan in-flight rows are not completion evidence.
+completion_meta_value_exactly_one() {  # <meta> <field>; sets COMPLETION_META_VALUE
+  local meta=$1 field=$2 count
+  count=$(LC_ALL=C awk -F= -v key="$field" '$1 == key { count++ } END { print count + 0 }' "$meta" 2>/dev/null) \
+    || fail "could not read $field from task record $meta"
+  [ "$count" -eq 1 ] || fail "task record $meta has $count $field fields; exactly one is required"
+  COMPLETION_META_VALUE=$(LC_ALL=C awk -F= -v key="$field" \
+    '$1 == key { sub(/^[^=]*=/, ""); print }' "$meta" 2>/dev/null) \
+    || fail "could not read $field from task record $meta"
 }
 
-# Completion references are ordinary tasks in this home's backlog, not a
-# second queue. Only the supervisor can attest intent/authority; check their
-# recorded disposition without inferring it from report or wait prose.
-completion_work_verify() {  # <origin> <comma-separated owner:id refs> <fulfilled-0-or-1>
-  local origin=$1 refs=$2 fulfilled=$3 ref owner id show state held blocked blocker kind until origin_identity="$1"
+completion_worker_record_verify() {  # <task-id> <backlog-kind>
+  local id=$1 row_kind=$2 meta="$STATE/$1.meta" worker_kind endpoint
+  [ -f "$meta" ] && [ ! -L "$meta" ] \
+    || fail "in-flight task $id has no paired worker record"
+  fm_backlog_record_present "$meta" "task record" "$STATE" \
+    || fail "in-flight task $id has an unsafe worker record ($FM_BACKLOG_TRANSITION_ERROR)"
+  fm_backlog_meta_spawn_gen "$meta" "$STATE" \
+    || fail "in-flight task $id has no valid worker incarnation ($FM_BACKLOG_TRANSITION_ERROR)"
+  completion_meta_value_exactly_one "$meta" kind
+  worker_kind=$COMPLETION_META_VALUE
+  case "$worker_kind" in ship|scout) ;; *) fail "in-flight task $id has non-worker record kind $worker_kind" ;; esac
+  completion_meta_value_exactly_one "$meta" endpoint_task_id
+  endpoint=$COMPLETION_META_VALUE
+  [ "$endpoint" = "$id" ] || fail "in-flight task $id is paired with worker record for ${endpoint:-an unknown task}"
+  case "$row_kind" in
+    ship|scout) [ "$row_kind" = "$worker_kind" ] || fail "in-flight task $id kind $row_kind conflicts with worker record kind $worker_kind" ;;
+  esac
+}
+
+completion_secondmate_task_show() {  # <secondmate-id> <task-id>; sets show
+  local mate=$1 id=$2 home marker
+  secondmate_registry_validate_bindings "$DATA/secondmates.md" secondmate_registry_path_key "$mate" \
+    || fail "registered secondmate $mate cannot be verified ($SECONDMATE_REGISTRY_ERROR)"
+  if [ "$SECONDMATE_REGISTRY_MATCH_REMOTE" = 1 ]; then
+    show=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" FM_STATE_OVERRIDE="$STATE" \
+      FM_ROOT_OVERRIDE="$FM_ROOT" "$SCRIPT_DIR/fm-on.sh" "$mate" \
+      fm-captain-hold.sh completion-task "$id") \
+      || fail "cannot read remaining task $id through registered remote secondmate $mate"
+  else
+    home=$SECONDMATE_REGISTRY_MATCH_HOME
+    [ -f "$home/.fm-secondmate-home" ] && [ ! -L "$home/.fm-secondmate-home" ] \
+      || fail "registered local secondmate $mate has no safe home marker"
+    marker=$(<"$home/.fm-secondmate-home")
+    [ "$marker" = "$mate" ] || fail "registered local secondmate $mate has a conflicting home marker"
+    [ -f "$home/AGENTS.md" ] && [ -d "$home/bin" ] \
+      || fail "registered local secondmate $mate is not a Firstmate home"
+    show=$(FM_HOME="$home" FM_DATA_OVERRIDE="$home/data" FM_STATE_OVERRIDE="$home/state" \
+      FM_CONFIG_OVERRIDE="$home/config" FM_ROOT_OVERRIDE="$FM_ROOT" \
+      "$SCRIPT_DIR/fm-captain-hold.sh" completion-task "$id") \
+      || fail "cannot read remaining task $id through registered local secondmate $mate"
+  fi
+  [ "$(show_field_value "$show" id)" = "$id" ] \
+    || fail "registered secondmate $mate returned a different task for $id"
+}
+
+completion_task_show() {  # <task-id> [<secondmate-id>]; sets show
+  local id=$1 mate=${2:-} state row_kind
+  if [ -n "$mate" ]; then
+    completion_secondmate_task_show "$mate" "$id"
+    return 0
+  fi
+  if task_show "$id"; then
+    show=$TASK_SHOW_OUTPUT
+  else
+    printf '%s\n' "$TASK_SHOW_OUTPUT" | grep -q '^code: NOT_FOUND$' \
+      || fail "could not read remaining task $id"
+    show=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
+      "$SCRIPT_DIR/fm-tasks-axi.sh" archive show "$id" --full) \
+      || fail "remaining task $id is absent or unreadable in this home's backlog and archive"
+    [ "$(show_field_value "$show" state)" = "done" ] \
+      || fail "archived remaining task $id is not Done"
+    return 0
+  fi
+  state=$(show_field_value "$show" state)
+  row_kind=$(show_field_value "$show" kind)
+  if [ "$state" = in_flight ] && [ "$row_kind" != firstmate ] && [ "$row_kind" != program ]; then
+    completion_worker_record_verify "$id" "$row_kind"
+  fi
+}
+
+command_completion_task() {  # <task-id>; read and validate a task for a registered completion owner
+  [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+  validate_slug task-id "$1"
+  require_tasks_axi
+  completion_task_show "$1"
+  printf '%s\n' "$show"
+}
+
+completion_ref_parse() {  # <reference>; sets COMPLETION_REF_OWNER, ROUTE and ID
+  local ref=$1 tail
+  COMPLETION_REF_OWNER=
+  COMPLETION_REF_ROUTE=
+  COMPLETION_REF_ID=
+  case "$ref" in
+    worker:*) COMPLETION_REF_OWNER=worker; COMPLETION_REF_ID=${ref#worker:} ;;
+    firstmate:*) COMPLETION_REF_OWNER=firstmate; COMPLETION_REF_ID=${ref#firstmate:} ;;
+    secondmate:*)
+      tail=${ref#secondmate:}
+      case "$tail" in
+        *:*) COMPLETION_REF_ROUTE=${tail%%:*}; COMPLETION_REF_ID=${tail#*:} ;;
+        *) fail "invalid secondmate completion work reference: $ref" ;;
+      esac
+      validate_slug secondmate-id "$COMPLETION_REF_ROUTE"
+      COMPLETION_REF_OWNER=secondmate
+      ;;
+    *) fail "invalid completion work reference: $ref" ;;
+  esac
+  validate_slug task-id "$COMPLETION_REF_ID"
+}
+
+completion_ref_for_id() {  # <comma-separated refs> <task-id>; prints the one unambiguous reference
+  local refs=$1 wanted=$2 ref found=
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    completion_ref_parse "$ref"
+    [ "$COMPLETION_REF_ID" = "$wanted" ] || continue
+    [ -z "$found" ] || [ "$found" = "$ref" ] \
+      || fail "remaining task $wanted has conflicting owners"
+    found=$ref
+  done <<EOF
+$(printf '%s\n' "$refs" | tr ',' '\n')
+EOF
+  printf '%s' "$found"
+}
+
+completion_merge_work_refs() {  # <previous-comma-list> <new-space-list>; prints canonical refs
+  local previous=$1 new=$2 ref owner id previous_ref normalized=
+  for ref in $new; do
+    completion_ref_parse "$ref"
+    owner=$COMPLETION_REF_OWNER
+    id=$COMPLETION_REF_ID
+    previous_ref=$(completion_ref_for_id "$previous" "$id")
+    if [ -n "$previous_ref" ] && [ "$previous_ref" != "$ref" ]; then
+      completion_ref_parse "$previous_ref"
+      if [ "$owner" = worker ] && [ "$COMPLETION_REF_OWNER" = secondmate ]; then
+        ref=$previous_ref
+      else
+        fail "remaining task $id has conflicting owners"
+      fi
+    fi
+    normalized="${normalized}${normalized:+ }$ref"
+  done
+  sorted_key_union "$previous" "$normalized"
+}
+
+completion_handoff_rewrite_refs() {  # <refs> <secondmate-id> <task-ids...>; prints canonical refs
+  local refs=$1 mate=$2 task_ids=$3 ref id owner route matched task_id rewritten=
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    completion_ref_parse "$ref"
+    id=$COMPLETION_REF_ID
+    owner=$COMPLETION_REF_OWNER
+    route=$COMPLETION_REF_ROUTE
+    matched=0
+    for task_id in $task_ids; do
+      [ "$task_id" != "$id" ] || matched=1
+    done
+    if [ "$matched" = 1 ]; then
+      case "$owner" in
+        worker) ref="secondmate:$mate:$id" ;;
+        secondmate)
+          [ "$route" = "$mate" ] || fail "remaining task $id already belongs to secondmate $route, not $mate"
+          ;;
+        firstmate) fail "firstmate-owned task $id cannot be handed to secondmate $mate" ;;
+      esac
+    fi
+    rewritten="${rewritten}${rewritten:+,}$ref"
+  done <<EOF
+$(printf '%s\n' "$refs" | tr ',' '\n')
+EOF
+  sorted_key_union "$rewritten" ""
+}
+
+command_handoff_completion() {  # <secondmate-id> <task-id>...
+  local mate=${1:-} meta lock refs rewritten grep_status kind task_id task_ids='' changed=0
+  [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+  shift
+  validate_slug secondmate-id "$mate"
+  for task_id in "$@"; do
+    validate_slug task-id "$task_id"
+    task_ids="${task_ids}${task_ids:+ }$task_id"
+  done
+  secondmate_registry_line_for_id "$DATA/secondmates.md" "$mate" \
+    || fail "secondmate $mate has no unambiguous route in $DATA/secondmates.md"
+  [ -d "$STATE" ] && [ ! -L "$STATE" ] || fail "cannot reconcile completion owners without a safe state directory"
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || [ -L "$meta" ] || continue
+    fm_backlog_record_present "$meta" "task record" "$STATE" \
+      || fail "cannot inspect completion owners ($FM_BACKLOG_TRANSITION_ERROR)"
+    [ "$(meta_value "$meta" kind)" != secondmate ] || continue
+    lock=$(fm_meta_lock_path "$meta") || fail "cannot resolve metadata lock for $meta"
+    CAPTAIN_META_LOCK=$lock
+    fm_lock_acquire_wait "$CAPTAIN_META_LOCK"
+    CAPTAIN_META_LOCK_HELD=1
+    [ -e "$meta" ] || [ -L "$meta" ] || {
+      fm_lock_release "$CAPTAIN_META_LOCK"
+      CAPTAIN_META_LOCK_HELD=0
+      CAPTAIN_META_LOCK=
+      continue
+    }
+    fm_backlog_record_present "$meta" "task record" "$STATE" \
+      || fail "cannot inspect completion owners ($FM_BACKLOG_TRANSITION_ERROR)"
+    kind=$(meta_value "$meta" kind)
+    if [ "$kind" = secondmate ]; then
+      fm_lock_release "$CAPTAIN_META_LOCK"
+      CAPTAIN_META_LOCK_HELD=0
+      CAPTAIN_META_LOCK=
+      continue
+    fi
+    if grep -q '^completion_work=' "$meta"; then
+      refs=$(meta_value "$meta" completion_work)
+    else
+      grep_status=$?
+      [ "$grep_status" -eq 1 ] || fail "cannot read completion owners from $meta"
+      fm_lock_release "$CAPTAIN_META_LOCK"
+      CAPTAIN_META_LOCK_HELD=0
+      CAPTAIN_META_LOCK=
+      continue
+    fi
+    [ -n "$refs" ] || {
+      fm_lock_release "$CAPTAIN_META_LOCK"
+      CAPTAIN_META_LOCK_HELD=0
+      CAPTAIN_META_LOCK=
+      continue
+    }
+    rewritten=$(completion_handoff_rewrite_refs "$refs" "$mate" "$task_ids")
+    if [ "$rewritten" != "$refs" ]; then
+      printf 'completion_work=%s\n' "$rewritten" >> "$meta" \
+        || fail "cannot record secondmate ownership for completion work in $meta"
+      changed=$((changed + 1))
+    fi
+    fm_lock_release "$CAPTAIN_META_LOCK"
+    CAPTAIN_META_LOCK_HELD=0
+    CAPTAIN_META_LOCK=
+  done
+  printf 'completion ownership reconciled for secondmate %s (%s origin record(s) updated)\n' "$mate" "$changed"
+}
+
+# Completion references are durable tasks or registered secondmate-owned tasks.
+# Only the supervisor can attest intent/authority; check their recorded disposition
+# without inferring it from report or wait prose.
+completion_work_verify() {  # <origin> <comma-separated owner refs> <fulfilled-0-or-1>
+  local origin=$1 refs=$2 fulfilled=$3 ref owner route id show state held blocked blocker kind until origin_identity="$1"
   origin_identity=$(task_identity "$origin")
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
-    owner=${ref%%:*}
-    id=${ref#*:}
-    case "$owner" in worker|firstmate) ;; *) fail "invalid completion work owner: $owner" ;; esac
-    validate_slug task-id "$id"
+    completion_ref_parse "$ref"
+    owner=$COMPLETION_REF_OWNER
+    route=$COMPLETION_REF_ROUTE
+    id=$COMPLETION_REF_ID
+    completion_ref_for_id "$refs" "$id" >/dev/null
     [ "$id" != "$origin" ] || fail "origin $origin cannot be its own remaining work"
-    completion_task_show "$id"
+    completion_task_show "$id" "$route"
     [ "$(show_field_value "$show" id)" != "$origin_identity" ] || fail "origin $origin cannot be its own remaining work"
     state=$(show_field_value "$show" state)
     [ "$state" != "done" ] || continue
@@ -1834,7 +2070,7 @@ completion_seal() {  # <meta>
 command_complete() {
   local origin=${1:-} meta previous='' supplied='' keys='' entry key status_file open has_meta=0 transfer_rc transfers=() resolved
   local resolved_how attested_by_prefix='' origin_state unrecorded_origin=''
-  local outcome='' remaining='' refs previous_refs ref id seal
+  local outcome='' remaining='' refs previous_refs='' ref id seal
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
   validate_slug origin-id "$origin"
   shift
@@ -1846,7 +2082,6 @@ command_complete() {
     CAPTAIN_META_LOCK_HELD=1
     [ -f "$meta" ] || fail "task metadata disappeared while recording completion"
   fi
-  require_tasks_axi
   origin_exists_here "$origin" || fail "origin $origin is not owned by the active home $FM_HOME"
   local none=0
   while [ "$#" -gt 0 ]; do
@@ -1875,22 +2110,32 @@ command_complete() {
   done
   [ "$none" = 0 ] || [ -z "$supplied" ] || fail "--none cannot be combined with task ids"
   [ "$none" = 1 ] || [ -n "$supplied" ] || fail "supply --none or the captain-call task ids"
+  [ "$has_meta" = 1 ] || [ "$outcome" != fulfilled ] \
+    || fail "cannot attest --fulfilled without live origin metadata to seal the outcome"
+  if [ "$has_meta" = 1 ]; then
+    previous_refs=$(meta_value "$meta" completion_work)
+    previous=$(meta_value "$meta" decision_keys)
+  fi
+  if [ -n "$supplied" ] || [ -n "$remaining" ] || [ -n "$previous_refs" ] || [ -n "$previous" ]; then
+    require_tasks_axi
+  fi
   if [ "$has_meta" = 1 ]; then
     if [ "$(meta_value "$meta" completion_required)" = 1 ] || [ -n "$outcome" ]; then
       [ -n "$outcome" ] || fail "review the requested outcome: use --fulfilled or name authorized --remaining / --firstmate-action tasks"
       if [ "$(meta_value "$meta" completion_required)" != 1 ]; then
         printf 'completion_required=1\n' >> "$meta" || fail "cannot require the outcome review"
       fi
-      previous_refs=$(meta_value "$meta" completion_work)
-      refs=$(sorted_key_union "$previous_refs" "$remaining")
+      refs=$(completion_merge_work_refs "$previous_refs" "$remaining")
       # Validate existence before persisting; persist accepted edges before the
       # disposition check so a failed ready action cannot be erased by retry.
       while IFS= read -r ref; do
         [ -n "$ref" ] || continue
-        id=${ref#*:}
-        completion_task_show "$id"
+        completion_ref_parse "$ref"
+        id=$COMPLETION_REF_ID
+        completion_task_show "$id" "$COMPLETION_REF_ROUTE"
         [ "$(show_field_value "$show" kind)" != program ] || fail "remaining task $id is a program, not executable work"
         [ "$(show_field_value "$show" id)" != "$(task_identity "$origin")" ] || fail "origin $origin cannot be its own remaining work"
+        completion_ref_for_id "$refs" "$id" >/dev/null
         case ",$refs," in
           *",worker:$id,"*",firstmate:$id,"*|*",firstmate:$id,"*",worker:$id,"*)
             fail "remaining task $id has conflicting owners" ;;
@@ -1901,8 +2146,9 @@ EOF
       while IFS= read -r ref; do
         case "$ref" in
           firstmate:*)
-            id=${ref#*:}
-            completion_task_show "$id"
+            completion_ref_parse "$ref"
+            id=$COMPLETION_REF_ID
+            completion_task_show "$id" "$COMPLETION_REF_ROUTE"
             if [ "$(show_field_value "$show" state)" != "done" ] \
                 && [ "$(show_field_value "$show" kind)" != firstmate ]; then
               [ ! -f "$STATE/$id.meta" ] || fail "task $id already has a worker; use --remaining for its independent work"
@@ -1924,9 +2170,6 @@ EOF
     fi
   elif [ -n "$remaining" ]; then
     fail "remaining work requires the originating task metadata; file it before cleanup"
-  fi
-  if [ "$has_meta" = 1 ]; then
-    previous=$(meta_value "$meta" decision_keys)
   fi
   keys=$(sorted_key_union "$previous" "$supplied")
   if [ -n "$keys" ]; then
@@ -1993,20 +2236,22 @@ EOF
 }
 
 command_verify() {
-  local origin=${1:-} meta reviewed keys entry key open resolved
+  local origin=${1:-} meta reviewed keys entry key open resolved work_refs
   [ "$#" -eq 1 ] || { usage >&2; exit 2; }
   validate_slug origin-id "$origin"
   meta="$STATE/$origin.meta"
   [ -f "$meta" ] || fail "origin metadata is absent: $meta"
-  require_tasks_axi
   if [ "$(meta_value "$meta" completion_required)" = 1 ] || [ -n "$(meta_value "$meta" completion_reviewed)" ]; then
     [ "$(meta_value "$meta" completion_reviewed)" = "$(completion_seal "$meta")" ] \
       || fail "origin $origin has no outcome review for this worker incarnation; re-run complete with --fulfilled or remaining work"
-    completion_work_verify "$origin" "$(meta_value "$meta" completion_work)" 0
+    work_refs=$(meta_value "$meta" completion_work)
+    [ -z "$work_refs" ] || require_tasks_axi
+    completion_work_verify "$origin" "$work_refs" 0
   fi
   reviewed=$(meta_value "$meta" decisions_reviewed)
   [ "$reviewed" = 1 ] || fail "origin $origin has no completed captain-call inventory"
   keys=$(meta_value "$meta" decision_keys)
+  [ -z "$keys" ] || require_tasks_axi
   if [ -n "$keys" ]; then
     while IFS= read -r entry; do
       [ -n "$entry" ] || continue
@@ -2229,6 +2474,8 @@ case "${1:-}" in
   binding) shift; command_binding "$@" ;;
   complete) shift; command_complete "$@" ;;
   verify) shift; command_verify "$@" ;;
+  completion-task) shift; command_completion_task "$@" ;;
+  handoff-completion) shift; command_handoff_completion "$@" ;;
   open) shift; command_open "$@" ;;
   diverged) shift; command_diverged "$@" ;;
   reconcile) shift; command_reconcile "$@" ;;

@@ -103,7 +103,8 @@ An expired deferral therefore remains answerable.
 ### Recording a reviewed inventory (`complete`)
 
 While originating task metadata is live, the `complete` subcommand unions the reviewed captain-held task ids, called the reviewed inventory, into `decision_keys=` and appends `decisions_reviewed=1`.
-A post-teardown visual review can complete against the surviving report and durable tasks without recreating volatile task metadata.
+Every fresh ship/scout incarnation also requires an outcome seal, independent of whether its home mutates a backlog automatically; an outcome-only review in manual mode writes metadata without changing the queue.
+A post-teardown visual review can still complete an inventory-only review against the surviving report and durable tasks without recreating volatile task metadata.
 
 `complete` accepts `--none` as an explicit semantic inventory result.
 `--none` is refused while the origin still has a lifecycle-open keyed status decision.
@@ -123,7 +124,8 @@ Scout teardown and new ship teardown call the read-only `verify` subcommand befo
 The outcome review and continuation record are owned by `bin/fm-captain-hold.sh --help`; the procedure is owned by the [lifecycle skill](../.agents/skills/captain-hold-lifecycle/SKILL.md#outcome-review).
 `verify` checks:
 
-- For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by an unfinished task other than its origin, held for the captain, an external condition, or a date, or, for worker work only, queued or running.
+- For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by an unfinished task other than its origin, held for the captain, an external condition, or a date, or, for worker work only, Queued or In flight with the exact paired worker record in its recorded owner home.
+- A continuation moved to a secondmate is referenced by its registered secondmate id; verification reads only that registered local home or remote task transport, including its Done archive.
 - The recorded attestation exists.
 - Every recorded inventory entry still passes the [completion inventory checks](#recording-a-reviewed-inventory-complete).
 - No keyed status decision opened after the last `complete`.

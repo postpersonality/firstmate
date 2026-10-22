@@ -216,6 +216,19 @@ write_origin_meta() {  # <home> <id> [kind]
     "spawn_gen=fixture-$id"
 }
 
+write_worker_meta() {  # <home> <id> [kind] [endpoint-id]
+  local home=$1 id=$2 kind=${3:-ship} endpoint=${4:-$2}
+  fm_write_meta "$home/state/$id.meta" \
+    "window=firstmate:fm-$id" \
+    "endpoint_task_id=$endpoint" \
+    "worktree=$home/projects/missing-$id" \
+    "project=$home/projects/sample" \
+    "harness=claude" \
+    "kind=$kind" \
+    "mode=$kind" \
+    "spawn_gen=fixture-$id"
+}
+
 # --- markdown-to-beads migration resolution ----------------------------------
 #
 # A home on the Beads backend no longer carries the legacy markdown ids a scout
@@ -4681,6 +4694,59 @@ make_completion_home() {
   printf '%s\n' "$home"
 }
 
+test_fulfilled_outcome_requires_a_live_metadata_sink() {
+  local home
+  home=$(make_home fulfilled-without-metadata)
+  mkdir -p "$home/data/archive-only"
+  printf '# Saved report\n' > "$home/data/archive-only/report.md"
+  if run_captain "$home" complete archive-only --none --fulfilled > "$home/fulfilled.out" 2>&1; then
+    fail "--fulfilled succeeded without live origin metadata to preserve the attestation"
+  fi
+  assert_grep 'live origin metadata' "$home/fulfilled.out" \
+    "missing metadata refusal did not explain the absent attestation sink"
+  run_captain "$home" complete archive-only --none >/dev/null \
+    || fail "inventory-only post-cleanup compatibility was removed"
+  pass "fulfilled completion needs a live metadata sink while inventory-only cleanup remains compatible"
+}
+
+test_in_flight_worker_requires_a_paired_task_record() {
+  local home meta saved
+  home=$(make_completion_home in-flight-worker-pair)
+  tasks_in "$home" add sample-running-worker "An in-flight independent worker task" >/dev/null
+  tasks_in "$home" start sample-running-worker >/dev/null
+  if run_captain "$home" complete sample-outcome --none --remaining sample-running-worker \
+      > "$home/orphan.out" 2>&1; then
+    fail "in-flight work without a paired worker record was accepted"
+  fi
+  assert_grep 'no paired worker record' "$home/orphan.out" \
+    "orphaned in-flight work did not fail at its paired-record boundary"
+  write_worker_meta "$home" sample-running-worker ship another-task
+  if run_captain "$home" complete sample-outcome --none --remaining sample-running-worker \
+      > "$home/mismatched.out" 2>&1; then
+    fail "a worker record for another task was accepted"
+  fi
+  assert_grep 'paired with worker record for another-task' "$home/mismatched.out" \
+    "mismatched task ownership was not named"
+  write_worker_meta "$home" sample-running-worker ship
+  meta="$home/state/sample-running-worker.meta"
+  saved="$home/state/sample-running-worker.meta.saved"
+  mv "$meta" "$saved"
+  ln -s "$saved" "$meta"
+  if run_captain "$home" complete sample-outcome --none --remaining sample-running-worker \
+      > "$home/unreadable.out" 2>&1; then
+    fail "a symlinked worker record was accepted"
+  fi
+  assert_grep 'no paired worker record' "$home/unreadable.out" \
+    "unreadable worker metadata did not fail at the paired-record boundary"
+  rm -f "$meta"
+  mv "$saved" "$meta"
+  run_captain "$home" complete sample-outcome --none --remaining sample-running-worker >/dev/null \
+    || fail "a valid paired record for stopped-but-owned work was rejected"
+  run_captain "$home" verify sample-outcome >/dev/null \
+    || fail "paired in-flight work failed completion verification"
+  pass "in-flight work requires an exact readable worker record, while valid stopped-but-owned work remains accepted"
+}
+
 test_outcome_review_distinguishes_a_milestone_from_the_goal() {
   local home out
   home=$(make_completion_home outcome-required)
@@ -4750,7 +4816,10 @@ test_outcome_review_preserves_real_gates_and_explicit_deliverables() {
       external) tasks_in "$home" hold "$id" --reason "Executing job completion receipt" --kind external >/dev/null ;;
       dated) tasks_in "$home" hold "$id" --reason "External release window" --until 2099-01-01 --kind future >/dev/null ;;
       dependency) tasks_in "$home" block "$id" --by sample-running >/dev/null ;;
-      running) tasks_in "$home" start "$id" >/dev/null ;;
+      running)
+        tasks_in "$home" start "$id" >/dev/null
+        write_worker_meta "$home" "$id" ship
+        ;;
     esac
   done
   run_captain "$home" complete sample-outcome --none --firstmate-action sample-captain \
@@ -4860,6 +4929,8 @@ test_firstmate_action_ownership_survives_milestone_cleanup() {
   pass "firstmate ownership survives cleanup, refuses generic future waits, and preserves explicit stops"
 }
 
+test_fulfilled_outcome_requires_a_live_metadata_sink
+test_in_flight_worker_requires_a_paired_task_record
 test_outcome_review_distinguishes_a_milestone_from_the_goal
 test_prepared_firstmate_action_cannot_be_a_generic_wait
 test_outcome_review_preserves_real_gates_and_explicit_deliverables

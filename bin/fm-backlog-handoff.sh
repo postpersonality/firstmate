@@ -621,8 +621,22 @@ outbox_item_count() { # <path>
   awk '/^- \[[ x]\] / { count++ } END { print count + 0 }' "$1"
 }
 
+outbox_item_ids() { # <path>
+  awk '/^- \[[ x]\] / { id = $0; sub(/^- \[[ x]\] /, "", id); sub(/ - .*/, "", id); print id }' "$1"
+}
+
+record_completion_owners() { # <secondmate-id> <task-ids...>
+  local id=$1
+  shift
+  [ "$#" -gt 0 ] || return 0
+  FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" FM_STATE_OVERRIDE="$STATE" \
+    FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-captain-hold.sh" \
+    handoff-completion "$id" "$@" >/dev/null
+}
+
 remote_deliver_outbox() { # <secondmate-id> <outbox-path>
-  local id=$1 outbox=$2 remote_rel receive_out snapshot bytes hash generation counter counter_tmp current marker wake_rc=0 wake_state=pending
+  local id=$1 outbox=$2 remote_rel receive_out snapshot bytes hash generation counter counter_tmp current marker wake_rc=0 wake_state=pending task_key
+  local -a item_ids=()
   [ -f "$outbox" ] && [ ! -L "$outbox" ] || {
     echo "error: pending outbox is unavailable or unsafe: $outbox" >&2
     return 1
@@ -697,6 +711,15 @@ remote_deliver_outbox() { # <secondmate-id> <outbox-path>
     "$remote_rel" "$bytes" "$hash" "$generation" </dev/null 2>&1); then
     [ -z "$receive_out" ] || printf '%s\n' "$receive_out" >&2
     echo "error: handoff receipt by $id was unavailable or completion is unknown; outbox preserved at $outbox" >&2
+    return 1
+  fi
+  while IFS= read -r task_key; do
+    [ -n "$task_key" ] || continue
+    item_ids+=("$task_key")
+  done < <(outbox_item_ids "$outbox")
+  if [ "${#item_ids[@]}" -gt 0 ] && ! record_completion_owners "$id" "${item_ids[@]}"; then
+    echo "error: remote backlog is durable at $id, but completion ownership could not be updated; retry this handoff" >&2
+    rm -f -- "$snapshot"
     return 1
   fi
   marker="$STATE/.backlog-handoff-$id.wake-pending"
@@ -1081,6 +1104,11 @@ if ! MV_OUT=$(tasks-axi mv "${TO_MOVE[@]}" --file "$MAIN_BACKLOG" --to "$SUB_BAC
     printf '%s\n' "$MV_OUT" >&2
   fi
   echo "error: tasks-axi mv failed; nothing was moved." >&2
+  exit 1
+fi
+
+if ! record_completion_owners "$ID" "${TO_MOVE[@]}" "${ALREADY[@]}"; then
+  echo "error: items moved to secondmate $ID, but source completion ownership could not be updated; retry this same handoff" >&2
   exit 1
 fi
 

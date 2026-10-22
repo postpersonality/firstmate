@@ -2852,7 +2852,14 @@ EOF
   out=$(run_ship_spawn "$case_dir" "$id") || fail "no-backlog spawn failed: $out"
   assert_present "$(home_of "$case_dir")/state/$id.meta" \
     "no-backlog spawn did not publish its task record"
-  out=$(run_teardown "$case_dir" "$id") || fail "no-backlog teardown failed: $out"
+  assert_grep 'completion_required=1' "$(home_of "$case_dir")/state/$id.meta" \
+    "no-backlog ship did not require outcome review"
+  if out=$(run_teardown "$case_dir" "$id" 2>&1); then
+    fail "no-backlog teardown accepted a ship without outcome review"
+  fi
+  assert_contains "$out" 'completion gate' "no-backlog refusal came from an unrelated gate"
+  review_fulfilled_outcome "$case_dir" "$id"
+  out=$(run_teardown "$case_dir" "$id") || fail "reviewed no-backlog teardown failed: $out"
   assert_absent "$(home_of "$case_dir")/state/$id.meta" \
     "no-backlog teardown retained its task record"
   assert_absent "$(home_of "$case_dir")/state/$id.backlog-close" \
@@ -3024,28 +3031,59 @@ test_environment_selected_adapter_is_not_forced_to_markdown() {
 }
 
 test_manual_backend_home_dispatches_and_completes_without_touching_the_backlog() {
-  local case_dir id data data_resolved out
+  local case_dir id scout_id data data_resolved out backlog_before home
   id=atomic-manual-b12
-  case_dir=$(make_home manual-backend "$id")
-  printf '%s\n' manual > "$(home_of "$case_dir")/config/backlog-backend"
+  scout_id=atomic-manual-scout-b12
+  case_dir=$(make_home manual-backend "$id" "$scout_id")
+  home=$(home_of "$case_dir")
+  printf '%s\n' manual > "$home/config/backlog-backend"
   pin_markdown_backend "$case_dir"
   data="$case_dir/manual-data"
-  mv "$(home_of "$case_dir")/data" "$data"
+  mv "$home/data" "$data"
   data_resolved=$(cd "$data" && pwd -P)
+  backlog_before=$(cat "$data/backlog.md")
   make_tasks_axi_incompatible "$case_dir"
   # Deliberately no backlog item: on a manual home the operator owns the file,
   # so neither half of the lifecycle may hard-fail over its contents.
   out=$(FM_DATA_OVERRIDE="$data" run_ship_spawn "$case_dir" "$id") \
     || fail "manual-backend spawn failed: $out"
   assert_contains "$out" "spawned $id" "manual-backend spawn did not report success"
+  assert_present "$home/state/$id.meta" "manual-backend spawn published no live task record"
+  assert_grep 'completion_required=1' "$home/state/$id.meta" \
+    "manual-backend ship did not require durable outcome review"
 
+  if FM_DATA_OVERRIDE="$data" run_teardown "$case_dir" "$id" > "$case_dir/unreviewed.out" 2>&1; then
+    fail "manual-backend teardown accepted a ship without outcome review"
+  fi
+  assert_grep 'completion gate' "$case_dir/unreviewed.out" \
+    "manual-backend teardown refusal came from an unrelated gate"
+  assert_present "$home/state/$id.meta" "manual-backend refusal removed its live task record"
+
+  out=$(PATH="$case_dir/fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$home/config" \
+    "$ROOT/bin/fm-captain-hold.sh" complete "$id" --none --fulfilled) \
+    || fail "manual-backend outcome attestation required automatic backlog support: $out"
+  assert_contains "$out" "complete: $id" "manual-backend outcome attestation did not report completion"
+  PATH="$case_dir/fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$home/config" \
+    "$ROOT/bin/fm-captain-hold.sh" verify "$id" >/dev/null \
+    || fail "manual-backend durable outcome did not verify with incompatible tasks-axi"
   out=$(FM_DATA_OVERRIDE="$data" run_teardown "$case_dir" "$id") \
-    || fail "manual-backend teardown failed: $out"
+    || fail "reviewed manual-backend teardown failed: $out"
   assert_contains "$out" "Update $data_resolved/backlog.md" \
     "manual-backend teardown did not name its configured backlog path"
-  assert_absent "$(home_of "$case_dir")/state/$id.backlog-close" \
+  assert_absent "$home/state/$id.backlog-close" \
     "manual-backend teardown recorded a close it never owed"
-  pass "a manual-backlog home dispatches and completes without a hard failure"
+  [ "$backlog_before" = "$(cat "$data/backlog.md")" ] \
+    || fail "manual-backend lifecycle mutated the operator-owned backlog"
+  out=$(FM_DATA_OVERRIDE="$data" run_spawn "$case_dir" "$scout_id" "$case_dir/project" --scout) \
+    || fail "manual-backend scout spawn failed: $out"
+  assert_grep 'kind=scout' "$home/state/$scout_id.meta" "manual-backend scout metadata lost its worker kind"
+  assert_grep 'completion_required=1' "$home/state/$scout_id.meta" \
+    "manual-backend scout did not require outcome review"
+  [ "$backlog_before" = "$(cat "$data/backlog.md")" ] \
+    || fail "manual-backend scout spawn mutated the operator-owned backlog"
+  pass "manual-backlog ship/scout work requires outcome review without automatic queue mutation"
 }
 
 test_a_secondmate_home_keeps_its_own_books() {
@@ -3064,6 +3102,8 @@ test_a_secondmate_home_keeps_its_own_books() {
 
   rm -f "$(home_of "$case_dir")/state/$id.meta"
   write_task_meta "$case_dir" "$id" ship local-only "spawn_gen=spawn-mate-close"
+  printf 'completion_required=1\n' >> "$(home_of "$case_dir")/state/$id.meta"
+  review_fulfilled_outcome "$case_dir" "$id"
   out=$(run_teardown "$case_dir" "$id") || fail "mate-home teardown failed: $out"
   [ "$(row_state "$case_dir" "$id")" = "done" ] \
     || fail "a mate's own completion left its item at $(row_state "$case_dir" "$id")"
@@ -3088,7 +3128,10 @@ test_a_persistent_secondmate_is_never_a_backlog_item() {
     || fail "secondmate spawn failed: $out"
   assert_contains "$out" "spawned $id" "secondmate spawn did not report success"
   assert_present "$(home_of "$case_dir")/state/$id.meta" "secondmate spawn published no record"
-  pass "dispatching a persistent secondmate needs no backlog item"
+  if grep -qx 'completion_required=1' "$(home_of "$case_dir")/state/$id.meta"; then
+    fail "persistent secondmate metadata acquired a ship outcome gate"
+  fi
+  pass "dispatching a persistent secondmate needs no backlog item or ship outcome gate"
 }
 
 test_backend_resolution_preserves_config_errors
