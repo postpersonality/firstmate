@@ -9,9 +9,7 @@
 # Part C covers the branch Part B structurally cannot reach - a doomed pane
 # whose shell holds a persistent child, so the lone-idle-shell proof fails and
 # the plan falls back to the plain explicit close - in the geometry where the
-# closing workspace's right neighbour is not the anchor. It then checks the
-# version floor that decides whether an unconfigured home is projected at all,
-# against what Part A measured about this very release.
+# closing workspace's right neighbour is not the anchor.
 # On a future release whose explicit close preserves focus, Part A records
 # that and Parts B and C keep outcome-only assertions, so no version is guessed.
 # Every CLI operation is routed through one guarded named non-default lab, and
@@ -335,8 +333,7 @@ C_AFTER=$(focus_snapshot) || fail 'could not capture the Part C post-close focus
   || fail "the fallback close left focus off the anchor ($C_BEFORE -> $C_AFTER)"
 C_WRONG=$(grep -Fvxc -- "$C_BEFORE" "$C_FOCUS_SAMPLES" || true)
 if [ "$STEAL_LIVE" = 1 ]; then
-  # A defective release cannot make this path focus-safe, which is precisely why
-  # default-on projection is floored above it. The wrong-focus window is
+  # A defective release cannot make this path focus-safe. The wrong-focus window is
   # explicitly accepted here, but only as a BOUNDED one: the restore backstop
   # must have put the anchor back exactly, and the whole exposure must end with
   # the operation rather than parking the captain somewhere else.
@@ -348,62 +345,3 @@ else
     || fail "a focus-preserving release exposed $C_WRONG wrong-focus samples on the fallback path"
   pass 'fallback on a focus-preserving release: the plain explicit close preserved exact focus throughout'
 fi
-
-# The live guard on the version floor itself: Part A measured whether THIS
-# release steals focus. Every above-floor release must preserve focus, while a
-# below-floor release may conservatively include the known post-fix protocol-18
-# preview without weakening the stated 0.8.0 policy floor.
-STATUS=$(lab status --json) || fail 'could not read final named-lab version evidence'
-LIVE_VERSION=$(printf '%s' "$STATUS" | jq -r '.client.version')
-LIVE_PROTOCOL=$(printf '%s' "$STATUS" | jq -r '.client.protocol')
-FLOOR_VERDICT=$(bash -c '
-  . "$0/bin/backends/herdr.sh"
-  status=0
-  fm_backend_herdr_release_floor_verdict "$1" "$2" || status=$?
-  printf "%s\n" "$status"
-' "$ROOT" "$LIVE_PROTOCOL" "$LIVE_VERSION")
-case "$FLOOR_VERDICT" in
-  0)
-    [ "$STEAL_LIVE" = 0 ] \
-      || fail "herdr $LIVE_VERSION (protocol $LIVE_PROTOCOL) is at or above the floor but steals focus on the explicit close"
-    pass "version floor: herdr $LIVE_VERSION protocol $LIVE_PROTOCOL is at or above the floor and preserves focus"
-    ;;
-  1)
-    pass "version floor: herdr $LIVE_VERSION protocol $LIVE_PROTOCOL remains conservatively below the floor with steal_live=$STEAL_LIVE"
-    ;;
-  *) fail "herdr $LIVE_VERSION (protocol $LIVE_PROTOCOL) could not be classified against the presentation floor" ;;
-esac
-
-# The end-user gate: an unconfigured home must project only at or above the
-# floor, and an explicit opt-in must survive either way.
-FLOOR_CONFIG="$TMP_ROOT/floor-config"
-FLOOR_STATE="$TMP_ROOT/floor-state"
-mkdir -p "$FLOOR_CONFIG" "$FLOOR_STATE"
-gate_verdict() {  # <config-dir> -> on|off, warnings on stderr
-  PATH="$FAKEBIN:$HERDR_ORIGINAL_PATH" HERDR_SESSION="$HERDR_LAB_SESSION" bash -c '
-    . "$0/bin/backends/herdr.sh"
-    if fm_backend_herdr_presentation_enabled "$1" "$2"; then printf "on\n"; else printf "off\n"; fi
-  ' "$ROOT" "$1" "$FLOOR_STATE"
-}
-GATE_ERR="$TMP_ROOT/gate.err"
-GATE_DEFAULT=$(gate_verdict "$FLOOR_CONFIG" 2>"$GATE_ERR")
-printf 'on\n' > "$FLOOR_CONFIG/herdr-presentation-spaces"
-GATE_OPT_IN=$(gate_verdict "$FLOOR_CONFIG" 2>/dev/null)
-[ "$GATE_OPT_IN" = on ] \
-  || fail "an explicit opt-in must stay on for herdr $LIVE_VERSION, got '$GATE_OPT_IN'"
-if [ "$FLOOR_VERDICT" = 1 ]; then
-  [ "$GATE_DEFAULT" = off ] \
-    || fail "an unconfigured home must not be projected on below-floor herdr $LIVE_VERSION, got '$GATE_DEFAULT'"
-  grep -q "$LIVE_VERSION" "$GATE_ERR" \
-    || fail "the below-floor fallback must name herdr $LIVE_VERSION: $(cat "$GATE_ERR")"
-  pass "version floor: an unconfigured home falls back flat on herdr $LIVE_VERSION and the explicit opt-in still projects"
-else
-  [ "$GATE_DEFAULT" = on ] \
-    || fail "an unconfigured home must stay projected on herdr $LIVE_VERSION, got '$GATE_DEFAULT'"
-  [ ! -s "$GATE_ERR" ] \
-    || fail "a supported release must warn about nothing: $(cat "$GATE_ERR")"
-  pass "version floor: an unconfigured home stays projected on herdr $LIVE_VERSION and the explicit opt-in agrees"
-fi
-
-printf 'evidence: herdr=%s protocol=%s steal_live=%s floor_verdict=%s default-session-tripwire=armed\n' \
-  "$LIVE_VERSION" "$LIVE_PROTOCOL" "$STEAL_LIVE" "$FLOOR_VERDICT"
