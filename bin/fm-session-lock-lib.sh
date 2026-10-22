@@ -166,8 +166,10 @@ EOF
 
 # True if $1 is a live process that looks like a verified harness.
 fm_harness_pid_alive() {
-  local pid=$1 comm args
+  local pid=$1 comm args process_state
   kill -0 "$pid" 2>/dev/null || return 1
+  process_state=$(ps -o stat= -p "$pid" 2>/dev/null) || return 1
+  case "$process_state" in *Z*) return 1 ;; esac
   comm=$(ps -o comm= -p "$pid" 2>/dev/null) || return 1
   args=$(ps -o args= -p "$pid" 2>/dev/null)
   fm_harness_process_matches "$comm" "$args"
