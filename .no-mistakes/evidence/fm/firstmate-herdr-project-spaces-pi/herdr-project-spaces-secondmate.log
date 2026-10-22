@@ -1,0 +1,4 @@
+ok - persistent secondmate recovery retains its home Space and replaces only its own husk
+ok - secondmate keeps its home Space; primary and secondmate workers share the project Space
+ok - each home recovers only its own recorded endpoints inside the shared project Space
+ok - teardown preserves another home worker and persistent secondmate endpoint

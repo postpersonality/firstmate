@@ -1,0 +1,3 @@
+ok - exact legacy recovery waits only on explicit opt-in and preserves its owner, parent, and focus
+ok - same-project reuse and separate-project placement preserve exact legacy and mixed old workers
+ok - legacy exact-pane cleanup preserves project worker and orchestration parent
