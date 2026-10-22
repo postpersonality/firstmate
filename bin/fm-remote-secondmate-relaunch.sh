@@ -40,6 +40,8 @@ ID=$1
 HARNESS=$2
 MODEL=$3
 EFFORT=$4
+EFFORT_PIN=
+RELAUNCH_ARGS=()
 case "$ID" in ''|*[!A-Za-z0-9._-]*) die "invalid secondmate id: $ID" ;; esac
 
 META="$STATE/$ID.meta"
@@ -50,9 +52,12 @@ REMOTE_HOST=$(fm_meta_get "$META" remote_host)
 # This home's worker effort pin binds the replacement before the host stops the
 # running mate, whether or not the host's own home inherited the pin yet.
 EFFORT=$(fm_worker_effort_apply "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" "$EFFORT" "$HARNESS" "$MODEL" 0) || exit 1
+EFFORT_PIN=$(fm_worker_effort_effective_pin "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}") || exit 1
+RELAUNCH_ARGS=(relaunch "$ID" "$HARNESS" "$MODEL" "$EFFORT")
+[ -z "$EFFORT_PIN" ] || RELAUNCH_ARGS+=("$EFFORT_PIN")
 
 RELAUNCH_OUT=$("$SCRIPT_DIR/fm-on.sh" "$ID" fm-remote-secondmate-control.sh \
-  relaunch "$ID" "$HARNESS" "$MODEL" "$EFFORT" </dev/null 2>&1) || {
+  "${RELAUNCH_ARGS[@]}" </dev/null 2>&1) || {
   rc=$?
   printf '%s\n' "$RELAUNCH_OUT" >&2
   exit "$rc"

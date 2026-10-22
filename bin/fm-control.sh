@@ -950,7 +950,7 @@ resolve_relaunch_profile() {
     TARGET_MODEL=default
   fi
   local config=${FM_CONFIG_OVERRIDE:-$FM_HOME/config} effort_pin
-  effort_pin=$(fm_worker_effort_pin "$config") || return 1
+  effort_pin=$(fm_worker_effort_effective_pin "$config") || return 1
   if [ "$EFFORT_SET" = 1 ]; then
     TARGET_EFFORT=$NEW_EFFORT
   elif [ "$HARNESS_SET" = 0 ] && [ -n "$CONFIG_HARNESS" ]; then
@@ -969,10 +969,44 @@ resolve_relaunch_profile() {
   # The launch owner applies this home's worker account pin too, but only after
   # the old agent has been stopped, so a pin that no longer resolves or is
   # signed out must refuse here, while nothing has changed yet.
-  local account_model=$TARGET_MODEL
+  local account_model=$TARGET_MODEL account_selection account_root='' account_provider=''
   [ "$account_model" != default ] || account_model=
-  fm_worker_account_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
-    "$account_model" "$TARGET_HARNESS" >/dev/null || return 1
+  account_selection=$(fm_worker_account_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
+    "$account_model" "$TARGET_HARNESS") || return 1
+  if [ -n "$account_selection" ]; then
+    account_root=${account_selection#*$'\t'}
+    account_provider=${account_root#*$'\t'}
+    account_root=${account_root%%$'\t'*}
+  fi
+  if [ -n "$effort_pin" ] && { [ "$TARGET_HARNESS" = pi ] || [ "$TARGET_HARNESS" = pi-signed ]; }; then
+    local pi_executable pi_help pi_approve=0 pi_session_ref='' pi_session_identity pi_session_agent
+    pi_executable=$(type -P -- "$TARGET_HARNESS" 2>/dev/null || true)
+    [ -n "$pi_executable" ] || {
+      echo "error: cannot verify config/crew-effort against the selected Pi model because $TARGET_HARNESS is not on PATH" >&2
+      return 1
+    }
+    if [ "$KIND" = secondmate ]; then
+      pi_help=$("$pi_executable" --help 2>&1 || true)
+      if printf '%s\n' "$pi_help" | grep -Eq -- '(^|[[:space:]])--approve([^[:alnum:]_-]|$)'; then
+        pi_approve=1
+      fi
+    fi
+    if [ "$TARGET_MODEL" = default ] && [ "$BACKEND" = herdr ]; then
+      fm_backend_source herdr || return 1
+      if fm_backend_herdr_parse_target "$T"; then
+        pi_session_identity=$(fm_backend_herdr_pane_agent_session_ref \
+          "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" 2>/dev/null || true)
+        if [ -n "$pi_session_identity" ]; then
+          pi_session_agent=${pi_session_identity%%$'\t'*}
+          if [ "$(fm_control_relaunch_resume_flag "$TARGET_HARNESS" "$pi_session_agent")" = --session ]; then
+            pi_session_ref=${pi_session_identity#*$'\t'}
+          fi
+        fi
+      fi
+    fi
+    fm_worker_effort_validate_pi_capability "$config" "$TARGET_HARNESS" "$pi_executable" \
+      "$TARGET_MODEL" "$WT" "$account_root" "$account_provider" "$pi_session_ref" "$pi_approve" || return 1
+  fi
   # Likewise config/crew-exclude-tools: a malformed file, or a replacement
   # runtime that cannot hide the listed tools, refuses here, before the old
   # agent stops. Secondmate agents are not covered.

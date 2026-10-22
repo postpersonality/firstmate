@@ -994,7 +994,7 @@ A relaunch with no explicit effort also takes the pin rather than the effort rec
 A launch that names a different effort, through `--effort`, a dispatch profile, or a `config/secondmate-harness` effort token, refuses; the pin never raises or lowers a requested level for it.
 Align those profiles and tokens with the pin, or omit their effort.
 
-Every refusal happens before a new worker's endpoint, local copy, or task record exists, and before a relaunch stops the running worker.
+Every refusal happens before a new worker's endpoint, local copy, or task record exists, and before a relaunch stops the running worker. A pinned `pi` or `pi-signed` launch also resolves the model Pi will actually select with that account's native model runtime and refuses if Pi would clamp the pinned level; this preflight is offline and read-only.
 
 ### Runtime support
 
@@ -1002,14 +1002,14 @@ A pinned launch must carry its level through the runtime's own verified setting,
 
 | Runtime | With an `xhigh` pin |
 | --- | --- |
-| `claude`, `codex`, `pi`, `pi-signed`, `omp`, `muse` | Launches with the runtime's native effort setting. |
+| `claude`, `codex`, `pi`, `pi-signed`, `omp`, `muse` | Launches with the runtime's native effort setting. For `pi` and `pi-signed`, the selected model must also report the pinned level in Pi's native supported-level list. |
 | `opencode` | Launches only with an `openai/<id>` model, whose variant list carries `xhigh`; any other model refuses. |
 | `grok`, `agy`, `rovo`, `kimi`, `cursor`, `gemini`, `devin` | Refuses, because the runtime has no verified `xhigh` setting. |
 | A raw launch command | Refuses, because Firstmate cannot verify which effort a raw command applies. |
 
 A `max` pin follows the same runtime/model-specific native check; for example, Codex supports pinned `max` only with model `gpt-5.6-luna`.
 The optional pin keeps that standing preference local to homes that configure it; unpinned homes retain their existing effort selection.
-[`bin/fm-worker-effort-lib.sh`](../bin/fm-worker-effort-lib.sh) owns these native mappings.
+[`bin/fm-worker-effort-lib.sh`](../bin/fm-worker-effort-lib.sh) owns these native mappings; [`bin/fm-pi-effort-check.mjs`](../bin/fm-pi-effort-check.mjs) resolves Pi's selected model offline without writing account or session state.
 
 The pin guards Firstmate's own launch path; it does not stop an operator from editing the file or starting a runtime outside Firstmate.
 

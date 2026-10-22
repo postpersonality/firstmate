@@ -862,6 +862,53 @@ test_exclude_tools_refusals_happen_before_the_agent_stops() {
   pass "fm-control relaunch: exclusion-list refusals happen before the running agent stops"
 }
 
+test_pi_effort_pin_refuses_a_clamped_relaunch_before_the_agent_stops() {
+  local dir out rc id=rl-pi-clamp
+  dir=$(new_case pi-clamp "$id")
+  add_ship_task "$dir" "$id" pi
+  printf pi > "$dir/fake/command"
+  printf pi > "$dir/fake/becomes"
+  cat > "$dir/fakebin/pi" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) printf 'Pi 0.84.0\n' ;;
+  --help) printf 'Options: --tui-mode\n' ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "$dir/fakebin/pi"
+  mkdir -p "$dir/pi-sdk/dist" "$dir/pi-sdk/node_modules/@earendil-works/pi-ai/dist" "$dir/pi-agent"
+  printf '%s\n' '{"name":"@earendil-works/pi-coding-agent","version":"0.84.0","type":"module"}' \
+    > "$dir/pi-sdk/package.json"
+  cat > "$dir/pi-sdk/dist/index.js" <<'JS'
+export class ModelRuntime { static async create() { return { getModel() {}, hasConfiguredAuth() { return true; } }; } }
+export class SettingsManager { static create() { return { getSessionDir: () => ".", getEnabledModels: () => [], getDefaultProvider: () => undefined, getDefaultModel: () => undefined, getDefaultThinkingLevel: () => "high", getAllModelThinkingLevels: () => ({}) }; } }
+export class SessionManager { static findById() { return undefined; } static async list() { return []; } static open() { throw new Error("unexpected session access"); } }
+export function resolveCliModel({ cliProvider, cliModel }) { return { model: { provider: cliProvider || "fm-live-fake", id: cliModel, reasoning: true, thinkingLevelMap: {} } }; }
+export async function resolveModelScopeWithDiagnostics() { return { scopedModels: [] }; }
+export class ProjectTrustStore { get() { return false; } }
+export function hasTrustRequiringProjectResources() { return false; }
+JS
+  cat > "$dir/pi-sdk/node_modules/@earendil-works/pi-ai/dist/index.js" <<'JS'
+export class InMemoryCredentialStore { async modify() {} }
+export class InMemoryModelsStore {}
+export function modelsAreEqual(a, b) { return a.provider === b.provider && a.id === b.id; }
+export function getSupportedThinkingLevels(model) { return ["off", "minimal", "low", "medium", "high", ...Object.keys(model.thinkingLevelMap || {})]; }
+JS
+  mkdir -p "$dir/home/config"
+  printf 'xhigh\n' > "$dir/home/config/crew-effort"
+  cp "$dir/home/state/$id.meta" "$dir/meta.before"
+  out=$(PI_PACKAGE_DIR="$dir/pi-sdk" PI_CODING_AGENT_DIR="$dir/pi-agent" \
+    run_control "$dir" "$id" relaunch --model fm-live-shallow --note "reject a clamped effort"); rc=$?
+  expect_code 1 "$rc" "a Pi model that clamps the configured effort must refuse relaunch"$'\n'"$out"
+  assert_contains "$out" "Pi model fm-live-fake/fm-live-shallow supports only off|minimal|low|medium|high" \
+    "the refusal must name the Pi model's native supported levels"
+  [ "$(cat "$dir/fake/command")" = pi ] || fail "the clamped Pi effort refusal stopped the running agent"
+  [ ! -s "$dir/fake/literal" ] || fail "the clamped Pi effort refusal sent lifecycle input"
+  cmp -s "$dir/meta.before" "$dir/home/state/$id.meta" || fail "the clamped Pi effort refusal changed the task record"
+  pass "fm-control relaunch: a Pi effort clamp refuses before the old agent stops"
+}
+
 test_effort_pin_binds_a_relaunch_before_the_agent_stops() {
   local dir out rc id=rl-effort-pin flags args fresh_dir fresh=rl-effort-pin-fresh
   dir=$(new_case effort-pin "$id")
@@ -2592,6 +2639,7 @@ test_signed_out_worker_account_pin_refuses_before_stop
 test_worker_account_pin_follows_the_relaunch
 test_pi_exclude_tools_follow_the_relaunch
 test_exclude_tools_refusals_happen_before_the_agent_stops
+test_pi_effort_pin_refuses_a_clamped_relaunch_before_the_agent_stops
 test_effort_pin_binds_a_relaunch_before_the_agent_stops
 test_explicit_model_wins_over_the_recorded_one
 test_relaunch_onto_an_unverified_harness_is_refused

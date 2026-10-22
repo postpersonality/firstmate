@@ -1047,7 +1047,7 @@ if [ "$READONLY_DIR_SET" -eq 1 ]; then
 fi
 
 spawn_remote_secondmate() {
-  local id=$1 remote host root home harness positional model effort backend out rc meta tmp
+  local id=$1 remote host root home harness positional model effort effort_pin backend out rc meta tmp
   local remote_backend remote_target remote_harness remote_herdr_session registry_lock remote_lock remote_generation
   local remote_traceparent remote_recorded_traceparent sm_primary_head sync_out sync_rc
   local -a launch_args
@@ -1148,6 +1148,11 @@ spawn_remote_secondmate() {
     fm_lock_release "$SPAWN_TASK_LOCK" || true
     return 1
   }
+  effort_pin=$(fm_worker_effort_effective_pin "$CONFIG") || {
+    fm_lock_release "$registry_lock" || true
+    fm_lock_release "$SPAWN_TASK_LOCK" || true
+    return 1
+  }
   if [ "$effort" = ultra ] && ! "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$harness" "$model" "$effort"; then
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
@@ -1243,7 +1248,11 @@ spawn_remote_secondmate() {
     remote_traceparent=$(FM_TRACE_CONTEXT=on fm_trace_context_resolve "$CONFIG" "$meta" || true)
   fi
   launch_args=("$id" "$harness" "$model" "$effort" "$backend")
-  [ -z "$remote_traceparent" ] || launch_args+=("$remote_traceparent")
+  if [ -n "$effort_pin" ]; then
+    launch_args+=("$remote_traceparent" "$effort_pin")
+  else
+    [ -z "$remote_traceparent" ] || launch_args+=("$remote_traceparent")
+  fi
   if out=$("$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh launch \
     "${launch_args[@]}" </dev/null 2>&1); then
     rc=0
@@ -3076,6 +3085,11 @@ if [ "$KIND" = secondmate ]; then
     SECONDMATE_PROJECTS=$SECONDMATE_REGISTRY_MATCH_PROJECTS
   fi
   WT="$PROJ_ABS"
+  if [ "$RELAUNCH" -eq 0 ]; then
+    fm_worker_effort_validate_pi_capability "$CONFIG" "$HARNESS" "${PI_BIN:-}" \
+      "$MODEL" "$WT" "$WORKER_ACCOUNT_ROOT" "$WORKER_ACCOUNT_PROVIDER" "" \
+      "$([ -n "${PI_APPROVE:-}" ] && echo 1 || echo 0)" || exit 1
+  fi
   # Local-HEAD sync: before launch, fast-forward this secondmate's worktree to the
   # PRIMARY checkout's current default-branch commit, so a freshly spawned or
   # recovery-respawned secondmate always runs the primary's version (AGENTS.md
@@ -3132,6 +3146,13 @@ else
   PROJ_ABS="$(cd "$(resolve_project_dir_arg "$PROJ")" && pwd)"
   WT=""
   BRIEF="$DATA/$ID/brief.md"
+  if [ "$RELAUNCH" -eq 0 ]; then
+    # A fresh worktree has not been provisioned or trusted yet. Check against
+    # the selected project's files while matching Pi's untrusted-project model
+    # selection, before slot, endpoint, or worktree side effects.
+    fm_worker_effort_validate_pi_capability "$CONFIG" "$HARNESS" "${PI_BIN:-}" \
+      "$MODEL" "$PROJ_ABS" "$WORKER_ACCOUNT_ROOT" "$WORKER_ACCOUNT_PROVIDER" "" 2 || exit 1
+  fi
 fi
 # Project capacity admission (bin/fm-project-capacity-lib.sh owns the
 # declaration, what holds a place, and why this is race-safe). A fresh worker

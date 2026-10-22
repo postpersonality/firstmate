@@ -66,9 +66,9 @@ argv_b64=$4
 command_fields=$(perl -MMIME::Base64=decode_base64 -e '
   my $data=decode_base64($ARGV[0]);
   my @args=split(/\0/, $data);
-  print join("\t", map { defined $_ ? $_ : "" } @args[0..5]);
+  print join("\t", map { defined $_ ? $_ : "" } @args[0..6]);
 ' "$argv_b64")
-IFS=$'\t' read -r cmd action id harness model effort <<EOF
+IFS=$'\t' read -r cmd action id harness model effort effort_pin <<EOF
 $command_fields
 EOF
 [ "$cmd" = fm-remote-secondmate-control.sh ] || exit 93
@@ -93,6 +93,7 @@ printf 'herdr_session=fm-remote\n'
 printf 'harness=%s\n' "$harness"
 printf 'model=%s\n' "$model"
 printf 'effort=%s\n' "$effort"
+[ -z "$effort_pin" ] || printf 'forwarded-effort-pin=%s\n' "$effort_pin"
 SH
 chmod +x "$FAKEBIN/fake-ssh"
 
@@ -209,6 +210,8 @@ expect_code 0 "$RC" "a pinned remote relaunch without an effort should succeed"$
 [ -s "$FM_FAKE_SSH_LOG" ] || fail "the pinned relaunch never reached the host"
 assert_grep 'effort=xhigh' "$HOME_DIR/state/ios.meta" \
   "the host was not asked for the pinned effort"
+assert_contains "$OUT" "forwarded-effort-pin=xhigh" \
+  "the remote host did not receive the effort pin needed for native model validation"
 unset FM_FAKE_SSH_LOG
 rm "$HOME_DIR/config/crew-effort"
 pass "the worker effort pin refuses a different remote relaunch effort before the host and fills an omitted one"

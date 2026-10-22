@@ -8,6 +8,9 @@
 
 _FM_WORKER_EFFORT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$_FM_WORKER_EFFORT_LIB_DIR/fm-timeout-lib.sh"
+
 _fm_worker_effort_quote() {
   printf "'"
   printf '%s' "$1" | sed "s/'/'\\\\''/g"
@@ -162,6 +165,29 @@ fm_worker_effort_pin() {
   esac
 }
 
+# fm_worker_effort_effective_pin <config-dir>: print the local pin, or the
+# optional pin forwarded by a remote parent. A conflicting local/forwarded pin
+# refuses instead of silently selecting one home's policy over the other.
+fm_worker_effort_effective_pin() {
+  local pin override=${FM_WORKER_EFFORT_PIN_OVERRIDE:-}
+  pin=$(fm_worker_effort_pin "$1") || return 1
+  if [ -n "$override" ]; then
+    case "$override" in
+    xhigh | max) ;;
+    *)
+      echo "error: invalid forwarded worker effort pin '$override'; expected xhigh or max" >&2
+      return 1
+      ;;
+    esac
+    if [ -n "$pin" ] && [ "$pin" != "$override" ]; then
+      echo "error: forwarded worker effort pin '$override' conflicts with this home's config/crew-effort pin '$pin'" >&2
+      return 1
+    fi
+    pin=$override
+  fi
+  printf '%s' "$pin"
+}
+
 # fm_worker_effort_apply <config-dir> <requested> <harness> <model> <raw 0|1>:
 # print the effort this launch must use. Without a pin that is <requested>
 # unchanged. With a pin, an omitted request ('', '-', default) resolves to the
@@ -169,7 +195,7 @@ fm_worker_effort_pin() {
 # pinned level natively is refused.
 fm_worker_effort_apply() {
   local config=$1 requested=$2 harness=$3 model=$4 raw=$5 pin native
-  pin=$(fm_worker_effort_pin "$config") || return 1
+  pin=$(fm_worker_effort_effective_pin "$config") || return 1
   if [ -z "$pin" ]; then
     printf '%s' "$requested"
     return 0
@@ -196,4 +222,43 @@ fm_worker_effort_apply() {
     return 1
   fi
   printf '%s' "$pin"
+}
+
+# fm_worker_effort_validate_pi_capability <config-dir> <harness> <executable>
+#   <model|default> <cwd> <agent-dir|empty> <provider|empty> <session-ref|empty>
+#   <approved-project 0|1>
+# A configured/forwarded pin must exist in Pi's native supported-level list for
+# the model Pi will actually select. The checker uses the selected account root,
+# reads any resumed session without changing it, and runs offline with in-memory
+# model/auth stores. Unpinned launches never invoke it.
+fm_worker_effort_validate_pi_capability() {
+  local config=$1 harness=$2 executable=$3 model=$4 cwd=$5 agent_dir=$6 provider=$7 session_ref=$8 approve=$9
+  local pin fallback out rc
+  pin=$(fm_worker_effort_effective_pin "$config") || return 1
+  [ -n "$pin" ] || return 0
+  case "$harness" in pi | pi-signed) ;; *) return 0 ;; esac
+  [ -x "$executable" ] || {
+    echo "error: cannot verify the pinned Pi effort because the selected $harness executable is unavailable" >&2
+    return 1
+  }
+  [ -d "$cwd" ] || {
+    echo "error: cannot verify the pinned Pi effort because the selected model's working directory is unavailable: $cwd" >&2
+    return 1
+  }
+  case "$approve" in 0 | 1 | 2) ;; *) approve=0 ;; esac
+  fallback=$(type -P -- pi 2>/dev/null || true)
+  if out=$(fm_run_timed 20 node "$_FM_WORKER_EFFORT_LIB_DIR/fm-pi-effort-check.mjs" \
+    "$executable" "$fallback" "$model" "$pin" "$cwd" "$agent_dir" "$provider" "$session_ref" "$approve" 2>&1); then
+    return 0
+  else
+    rc=$?
+  fi
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out" >&2
+  elif [ "$rc" -eq 124 ]; then
+    echo "error: Pi's offline model-capability check timed out; refusing the pinned effort" >&2
+  else
+    echo "error: Pi's offline model-capability check failed (exit $rc); refusing the pinned effort" >&2
+  fi
+  return 1
 }
