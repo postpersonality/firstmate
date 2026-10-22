@@ -1,0 +1,2 @@
+Real Pi SDK AgentSession, actual Firstmate branch extension, disposable local fixture provider:
+real Pi SDK custom idle run completed; unrelated message not scanned (getEntries calls=0)
