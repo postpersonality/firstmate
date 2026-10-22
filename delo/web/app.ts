@@ -445,7 +445,8 @@ function artifactViewer(a: ArtifactView) {
   if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) return `<audio controls src="${esc(src)}"></audio>${open}`;
   if (['mp4', 'webm'].includes(ext)) return `<video class="artifact-image" controls src="${esc(src)}"></video>${open}`;
   if (ext === 'pdf') return `<iframe class="artifact-frame" src="${esc(src)}" title="Материал: ${esc(a.title)}"></iframe>${open}`;
-  if (['txt', 'md', 'log', 'csv', 'json'].includes(ext)) return `<iframe class="artifact-frame" sandbox="" src="${esc(src)}" title="Материал: ${esc(a.title)}"></iframe>${open}`;
+  if (ext === 'md') return `<iframe class="artifact-frame" sandbox="allow-popups allow-popups-to-escape-sandbox" src="${esc(src)}?view=markdown" title="Материал: ${esc(a.title)}"></iframe>${open}`;
+  if (['txt', 'log', 'csv', 'json'].includes(ext)) return `<iframe class="artifact-frame" sandbox="" src="${esc(src)}" title="Материал: ${esc(a.title)}"></iframe>${open}`;
   return `<p><a href="${esc(src)}" download>Скачать файл ${esc(a.entry)}</a></p><p class="muted">Этот вид файла Дело не показывает; скачайте его и вернитесь к ответу.</p>`;
 }
 function renderDesk(a: ArtifactView) {

@@ -109,6 +109,21 @@ test('HTTP serves the copied material sandboxed, keeps the API from it and rejec
     assert.equal((await handle(new Request(`http://localhost:4317/artifacts/${id}/files/img/plan.png`))).headers.get('content-type'), 'image/png');
     assert.equal((await handle(new Request('http://localhost:4317/artifact-adapter.js', { headers: { origin: 'null' } }))).status, 200);
     assert.equal((await handle(new Request(`http://localhost:4317/artifacts/${id}/files/..%2Fartifact.json`))).status, 404);
+    assert.equal(await (await handle(new Request(`http://localhost:4317/artifacts/${id}/files/index.html?view=markdown`))).text(), await (await handle(new Request(`http://localhost:4317/artifacts/${id}/files/index.html`))).text(), 'only Markdown has a rendered view');
+
+    const source = '# Отчёт\n\n| Шаг | Итог |\n| --- | --- |\n| Проверка | `npm test` |\n\n```sh\nnpm run build\n```\n\n[Подробности](notes.md) <script>alert(1)</script> [опасная](javascript:alert(1))\n';
+    writeFileSync(join(root, 'report.md'), source);
+    const notes = store.publishArtifact({ source: join(root, 'report.md'), title: 'Отчёт', action: 'Прочитать', taskId: task.id });
+    const raw = await handle(new Request(`http://localhost:4317/artifacts/${notes.id}/files/report.md`));
+    assert.equal(raw.headers.get('content-type'), 'text/plain; charset=utf-8');
+    assert.equal(await raw.text(), source, 'the plain address still serves the file as written');
+    const view = await handle(new Request(`http://localhost:4317/artifacts/${notes.id}/files/report.md?view=markdown`));
+    assert.equal(view.headers.get('content-type'), 'text/html; charset=utf-8');
+    assert.equal(view.headers.get('content-security-policy'), "sandbox allow-popups allow-popups-to-escape-sandbox; frame-ancestors 'self'");
+    const rendered = await view.text();
+    assert.match(rendered, /<h1>Отчёт<\/h1>[\s\S]*<table>[\s\S]*<td><code>npm test<\/code><\/td>[\s\S]*<pre><code class="language-sh">npm run build\n<\/code><\/pre>/);
+    assert.match(rendered, /<a href="notes.md">Подробности<\/a> &lt;script&gt;alert\(1\)&lt;\/script&gt; \[опасная\]\(javascript:alert\(1\)\)/);
+    assert.doesNotMatch(rendered, /<script/);
     assert.equal((await handle(new Request('http://localhost:4317/api/artifacts', { headers: { origin: 'null' } }))).status, 403, 'the material cannot read the queue');
     assert.equal((await handle(new Request(`http://localhost:4317/api/artifacts/${id}/draft`, { method: 'PUT', headers: { 'content-type': 'application/json', origin: 'null' }, body: '{"draft":{}}' }))).status, 403);
 

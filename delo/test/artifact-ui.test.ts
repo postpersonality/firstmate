@@ -55,6 +55,9 @@ test('the queue filters and pins materials, and the desk keeps a draft across a 
     await until(() => doc().getElementById('artifact-comment'));
     assert.ok(doc().body.classList.contains('desk'), 'the desk takes the full width');
     assert.equal(doc().getElementById('artifact-submit')!.textContent, 'Ознакомился');
+    const reading = doc().querySelector('.artifact-frame') as HTMLIFrameElement;
+    assert.match(reading.getAttribute('src')!, /\/files\/summary\.md\?view=markdown$/, 'Markdown is shown formatted');
+    assert.equal(reading.getAttribute('sandbox'), 'allow-popups allow-popups-to-escape-sandbox');
     const comment = doc().getElementById('artifact-comment') as HTMLTextAreaElement;
     comment.value = 'Добавьте раздел о рисках'; comment.dispatchEvent(new window.Event('input'));
     assert.equal(doc().getElementById('artifact-submit')!.textContent, 'Передать комментарий');

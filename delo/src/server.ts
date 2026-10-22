@@ -5,12 +5,15 @@ import { stripTypeScriptTypes } from 'node:module';
 import { createHash, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { z, ZodError } from 'zod';
+import markdownit from 'markdown-it';
 import type { Store } from './store.ts';
 import { id, type Action } from './model.ts';
 import { artifactId, contentType } from './artifacts.ts';
 
 const web = fileURLToPath(new URL('../web/', import.meta.url));
 const send = (data: unknown, status = 200) => Response.json(data, { status });
+// Raw HTML stays off, so a rendered file carries only Markdown's own markup and markdown-it's link checks.
+const markdown = markdownit({ linkify: true });
 
 // Tests pass a stub opener so no real desktop app starts.
 export function router(store: Store, opener = 'xdg-open') {
@@ -43,6 +46,11 @@ export function router(store: Store, opener = 'xdg-open') {
         if (type?.startsWith('text/html')) {
           const html = Buffer.from(content).toString('utf8'), head = /<head\b[^>]*>/i;
           content = html.replace(head.test(html) ? head : /^(?:\s*<!doctype[^>]*>)?/i, open => `${open}<script src="/artifact-adapter.js"></script>`);
+        }
+        // ?view=markdown is the desk's rendered page: no scripts, links open as ordinary tabs; the plain address still serves the file.
+        if (/\.md$/i.test(name) && url.searchParams.get('view') === 'markdown') {
+          const page = readFileSync(`${web}/markdown.html`, 'utf8').replace('{{body}}', () => markdown.render(Buffer.from(content).toString('utf8')));
+          return new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'content-security-policy': "sandbox allow-popups allow-popups-to-escape-sandbox; frame-ancestors 'self'" } });
         }
         const headers: Record<string, string> = { 'content-type': type ?? 'application/octet-stream', 'x-content-type-options': 'nosniff', 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
         if (type !== 'application/pdf') headers['content-security-policy'] = "sandbox allow-scripts allow-forms allow-modals allow-popups allow-downloads; frame-ancestors 'self'";
