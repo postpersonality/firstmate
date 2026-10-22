@@ -62,7 +62,7 @@ Other transient consumers retain their existing shell-relative behavior.
 
 | Backend | Effect of the operational home |
 | --- | --- |
-| herdr | `FM_HOME` determines the adapter's workspace label. |
+| herdr | `FM_HOME` determines the persistent secondmate home-container label; worker tabs use project Spaces ([Herdr backend](herdr-backend.md#project-space-identity)). |
 | zellij | `FM_HOME` determines the readable home prefix in visible tab titles, but does not split containers; use `FM_ZELLIJ_SESSION` for a separate session; the full home label also includes a short hash of the resolved `FM_ROOT` path. |
 | cmux | `FM_HOME` determines the default config path and readable home prefix in workspace titles; `FM_CONFIG_OVERRIDE` overrides where `config/cmux-socket-password` is read; the full home label also includes a short hash of the resolved `FM_ROOT` path; there is no per-home container split. |
 
@@ -500,11 +500,9 @@ Legacy tmux metadata remains cleanup-compatible when its exact window name is `f
 
 ### Herdr homes and presentation
 
-`FM_HOME` determines Herdr's home label: the primary home uses `firstmate`, and a secondmate home marked by `.fm-secondmate-home` uses `2ndmate-<secondmate-id>`.
-[`herdr-backend.md`](herdr-backend.md#watching-and-task-containers) owns launcher-bound workspace placement, the label-only fallback, collision handling, and recovery behavior.
-
-The local `config/herdr-presentation-spaces` file instead opts a home out of, or explicitly in to, Herdr's default-on disposable single-task visual projection; [Presentation spaces](herdr-backend.md#presentation-spaces) owns its accepted values, default, Herdr version floor, migration, behavior, safety limits, recovery contract, and narrow locked session-start cleanup of exact restored idle-shell children.
-The setting is inherited into secondmate homes under the primary-authoritative contract owned by [`secondmate-provisioning`](../.agents/skills/secondmate-provisioning/SKILL.md).
+[`herdr-backend.md`](herdr-backend.md#watching-and-task-containers) owns project Space placement, identity matching, collision handling, detached callers, and recorded-endpoint recovery.
+`FM_HOME` still scopes task ownership and the persistent secondmate's `2ndmate-<id>` container.
+The retired `config/herdr-presentation-spaces` file is ignored and no longer inherited; [Presentation spaces](herdr-backend.md#presentation-spaces) owns recovery and cleanup of existing projections.
 
 For normal herdr operations, `HERDR_SESSION` selects the named session, but destructive test cleanup must not rely on `HERDR_SESSION` alone.
 Use the explicit guarded cleanup path described in [`docs/herdr-backend.md`](herdr-backend.md) instead of `herdr server stop`.
