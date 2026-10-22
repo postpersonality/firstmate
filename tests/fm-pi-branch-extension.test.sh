@@ -1070,6 +1070,7 @@ const customRunTexts = [
   "extension note that opened its own run",
   "custom message that started an idle run",
 ];
+writeFileSync(`${home}/state/.lock`, `${process.ppid}\n`);
 async function assertColdCustomRunReturns(message, name) {
   const entryReadsBefore = mainEntryReads;
   let timeout;
