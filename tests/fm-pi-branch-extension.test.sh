@@ -2162,7 +2162,32 @@ if (stolen?.messages?.some((message) => message.customType === "fm-branch-proces
 }
 await fire("agent_end", {});
 aborted = false;
-await fire("before_agent_start", { messageType: "custom", message: processingMsg }, abortCtx);
+let processingModelReads = 0;
+let processingDialogReads = 0;
+const processingCtx = {
+  ...abortCtx,
+  get model() {
+    processingModelReads += 1;
+    return defaultSessionCtx.model;
+  },
+  sessionManager: {
+    ...defaultSessionCtx.sessionManager,
+    getEntries() {
+      processingDialogReads += 1;
+      return defaultSessionCtx.sessionManager.getEntries();
+    },
+  },
+};
+const dedicatedProcessingEvent = {
+  messageType: "custom",
+  message: processingMsg,
+  get prompt() {
+    throw new Error("custom processing event prompt must not be read");
+  },
+};
+await fire("before_agent_start", dedicatedProcessingEvent, processingCtx);
+if (processingModelReads !== 0) throw new Error("a dedicated processing event observed the main model before its away abort");
+if (processingDialogReads !== 0) throw new Error("a dedicated processing event scanned the current main dialog");
 await fire("agent_start", {}, defaultSessionCtx);
 const openedByRequest = await fire("context", { messages: [...history, processingMsg] }, abortCtx);
 if (!aborted) throw new Error("a dedicated processing turn with history was not aborted under the record");

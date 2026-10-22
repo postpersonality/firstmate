@@ -1665,15 +1665,17 @@ ${context.command}
     offer.accept(enqueueWake(offer.message, generation, recoveryProbe, offer.awayOnly === true));
   });
 
-  // Pi awaits every extension event handler, so an awaited ownership read
-  // here delays only Pi's own next step - it never stops the TUI the way the
+  // For a normal user prompt, Pi awaits the handler, so an awaited ownership
+  // read delays only Pi's next step - it never stops the TUI the way the
   // synchronous read it replaces did. The generation is captured before that
   // await so a session replaced while it runs cannot be staged into.
   pi.on?.("before_agent_start", async (event, ctx) => {
-    const opened = event.messageType === "custom" ? event.message.content : event.prompt;
     processingOpenedThisRun = event.messageType === "custom" &&
-      queuedProcessingContent !== null && opened === queuedProcessingContent;
-    if (event.messageType === "custom" && !processingOpenedThisRun) return;
+      queuedProcessingContent !== null && event.message.content === queuedProcessingContent;
+    // Custom messages are extension injections, never the captain's prompt.
+    // Remember the exact queued processing request for the away-context abort,
+    // then return before observing main state or collecting its dialog.
+    if (event.messageType === "custom") return;
 
     rememberMainModel(ctx);
     currentMainSession = ctx?.sessionManager ?? null;
@@ -1685,9 +1687,7 @@ ${context.command}
     // SessionManager still contains only the preceding dialog, so relying on
     // getEntries() here loses the captain request that the next wake may answer.
     // Stage it verbatim and remember the future persisted index for turn_end's
-    // duplicate suppression. Operational extension injections are not dialog,
-    // and neither is a run Pi starts from an idle custom message (no prompt).
-    if (event.messageType === "custom") return;
+    // duplicate suppression.
     const prompt = event.prompt;
     const trimmed = prompt.trim();
     if (!trimmed || isOperationalUserText(trimmed)) return;
