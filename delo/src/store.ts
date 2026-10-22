@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, id } from './model.ts';
 import type { Goal, Action } from './model.ts';
 import { validateReview, reviewProjects, reviewOf, reviewLine, reviewInstructions, readReviewProgress } from './review.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
+import { ArtifactStore, type Artifact, type Message } from './artifacts.ts';
 import { diagnosticText, taskDiagnostics } from './diagnostics.ts';
 import { checkFolder } from './folder.ts';
 import { type Overview, overview, position, requestsByTask, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
@@ -102,14 +103,16 @@ const held = (task: FirstmateTask) => task.held === 'yes' || task.held === true;
 const cut = (value: unknown) => typeof value === 'string' && value.includes('\n... (truncated,');
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// Every card and row comes from the Firstmate backlog; Delo keeps no data of its own.
+// Every card and row comes from the Firstmate backlog; Delo's only records are the artifacts in Firstmate task folders.
 export class Store {
   firstmate: Firstmate;
+  artifacts: ArtifactStore;
   private overviewRead?: { promise: Promise<Overview>; expires: number };
   private revision = 0;
   private invalidateOverview() { this.overviewRead = undefined; this.revision++; }
   constructor(options: { firstmateHome?: string } = {}) {
     this.firstmate = new Firstmate(options.firstmateHome || process.env.DELO_FIRSTMATE_HOME || defaultFirstmateHome());
+    this.artifacts = new ArtifactStore(this.firstmate.home);
   }
 
   // Creation writes only the Firstmate backlog, never --start.
@@ -424,6 +427,45 @@ export class Store {
     return read.promise;
   }
 
+  // T-01: the task, its дело and its author come from Firstmate records, never from the publisher's arguments.
+  publishArtifact(input: { source: string; title: string; action: string; root?: string; requestId?: string; taskId: string }) {
+    const task = this.firstmate.show(id.parse(input.taskId));
+    const caseId = caseOf(task.body ?? '');
+    let caseTask: FirstmateTask | undefined;
+    for (const archive of [false, true]) if (caseId && !caseTask) try { caseTask = this.firstmate.show(caseId, archive); } catch { /* A missing дело leaves the project as the group. */ }
+    let meta = '';
+    try { meta = readFileSync(join(this.firstmate.home, 'state', `${task.id}.meta`), 'utf8'); } catch { /* A task run without a recorded worker has no author details. */ }
+    const value = (key: string) => new RegExp(`^${key}=(.+)$`, 'm').exec(meta)?.[1].trim();
+    const author = [value('harness'), value('model')].filter(Boolean).join(' · ') || 'Исполнитель';
+    const continues = /^Продолжение материала: (\S+)$/m.exec(task.body ?? '')?.[1];
+    return this.artifacts.receive({ ...input, task: { id: task.id, title: task.title }, case: caseTask && { id: caseTask.id, title: caseTask.title }, project: field(task.repo), author, continues });
+  }
+
+  // T-05: the answer is durable before delivery; every answer and supplement without a receipt is offered to the inbox again.
+  deliverArtifacts() {
+    const failed: string[] = [];
+    for (const { artifact, completion, message } of this.artifacts.undelivered()) {
+      try {
+        const note = this.firstmate.note(artifactNote(artifact, completion, message), `delo-artifact-${message.submissionId}`);
+        if (!note.saved) throw new Error('Firstmate не сохранил сообщение');
+        this.artifacts.receipt(artifact.id, message.submissionId, { requestId: note.request_id, savedAt: new Date().toISOString(), outcome: note.outcome, noteId: note.note_id, announced: note.announced, acknowledged: note.acknowledged });
+      } catch (error: any) { failed.push(`${artifact.id}: ${error.message}`); }
+    }
+    return failed;
+  }
+
+  completeArtifact(artifactId: string, input: unknown) {
+    const result = this.artifacts.complete(artifactId, input);
+    const failed = this.deliverArtifacts().filter(f => f.startsWith(`${artifactId}:`));
+    return { ...result, delivered: !failed.length };
+  }
+
+  supplementArtifact(artifactId: string, input: unknown) {
+    const result = this.artifacts.supplement(artifactId, input);
+    const failed = this.deliverArtifacts().filter(f => f.startsWith(`${artifactId}:`));
+    return { ...result, delivered: !failed.length };
+  }
+
   // Pinning is the backlog row's priority: 0 puts it in focus, 2 is the backlog default.
   async pin(taskId: string, on: boolean): Promise<{ ok: true }> {
     if (on) {
@@ -436,4 +478,20 @@ export class Store {
     this.firstmate.priority(taskId, on ? 0 : 2);
     return { ok: true };
   }
+}
+
+// The note points at the immutable answer by path and hash; firstmate reads the whole answer from there.
+function artifactNote(artifact: Pick<Artifact, 'id' | 'title' | 'task'>, completion: any, message: Message) {
+  const lead = message.kind === 'supplement'
+    ? [`Дело: дополнение к ответу по материалу «${artifact.title}» задачи ${artifact.task.id}. Прежний ответ остаётся в силе.`, `Прежний ответ: ${join(dirname(message.path), '..', 'completion.json')}`]
+    : [`Дело: ответ по материалу «${artifact.title}» задачи ${artifact.task.id} — ${completion.action.label}.`];
+  const meaning = message.kind === 'supplement' ? [] : completion.action.kind === 'irrelevant'
+    ? ['Материал убран как неактуальный. Это не одобрение содержания и не поручение.']
+    : completion.action.kind === 'interactive'
+      ? ['Ответ сам по себе разрешает только то, что в нём сказано; посторонние изменения он не поручает.', 'Вопрос без ответа означает «не рассмотрено», а не согласие.']
+      : completion.action.kind === 'comment'
+      ? ['Ответ сам по себе разрешает только то, что в нём сказано; посторонние изменения он не поручает.']
+      : ['Пользователь ознакомился с материалом без комментария.'];
+  return [...lead, ...meaning, `Полный ответ: ${message.path}`, `SHA-256: ${message.sha256}`, `Материал: ${artifact.id}`,
+    `Прочитай полный ответ. Если по нему запускается новая задача, добавь в её описание строку «Продолжение материала: ${artifact.id}».`].join('\n');
 }

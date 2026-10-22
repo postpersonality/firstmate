@@ -44,12 +44,12 @@ function renderMain(html: string) {
 async function api<T = any>(path: string, body?: unknown, method?: string): Promise<T> {
   const verb = method ?? (body === undefined ? 'GET' : 'POST');
   const request = () => fetch(path, { method: verb, cache: 'no-store', headers: { 'content-type': 'application/json', 'x-delo-csrf': csrf }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-  let response = await request(); let value = await response.json();
+  let response = await request(); let value = await response.json().catch(() => ({}));
   // Only this pre-mutation refusal is safe to replay; network and action failures may already have applied.
   if (!['GET', 'HEAD'].includes(verb) && response.status === 403 && value.code === 'CSRF_MISMATCH') {
     try { const meta = await api('/api/meta'); if (meta.draftScope !== draftScope) throw new Error('Дом Firstmate изменился'); csrf = meta.csrf; }
     catch { throw new Error('Не удалось обновить проверку страницы. Повторите отправку, когда Дело снова будет доступно.'); }
-    response = await request(); value = await response.json();
+    response = await request(); value = await response.json().catch(() => ({}));
   }
   if (!response.ok) throw new Error(value.error ?? `Ошибка ${response.status}`); return value;
 }
@@ -387,12 +387,167 @@ async function caseAction(c: ViewCase, action: string) {
   modal('Закрыть дело', `<p>У дела есть незакрытые задачи. Будет сохранена просьба Firstmate закрыть каждую из них. Выполнение потребует обработки:</p><ul id="close-case-tasks">${open.map(t => `<li>${esc(t.title)} · ${esc(phaseLabels[t.phase])}</li>`).join('')}</ul><p class="muted">Пока вы не подтвердите, ничего не отправится и дело останется открытым.</p>`, close, 'Подтвердить и закрыть');
 }
 
+// The artifact queue, its archive and the full-width desk. A record and its answer live in the task folder; the desk keeps
+// its draft there too, so a closed tab or a restarted Дело resumes it.
+type ArtifactItem = { id: string; kind: 'file' | 'url' | 'html'; title: string; action: string; entry?: string; interactive: boolean; source: { url?: string }; task: { id: string; title: string }; case?: { id: string; title: string }; project?: string; author: string; receivedAt: string; continues?: string; pinned: boolean; draft: boolean; completedAt?: string; outcome?: { kind: string; label: string } };
+type ArtifactDraft = { comment?: string; fields?: Record<string, unknown>; prompts?: unknown[] };
+type ArtifactView = ArtifactItem & { draftValue?: { savedAt: string; draft: ArtifactDraft }; completion?: { submissionId: string; completedAt: string; action: { kind: string; label: string }; comment: string; reason: string; payload?: { prompts?: { prompt: string; tag?: string }[]; fields?: Record<string, unknown> } }; completionPath: string; supplements: { submissionId: string; at: string; comment: string }[]; receipts: Record<string, unknown> };
+let artifacts: ArtifactItem[] | undefined;
+const artifactFilter = { search: '', group: '', started: false };
+let desk: { view: ArtifactView; draft: ArtifactDraft; submission: string; timer?: number } | undefined;
+const when = (iso?: string) => iso ? new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+const artifactGroup = (a: ArtifactItem) => a.case ? { key: `case:${a.case.id}`, label: a.case.title } : { key: `project:${a.project ?? ''}`, label: a.project ? `Проект ${a.project}` : 'Без дела' };
+const artifactFile = (a: ArtifactItem, name = a.entry ?? '') => `/artifacts/${encodeURIComponent(a.id)}/files/${name.split('/').map(encodeURIComponent).join('/')}`;
+async function loadArtifacts() {
+  const next = await api<ArtifactItem[]>('/api/artifacts');
+  const known = artifacts && new Set(artifacts.map(a => a.id));
+  const arrived = known ? next.filter(a => !known.has(a.id) && !a.completedAt) : [];
+  artifacts = next;
+  $('artifacts-count').textContent = String(next.filter(a => !a.completedAt).length);
+  // D-04: a quiet in-app note; the open desk and the visible rows stay as they are.
+  if (arrived.length) message(arrived.length === 1 ? `Поступил материал на просмотр: «${arrived[0].title}».` : `Поступило материалов на просмотр: ${arrived.length}.`);
+  const rows = document.getElementById('artifact-rows');
+  if (rows && !rows.contains(document.activeElement)) renderArtifactRows();
+}
+function artifactRow(a: ArtifactItem, archive: boolean) {
+  const marks = [a.draft ? badge('Есть черновик') : '', a.pinned ? badge('Закреплено') : '', archive && a.outcome ? badge(a.outcome.label) : ''].join('');
+  const detail = [artifactGroup(a).label, `задача «${a.task.title}»`, a.author, archive ? `обработано ${when(a.completedAt)}` : `поступил ${when(a.receivedAt)}`].join(' · ');
+  const pin = archive ? '' : `<button class="quiet" data-action="artifact-pin" data-id="${esc(a.id)}" data-on="${a.pinned ? '' : '1'}">${a.pinned ? 'Открепить' : 'Закрепить'}</button>`;
+  return `<div class="row go"><div class="row-content"><strong><a href="#artifact:${encodeURIComponent(a.id)}">${esc(a.title)}</a></strong> ${marks}<small>${esc(detail)}<br>Что требуется: ${esc(a.action)}</small></div><div class="row-actions">${pin}</div></div>`;
+}
+function renderArtifactRows() {
+  const archive = location.hash === '#artifacts:archive';
+  const search = artifactFilter.search.trim().toLocaleLowerCase('ru');
+  const list = (artifacts ?? []).filter(a => !!a.completedAt === archive && (!search || a.title.toLocaleLowerCase('ru').includes(search)) && (!artifactFilter.group || artifactGroup(a).key === artifactFilter.group) && (archive || !artifactFilter.started || a.draft));
+  // D-03: oldest first, so a new material lands at the end; pinned ones go on top. The archive shows the latest answers first.
+  list.sort((x, y) => archive ? (y.completedAt ?? '').localeCompare(x.completedAt ?? '') : Number(y.pinned) - Number(x.pinned) || x.receivedAt.localeCompare(y.receivedAt));
+  $('artifact-rows').innerHTML = list.length ? `<div class="rows">${list.map(a => artifactRow(a, archive)).join('')}</div>` : `<p class="muted">${artifacts?.some(a => !!a.completedAt === archive) ? 'Ничего не найдено. Измените поиск или фильтры.' : archive ? 'В архиве пока нет обработанных материалов.' : 'Материалов на просмотр нет.'}</p>`;
+  decorateActions($('artifact-rows'));
+  const count = document.getElementById('artifact-queue-count'); if (count) count.textContent = String(list.length);
+}
+function renderQueue(archive: boolean) {
+  current = undefined; document.title = `${archive ? 'Архив материалов' : 'На просмотр'} — Дело`;
+  const groups = new Map((artifacts ?? []).filter(a => !!a.completedAt === archive).map(a => [artifactGroup(a).key, artifactGroup(a).label]));
+  if (artifactFilter.group && !groups.has(artifactFilter.group)) artifactFilter.group = '';
+  renderMain(`<a class="back" href="${archive ? '#artifacts' : '#'}">← ${archive ? 'К очереди' : 'Что происходит'}</a><div class="page-heading"><div><p class="eyebrow">Материалы работников</p><h1>${archive ? 'Архив материалов' : 'На просмотр'} <span class="count" id="artifact-queue-count"></span></h1></div><div class="actions">${archive ? '' : '<a href="#artifacts:archive">Архив</a>'}</div></div><div class="artifact-filters" role="search"><label>Поиск по названию<input type="search" id="artifact-search" value="${esc(artifactFilter.search)}"></label><label>Дело<select id="artifact-group"><option value="">Все дела и проекты</option>${[...groups].map(([key, label]) => `<option value="${esc(key)}" ${key === artifactFilter.group ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>${archive ? '' : `<label class="checkbox"><input type="checkbox" id="artifact-started" ${artifactFilter.started ? 'checked' : ''}> Только начатые</label>`}</div><div id="artifact-rows"></div>`);
+  $('artifact-search').oninput = e => { artifactFilter.search = (e.target as HTMLInputElement).value; renderArtifactRows(); };
+  $('artifact-group').onchange = e => { artifactFilter.group = (e.target as HTMLSelectElement).value; renderArtifactRows(); };
+  const started = document.getElementById('artifact-started') as HTMLInputElement | null;
+  if (started) started.onchange = () => { artifactFilter.started = started.checked; renderArtifactRows(); };
+  renderArtifactRows();
+}
+function artifactViewer(a: ArtifactView) {
+  if (a.kind === 'url') return `<div class="artifact-link"><p><a href="${esc(a.source.url)}" target="_blank" rel="noopener noreferrer">${icon('open')}Открыть ссылку</a></p><p class="muted">Внешняя ссылка остаётся живой: Дело не сохраняет копию страницы. ${esc(a.source.url)}</p></div>`;
+  const src = artifactFile(a), ext = (a.entry ?? '').toLowerCase().split('.').pop() ?? '';
+  const open = `<p class="muted"><a href="${esc(src)}" target="_blank" rel="noopener">Открыть отдельно</a></p>`;
+  if (a.kind === 'html') return `<iframe id="artifact-frame" class="artifact-frame" sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads" src="${esc(src)}" title="Материал: ${esc(a.title)}"></iframe>${open}`;
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'ico'].includes(ext)) return `<img class="artifact-image" src="${esc(src)}" alt="${esc(a.title)}">${open}`;
+  if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) return `<audio controls src="${esc(src)}"></audio>${open}`;
+  if (['mp4', 'webm'].includes(ext)) return `<video class="artifact-image" controls src="${esc(src)}"></video>${open}`;
+  if (ext === 'pdf') return `<iframe class="artifact-frame" src="${esc(src)}" title="Материал: ${esc(a.title)}"></iframe>${open}`;
+  if (['txt', 'md', 'log', 'csv', 'json'].includes(ext)) return `<iframe class="artifact-frame" sandbox="" src="${esc(src)}" title="Материал: ${esc(a.title)}"></iframe>${open}`;
+  return `<p><a href="${esc(src)}" download>Скачать файл ${esc(a.entry)}</a></p><p class="muted">Этот вид файла Дело не показывает; скачайте его и вернитесь к ответу.</p>`;
+}
+function renderDesk(a: ArtifactView) {
+  current = undefined; document.title = `${a.title} — На просмотр`;
+  const done = a.completion;
+  const d = { view: a, draft: done ? { fields: done.payload?.fields } : { ...(a.draftValue?.draft ?? {}) } as ArtifactDraft, submission: crypto.randomUUID(), timer: undefined as number | undefined }; desk = d;
+  const origin = a.continues ? artifacts?.find(x => x.id === a.continues) : undefined;
+  const meta = [artifactGroup(a).label, `задача «${a.task.title}»`, a.author, `поступил ${when(a.receivedAt)}`].join(' · ');
+  const delivery = (id: string) => a.receipts[id] ? 'Передано Firstmate' : 'Ждёт передачи Firstmate';
+  const answer = done ? `<section class="section desk-answer"><h2>Ответ · ${esc(done.action.label)}</h2><p class="muted">Отправлен ${esc(when(done.completedAt))} · ${esc(delivery(done.submissionId))}</p>${done.reason ? `<p class="prose">Причина: ${esc(done.reason)}</p>` : ''}${done.comment ? `<p class="prose">${esc(done.comment)}</p>` : ''}${done.payload?.prompts?.length ? `<details><summary>Ответ из материала (${done.payload.prompts.length})</summary><pre class="report-text">${esc(done.payload.prompts.map(p => p.prompt).join('\n\n'))}</pre></details>` : ''}<p class="muted">Полный ответ: <code>${esc(a.completionPath)}</code></p>${a.supplements.map(s => `<div class="brief-box"><p class="muted">Дополнение ${esc(when(s.at))} · ${esc(delivery(s.submissionId))}</p><p class="prose">${esc(s.comment)}</p></div>`).join('')}<div class="actions"><button data-action="artifact-supplement">Дополнить ответ</button></div></section>`
+    : `<section class="section desk-answer"><label>Общий комментарий (необязательно)<textarea id="artifact-comment">${esc(d.draft.comment ?? '')}</textarea></label><p id="artifact-draft-state" class="muted" role="status">${a.draftValue ? `Черновик сохранён ${esc(when(a.draftValue.savedAt))}` : ''}</p><p id="artifact-error" class="error-text" role="alert"></p><div class="actions">${a.interactive ? '<p class="muted">Ответ отправляется кнопкой внутри материала; комментарий выше уйдёт вместе с ним.</p>' : '<button id="artifact-submit" class="primary" data-action="artifact-done"></button>'}<button class="quiet" data-action="artifact-irrelevant">Убрать как неактуальное</button></div></section>`;
+  renderMain(`<a class="back" href="${done ? '#artifacts:archive' : '#artifacts'}">← ${done ? 'К архиву' : 'К очереди'}</a><div class="page-heading"><div><p class="eyebrow">${done ? 'Архив материалов' : 'На просмотр'}</p><h1>${esc(a.title)}</h1><p>Что требуется: ${esc(a.action)}</p><p class="muted">${esc(meta)}</p>${a.continues ? `<p>Продолжение материала ${origin ? `<a href="#artifact:${encodeURIComponent(origin.id)}">«${esc(origin.title)}»</a>` : esc(a.continues)}</p>` : ''}</div></div><section class="artifact-view">${artifactViewer(a)}</section>${answer}`);
+  const comment = document.getElementById('artifact-comment') as HTMLTextAreaElement | null;
+  if (comment) comment.oninput = () => { d.draft.comment = comment.value; submitLabel(); queueDeskDraft(); };
+  submitLabel();
+}
+// D-05/D-11: the button names what happens to the comment.
+function submitLabel() { const button = document.getElementById('artifact-submit'); if (button) button.innerHTML = icon('send') + (desk?.draft.comment?.trim() ? 'Передать комментарий' : 'Ознакомился'); }
+function queueDeskDraft() {
+  const d = desk; if (!d || d.view.completion) return;
+  window.clearTimeout(d.timer); d.timer = window.setTimeout(() => { saveDeskDraft(d).catch(() => {}); }, 600);
+}
+async function saveDeskDraft(d: NonNullable<typeof desk>) {
+  window.clearTimeout(d.timer); d.timer = undefined;
+  try {
+    const saved = await api<{ savedAt: string }>(`/api/artifacts/${encodeURIComponent(d.view.id)}/draft`, { draft: d.draft }, 'PUT');
+    if (desk === d) { $('artifact-draft-state').textContent = `Черновик сохранён ${when(saved.savedAt)}`; $('artifact-error').textContent = ''; }
+  } catch (e: any) {
+    const text = `Черновик не сохранён: ${e.message}`;
+    if (desk === d) $('artifact-error').textContent = `${text}. Введённое осталось на странице.`; else message(text, true);
+    throw e;
+  }
+}
+function leaveDesk() { const d = desk; desk = undefined; if (d?.timer) saveDeskDraft(d).catch(() => {}); }
+// A closing tab cannot await the refreshed page check, so the last edits go out once with keepalive.
+window.addEventListener('pagehide', () => {
+  const d = desk; if (!d?.timer) return;
+  window.clearTimeout(d.timer); d.timer = undefined;
+  fetch(`/api/artifacts/${encodeURIComponent(d.view.id)}/draft`, { method: 'PUT', keepalive: true, headers: { 'content-type': 'application/json', 'x-delo-csrf': csrf }, body: JSON.stringify({ draft: d.draft }) }).catch(() => {});
+});
+async function completeArtifact(d: NonNullable<typeof desk>, action: { kind: string; label: string }, extra: { reason?: string; payload?: unknown } = {}) {
+  window.clearTimeout(d.timer); d.timer = undefined;
+  return api<{ delivered: boolean }>(`/api/artifacts/${encodeURIComponent(d.view.id)}/complete`, { submissionId: d.submission, action, comment: d.draft.comment ?? '', reason: extra.reason ?? '', payload: extra.payload });
+}
+// T-02: after an answer the desk returns to the queue, which keeps its search and filters.
+function leaveAnswered(d: NonNullable<typeof desk>, label: string, delivered: boolean) {
+  if (desk === d) desk = undefined;
+  message(delivered ? `Ответ «${label}» передан Firstmate.` : `Ответ «${label}» сохранён; Firstmate получит его, как только станет доступен.`);
+  if (location.hash === `#artifact:${d.view.id}`) location.hash = 'artifacts';
+  loadArtifacts().catch(() => {});
+}
+async function artifactAction(action: string, button: HTMLButtonElement) {
+  if (action === 'artifact-pin') { await api(`/api/artifacts/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); message(button.dataset.on ? 'Материал закреплён наверху очереди.' : 'Материал откреплён.'); await loadArtifacts(); renderArtifactRows(); return; }
+  const d = desk; if (!d) return;
+  if (action === 'artifact-done') {
+    const chosen = d.draft.comment?.trim() ? { kind: 'comment', label: 'Передать комментарий' } : { kind: 'done', label: 'Ознакомился' };
+    try { leaveAnswered(d, chosen.label, (await completeArtifact(d, chosen)).delivered); }
+    catch (e: any) { if (desk === d) $('artifact-error').textContent = e.message; else message(e.message, true); }
+    return;
+  }
+  if (action === 'artifact-irrelevant') return modal('Убрать как неактуальное', `${field('reason', 'Причина (необязательно)', '', true)}<p class="muted">Материал уйдёт в архив с этой отметкой. Firstmate получит решение о неактуальности; это не одобрение содержания и не выполнение предложенного.</p>`, async f => { const chosen = { kind: 'irrelevant', label: 'Убрать как неактуальное' }; leaveAnswered(d, chosen.label, (await completeArtifact(d, chosen, { reason: String(f.get('reason') ?? '') })).delivered); }, 'Убрать как неактуальное');
+  if (action === 'artifact-supplement') {
+    const view = d.view, submissionId = crypto.randomUUID();
+    return modal('Дополнить ответ', `${field('comment', 'Дополнение', '', true, true)}<p class="muted">Уйдёт отдельным сообщением Firstmate. Прежний ответ и отметка в архиве не меняются.</p>`, async f => {
+      const result = await api(`/api/artifacts/${encodeURIComponent(view.id)}/supplement`, { submissionId, comment: f.get('comment') });
+      message(result.delivered ? 'Дополнение передано Firstmate.' : 'Дополнение сохранено; Firstmate получит его, как только станет доступен.');
+      if (location.hash === `#artifact:${view.id}`) navigate().catch(e => message(e.message, true));
+    }, 'Отправить дополнение');
+  }
+}
+// T-04: messages from the sandboxed material count only when they come from the desk's own frame.
+window.addEventListener('message', async event => {
+  const frame = document.getElementById('artifact-frame') as HTMLIFrameElement | null;
+  const data = event.data, d = desk;
+  if (!d || !frame || event.source !== frame.contentWindow || data?.type !== 'delo-artifact') return;
+  const reply = (message: object) => frame.contentWindow?.postMessage({ type: 'delo-artifact', ...message }, '*');
+  if (data.kind === 'ready') reply({ kind: 'restore', fields: d.draft.fields ?? {}, prompts: d.view.completion ? [] : d.draft.prompts ?? [] });
+  if (data.kind === 'draft') { d.draft.fields = data.fields; d.draft.prompts = data.prompts; queueDeskDraft(); }
+  if (data.kind === 'send') {
+    try {
+      if (d.view.completion) throw new Error('Материал уже обработан. Дополните ответ кнопкой «Дополнить ответ».');
+      d.draft.fields = data.fields; d.draft.prompts = data.prompts;
+      const label = typeof data.label === 'string' && data.label.trim() ? data.label.trim() : 'Отправить ответ';
+      const result = await completeArtifact(d, { kind: 'interactive', label }, { payload: { prompts: data.prompts, fields: data.fields } });
+      reply({ kind: 'sent', request: data.request, ok: true });
+      leaveAnswered(d, label, result.delivered);
+    } catch (e: any) { reply({ kind: 'sent', request: data.request, ok: false, error: e.message }); if (desk === d) $('artifact-error').textContent = e.message; else message(e.message, true); }
+  }
+});
+
 async function navigate() {
   const route = location.hash; const request = ++navigation;
   const goalId = decodeURIComponent(route.slice(1));
   const active = () => request === navigation && route === location.hash;
+  // T-02: the desk takes the full width; leaving it keeps the last edits.
+  document.body.classList.toggle('desk', goalId.startsWith('artifact:'));
+  if (desk && goalId !== `artifact:${desk.view.id}`) leaveDesk();
   if (!goalId) return renderOverview();
   try {
+    if (goalId === 'artifacts' || goalId === 'artifacts:archive') { if (!artifacts) await loadArtifacts(); if (active()) renderQueue(goalId === 'artifacts:archive'); return; }
+    const artifactRoute = /^artifact:(.+)$/.exec(goalId)?.[1];
+    if (artifactRoute) { const a = await api<ArtifactView>(`/api/artifacts/${encodeURIComponent(artifactRoute)}`); if (active()) renderDesk(a); return; }
     if (goalId === ':closed') { const list = await api('/api/cases'); if (active()) renderClosed(list); return; }
     const reportId = /^report:(.+)$/.exec(goalId)?.[1];
     if (reportId) { const report = await api(`/api/reports/${encodeURIComponent(reportId)}`); if (active()) renderReport(reportId, report); return; }
@@ -407,7 +562,9 @@ async function navigate() {
 }
 async function reload() {
   const request = ++refreshRequest;
-  if (location.hash) await navigate();
+  await loadArtifacts().catch(() => {});
+  // The queue rows refresh with the count, and an open desk never re-renders under the person's input.
+  if (location.hash && (!location.hash.startsWith('#artifact') || !markup)) await navigate();
   const next = await api<Overview>('/api/overview');
   if (request !== refreshRequest) return;
   // Snapshot timestamps change on every read even when the visible data is identical.
@@ -434,7 +591,7 @@ $('main').onclick = async event => {
   if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, button, input, select, textarea, label, details, .task-actions, .row-actions')) go.querySelector('a')?.click(); return; }
   if (button.disabled || button.dataset.action === 'pin' && pendingTasks.has(button.dataset.id!)) return;
   try { button.disabled = true; button.setAttribute('aria-busy', 'true'); if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'open-terminal') { button.disabled = true; await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/terminal/open`, { binding: button.dataset.binding }); message('Терминал выбран. Переключитесь в окно Herdr.'); return; } if (button.dataset.action === 'open-report') { button.disabled = true; await api(`/api/reports/${encodeURIComponent(button.dataset.id!)}/open`, {}); message('Отчёт передан приложению для открытия.'); return; } if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); message('Список обновлён.'); return; }
-    if (button.dataset.action === 'pin') { taskPending(button.dataset.id!, true); await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); const feedback = button.dataset.on ? 'Задача закреплена.' : 'Задача откреплена.'; message(feedback); try { await reload(); } catch { message(`${feedback} Не удалось обновить список. Нажмите «Обновить».`, true); } return; } if (button.dataset.action!.endsWith('-case') && current) return await caseAction(current as ViewCase, button.dataset.action!); await goalAction(button.dataset.action!); }
+    if (button.dataset.action === 'pin') { taskPending(button.dataset.id!, true); await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); const feedback = button.dataset.on ? 'Задача закреплена.' : 'Задача откреплена.'; message(feedback); try { await reload(); } catch { message(`${feedback} Не удалось обновить список. Нажмите «Обновить».`, true); } return; } if (button.dataset.action!.startsWith('artifact-')) return await artifactAction(button.dataset.action!, button); if (button.dataset.action!.endsWith('-case') && current) return await caseAction(current as ViewCase, button.dataset.action!); await goalAction(button.dataset.action!); }
   catch (e: any) { message(e.message, true); } finally { button.disabled = false; button.removeAttribute('aria-busy'); if (button.dataset.action === 'pin') taskPending(button.dataset.id!, false); }
 };
 window.onhashchange = () => { navigate().catch(e => message(e.message, true)); };

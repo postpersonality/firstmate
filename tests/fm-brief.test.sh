@@ -991,8 +991,10 @@ test_scout_lavish_line_follows_presentation_floor() {
     if [ "$expect" = hosting ]; then
       assert_grep "$hosting" "$brief" "$label: scout brief did not offer the Lavish review loop"
       assert_no_grep "$text_only" "$brief" "$label: scout brief withheld Lavish from a compatible build"
+      assert_grep "That board is the only review of its page" "$brief" "$label: a board-reviewed page could be reviewed again in Delo"
     else
       assert_grep "$text_only" "$brief" "$label: scout brief did not ask for a text report"
+      assert_grep "Publishing to the Delo review queue does not depend on Lavish" "$brief" "$label: missing Lavish reads as no Delo publication"
       assert_no_grep "$hosting" "$brief" "$label: scout brief offered a below-floor Lavish"
     fi
   done <<'ROWS'
@@ -1004,6 +1006,33 @@ lavish-axi below the board compatibility floor^0.1.76^text
 absent lavish-axi^absent^text
 ROWS
   pass "fm-brief.sh: scout Lavish hosting follows the bootstrap lavish-axi floor"
+}
+
+# Handing a result over publishes each human-facing material to this home's Delo
+# review queue, for ship and scout alike; a secondmate charter hands nothing over.
+test_workers_publish_review_material_on_handover() {
+  local home="$TMP_ROOT/artifact-home" id brief command
+  mkdir -p "$home/data"
+  command="'$ROOT/delo/bin/delo' --firstmate-home '$home' publish-artifact <file-or-https-URL>"
+  for id in artifact-ship artifact-scout; do
+    if [ "$id" = artifact-ship ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" alpha --mode local-only >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" alpha --scout >/dev/null 2>&1
+    fi || fail "$id: scaffold failed"
+    brief="$home/data/$id/brief.md"
+    assert_grep "# Material for review" "$brief" "$id: brief has no review-material section"
+    assert_grep "$command" "$brief" "$id: brief does not name the Delo publish command for this home"
+    assert_grep "--task '$id'" "$brief" "$id: publish command is not bound to this task"
+    assert_grep "never publish working files" "$brief" "$id: brief lets working files into the review queue"
+    assert_grep "Lavish annotations, whiteboard, and uploads are not captured there" "$brief" "$id: brief implies Delo captures Lavish-only feedback"
+  done
+  [ -x "$ROOT/delo/bin/delo" ] || fail "the named Delo command is not executable"
+  FM_SECONDMATE_CHARTER='Supervise the alpha domain.' \
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" artifact-sm --secondmate alpha >/dev/null 2>&1 \
+    || fail "secondmate scaffold failed"
+  assert_no_grep "publish-artifact" "$home/data/artifact-sm/brief.md" "secondmate charter asks to publish material"
+  pass "fm-brief.sh: ship and scout handover publishes review material to this home's Delo queue"
 }
 
 # Scout and secondmate paths still scaffold well-formed briefs.
@@ -1574,6 +1603,7 @@ test_ship_and_scout_teach_validation_round_pause
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
 test_scout_lavish_line_follows_presentation_floor
+test_workers_publish_review_material_on_handover
 test_workers_wait_without_spending_turns
 test_wait_no_turns_absent_keeps_the_previous_brief
 test_home_brief_include_is_appended_last

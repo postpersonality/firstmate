@@ -27,6 +27,11 @@
 #   owns the enforcement and the path checks.
 #   It offers the Lavish review loop only when `fm-bootstrap.sh lavish-compatible`
 #   confirms the legacy board-compatibility floor; otherwise it asks for a text report.
+#   Ship and scout briefs both carry a "Material for review" section: before done the
+#   worker publishes each human-facing file, page, or link with `delo publish-artifact`
+#   into this home's Delo review queue (delo/README.md owns that command). A scout's
+#   Lavish board stays the one review of a page iterated with the worker; its
+#   concluded version is published only for reading.
 #   --secondmate writes a persistent secondmate charter. The project list
 #   is cloned into the secondmate home, while the natural-language scope
 #   tells the main firstmate when to route work there; routine churn stays in its own home;
@@ -699,11 +704,22 @@ Their rules about writing, such as saving notes under \`./drafts/\`, do not appl
 Run git there only with read-only commands and with \`GIT_OPTIONAL_LOCKS=0\` set, for example \`GIT_OPTIONAL_LOCKS=0 git -C <repo> log\`; never run \`fetch\`, \`pull\`, \`checkout\`, \`switch\`, \`stash\`, or \`commit\` there."
 fi
 
+# Publication is part of handing a result over: Delo copies the material into this
+# home, so the review queue keeps it after the worktree and the worker are gone.
+ARTIFACT_SECTION="# Material for review
+If your result includes a file, page, or link meant for a human to read, review, or answer, publish each such material to the Delo review queue before reporting done:
+\`$(shell_quote "$FM_ROOT/delo/bin/delo") --firstmate-home $(shell_quote "$FM_HOME") publish-artifact <file-or-https-URL> --title '<short title>' --action '<what the reader is asked to do>' --task $(shell_quote "$ID")\`
+An HTML page is copied together with every file in its folder, so keep it and its resources in a folder of their own, or pass \`--root <folder>\` when it loads resources from a parent folder.
+Delo takes a page's answer only from its \`data-lavish-question\` controls and its \`window.lavish.queuePrompt\` and \`window.lavish.sendQueuedPrompts\` calls; Lavish annotations, whiteboard, and uploads are not captured there.
+That answer reaches firstmate rather than you, so never wait for it after publishing.
+Repeating the same command is safe; a changed material becomes a new publication; never publish working files, logs, or scratch output.
+The copy this command writes under \`$DATA/$ID/artifacts/\` is the one write outside the worktree it adds to the rules above."
+
 if [ "$KIND" = scout ]; then
 if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
-  LAVISH_LINE='If your deliverable is a visual artifact the captain will review and iterate on, use the lavish-axi rule: arm your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled <source-id> <sequence> to conclude and retire your board.'
+  LAVISH_LINE='If your deliverable is a visual artifact the captain will review and iterate on with you before you finish, use the lavish-axi rule: arm your board with bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>; never run lavish-axi poll yourself. Re-arm with the reply after each nonterminal round to acknowledge it, route the board feedback through your steering inbox, write needs-decision [key=board-review] with the live board URL when the captain owes a decision, and stop at session_ended or an empty End without re-arming - acknowledge that final round with bin/fm-procevent.sh handled <source-id> <sequence> to conclude and retire your board. That board is the only review of its page: publish the concluded version to the Delo review queue for reading, never to ask its settled questions again, and send a page that needs no more work from you straight to Delo without a board.'
 else
-  LAVISH_LINE='Lavish is unavailable (lavish-axi is missing or below its supported version floor), so deliver your findings as a text report without Lavish, even for a visual deliverable.'
+  LAVISH_LINE='Lavish is unavailable (lavish-axi is missing or below its supported version floor), so deliver your findings as a text report without Lavish, even for a visual deliverable. Publishing to the Delo review queue does not depend on Lavish.'
 fi
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -741,6 +757,8 @@ $CREWMATE_PAUSE_INSTRUCTIONS
 $SHARED_INFRA_RULE
 
 $WAIT_BLOCK$INBOX_SECTION
+
+$ARTIFACT_SECTION
 
 # Definition of done
 Write your findings to \`$DATA/$ID/report.md\`.
@@ -826,6 +844,8 @@ $WAIT_BLOCK$INBOX_SECTION
 # Project memory
 A project's \`AGENTS.md\` or \`CLAUDE.md\` is loaded into every agent session in that project, so edit it only to correct information that is factually wrong - including information your own change made wrong - and never to add knowledge because it is missing.
 A correction edits only the wrong text: do not run \`$FM_ROOT/bin/fm-ensure-agents-md.sh\`, create either file, or add sections, headings, or pointers alongside it.
+
+$ARTIFACT_SECTION
 
 $DOD
 EOF
