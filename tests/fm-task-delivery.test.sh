@@ -135,7 +135,7 @@ EOF
     assert_absent "$home/state/$id.meta" "$variant: refused spawn recorded a task"
   done
 
-  for variant in direct reformatted legacy; do
+  for variant in direct reformatted legacy hybrid; do
     id="public-intent-copy-$variant"
     write_brief "$home" "$id" no-mistakes
     brief="$home/data/$id/brief.md"
@@ -143,6 +143,7 @@ EOF
       direct) printf '# Task\n## Captain'\''s intent\nFix the routing defect.\nPreserve existing approvals.\n\n## Public intent\nFix the routing defect.\nPreserve existing approvals.\n\n## Firstmate spec\nUse the existing helper.\n' > "$brief" ;;
       reformatted) printf '# Task\n## Captain'\''s intent\nFix the routing defect.\nPreserve existing approvals.\n\n## Public intent\n  Fix the routing defect.  Preserve\n\texisting approvals.\n\n## Firstmate spec\nUse the existing helper.\n' > "$brief" ;;
       legacy) printf '# Task\n[captain] Fix the routing defect.\n[captain] Preserve existing approvals.\n\n## Public intent\nFix the routing defect.\nPreserve existing approvals.\n' > "$brief" ;;
+      hybrid) printf '# Task\n[captain] Fix the routing defect.\n[captain] Preserve existing approvals.\n\n## Captain'\''s intent\nInvestigate a separate structured request.\n\n## Public intent\nFix the routing defect.\nPreserve existing approvals.\n\n## Firstmate spec\nUse the existing helper.\n' > "$brief" ;;
     esac
     printf '\n# Definition of done\nDelivery contract: mode=no-mistakes\n' >> "$brief"
     out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
@@ -194,6 +195,26 @@ EOF
   [ "$status" -ne 0 ] || fail "promotion with a copied private intent succeeded"
   assert_contains "$out" 'copies the complete private' "promotion did not explain the copied public input"
   assert_absent "$home/data/$id/ship-instructions.md" "refused promotion serialized copied instructions"
+  cat > "$brief" <<'EOF'
+# Task
+[captain] Preserve existing approvals.
+[captain] Keep the public Intent section.
+
+## Captain's intent
+PRIVATE_STRUCTURED_SENTINEL: investigate a separate routing request.
+
+## Public intent
+Preserve existing approvals.
+Keep the public Intent section.
+
+## Firstmate spec
+Use the existing implementation helper.
+EOF
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "promotion with a hybrid legacy copy succeeded"
+  assert_contains "$out" 'copies the complete private' "promotion did not reject copied hybrid legacy words"
+  assert_absent "$home/data/$id/ship-instructions.md" "promotion serialized copied hybrid instructions"
   cat > "$brief" <<EOF
 # Task
 ## Captain's intent

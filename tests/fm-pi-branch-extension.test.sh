@@ -953,17 +953,29 @@ EOF
 }
 
 test_requested_healthy_outcome_and_unsolicited_routine_outcome_delivery() {
-  local repo home out status
+  local repo home out status real_bash
   repo="$TMP_ROOT/requested-outcome-root"
   home="$TMP_ROOT/requested-outcome-home"
-  mkdir -p "$home/state" "$home/config"
+  mkdir -p "$home/state" "$home/config" "$home/fakebin"
   install_pi_branch_extension_fixture "$repo"
+  real_bash=$(command -v bash)
+  cat > "$home/fakebin/bash" <<'SH'
+#!/bin/sh
+if [ "${1##*/}" = fm-lease.sh ] && [ "${2:-}" = release-actor ]; then
+  : > "$FM_TEST_ACTIVATION_STARTED"
+  while [ ! -e "$FM_TEST_ACTIVATION_RELEASE" ]; do sleep 0.01; done
+fi
+exec "$FM_TEST_REAL_BASH" "$@"
+SH
+  chmod +x "$home/fakebin/bash"
   PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    FM_TEST_ACTIVATION_STARTED="$home/activation-started" FM_TEST_ACTIVATION_RELEASE="$home/activation-release" \
+    FM_TEST_REAL_BASH="$real_bash" PATH="$home/fakebin:$PATH" \
     DRIVER_PRELUDE="$DRIVER_PRELUDE" node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
 const prelude = process.env.DRIVER_PRELUDE;
 await eval(`(async () => { ${prelude}; globalThis.__t = { fire, dispatch, settle, sentToMain, mainEntries, outcomeScript, mainTools, home, realRoot }; })()`);
 const { fire, dispatch, settle, sentToMain, mainEntries, outcomeScript, mainTools, home, realRoot } = globalThis.__t;
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const fleetOperations = [];
@@ -1054,6 +1066,35 @@ const mainCtx = {
     getEntries: () => { mainEntryReads += 1; return entries; },
   },
 };
+const customRunTexts = [
+  "extension note that opened its own run",
+  "custom message that started an idle run",
+];
+async function assertColdCustomRunReturns(message, name) {
+  const entryReadsBefore = mainEntryReads;
+  let timeout;
+  const result = await Promise.race([
+    fire("before_agent_start", { messageType: "custom", message }, mainCtx).then(() => "returned"),
+    new Promise((resolve) => { timeout = setTimeout(() => resolve("blocked"), 100); }),
+  ]);
+  clearTimeout(timeout);
+  if (result !== "returned") throw new Error(`${name} waited for owner activation`);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  if (existsSync(process.env.FM_TEST_ACTIVATION_STARTED)) throw new Error(`${name} started owner activation`);
+  if (mainEntryReads !== entryReadsBefore) throw new Error(`${name} scanned main dialog`);
+}
+try {
+  await assertColdCustomRunReturns(
+    { role: "custom", customType: "fm-branch-merge", content: customRunTexts[0], display: false },
+    "an unrelated custom run",
+  );
+  await assertColdCustomRunReturns(
+    { role: "custom", customType: "firstmate-sessionstart-nudge", content: customRunTexts[1], display: false, timestamp: 0 },
+    "an unrelated session-start nudge",
+  );
+} finally {
+  writeFileSync(process.env.FM_TEST_ACTIVATION_RELEASE, "released\n");
+}
 const operational = spawnSync(
   "bash",
   [`${realRoot}/bin/fm-operational-input.sh`, "encode", "watcher"],
@@ -1062,25 +1103,6 @@ const operational = spawnSync(
 if (operational.status !== 0) throw new Error(`could not create operational input: ${operational.stderr}`);
 await fire("before_agent_start", { prompt: operational.stdout }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: operational.stdout } });
-// Pi 1.2+ fires before_agent_start when an idle custom message opens a run;
-// the event carries the custom message and no prompt. Exercise both custom
-// message types seen in the main and session-start paths.
-const customRunTexts = [
-  "extension note that opened its own run",
-  "custom message that started an idle run",
-];
-let customEntryReadCount = mainEntryReads;
-await fire("before_agent_start", {
-  messageType: "custom",
-  message: { role: "custom", customType: "fm-branch-merge", content: customRunTexts[0], display: false },
-}, mainCtx);
-if (mainEntryReads !== customEntryReadCount) throw new Error("an unrelated custom run scanned main dialog");
-customEntryReadCount = mainEntryReads;
-await fire("before_agent_start", {
-  messageType: "custom",
-  message: { role: "custom", customType: "firstmate-sessionstart-nudge", content: customRunTexts[1], display: false, timestamp: 0 },
-}, mainCtx);
-if (mainEntryReads !== customEntryReadCount) throw new Error("an unrelated session-start nudge scanned main dialog");
 const unsolicitedPrompt = "Please keep responses concise while monitoring the fleet.";
 await fire("before_agent_start", { prompt: unsolicitedPrompt }, mainCtx);
 entries.push({ type: "message", message: { role: "user", content: unsolicitedPrompt } });
