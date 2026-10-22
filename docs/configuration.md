@@ -1505,7 +1505,12 @@ Arm the check once per home with `bin/fm-tool-update-check.sh arm`.
 
 ## Mail plane (.env)
 
-The mail plane (bin/fm-mail.sh) reads unseen IMAP messages and sends one SMTP message.
+The mail plane (`bin/fm-mail.sh`) reads unseen IMAP messages and sends blocker notifications only through a mandatory independent native critic.
+`alert` reads the task's canonical records itself, freezes them with the proposed email and recipient, runs a fresh print-mode Claude process at its configured absolute path, and permits SMTP only after a source-backed `NEEDS_CAPTAIN` outcome.
+The previous unreviewed `send` command is closed in both public mail CLIs.
+Critic denial, insufficient evidence, invalid output, failure, timeout or changed inputs send no mail and return a durable corrective action through the existing Firstmate inbox.
+The request schema, binding, deduplication and receipt mechanics have one owner: the header of `bin/fm-captain-alert.py`.
+The critic is mandatory on this path but runs as the Firstmate account, so it is no operating-system boundary against an account that holds the credential and talks SMTP directly.
 
 **Polling and delivery guarantees**
 
@@ -1530,6 +1535,39 @@ FM_MAIL_PASS=   # IMAP/SMTP password
 FM_IMAP_HOST=   # IMAP server hostname
 FM_SMTP_HOST=   # SMTP server hostname
 ```
+
+Outgoing `alert` does not need `FM_IMAP_HOST` and additionally requires:
+
+```sh
+FM_CAPTAIN_ALERT_TO=       # the one recipient of reviewed blocker email
+FM_CAPTAIN_ALERT_CLAUDE=   # absolute path of the critic's authenticated Claude CLI; PATH is never searched
+```
+
+`alert` refuses a `.env` that its group or others can access, because it holds the sending credential.
+No recipient is inferred from Git identity.
+Outgoing activation does not arm inbound polling.
+
+This bash recipe configures a Gmail sender without sending mail; the app password is read without echo and never enters chat, arguments, history or logs.
+The `grep` line lists outgoing keys the `.env` already sets, without their values; edit those lines instead of appending, because the first nonempty assignment wins.
+
+```bash
+cd <Firstmate home>
+grep -oE '^(FM_MAIL_USER|FM_MAIL_PASS|FM_SMTP_HOST|FM_SMTP_PORT|FM_CAPTAIN_ALERT_TO|FM_CAPTAIN_ALERT_CLAUDE)=' .env
+(umask 077; read -rsp 'Gmail app password: ' p; echo
+printf '%s\n' 'FM_MAIL_USER=<sender address>' "FM_MAIL_PASS=${p// /}" 'FM_SMTP_HOST=smtp.gmail.com' \
+  'FM_CAPTAIN_ALERT_TO=<owner address>' "FM_CAPTAIN_ALERT_CLAUDE=$(command -v claude)" >> .env
+chmod 600 .env)
+```
+
+Presence checks do not prove native authentication, SMTP authentication or inbox arrival.
+Activation stays pending until the home's `.env` holds the sender account, its app password, the recipient and the critic path, and the delivery of a real blocker has been verified.
+
+For Gmail, use `smtp.gmail.com` with implicit TLS on port 465, as documented by [Google's SMTP guide](https://developers.google.com/workspace/gmail/imap/imap-smtp).
+This password-based sender requires a Gmail app password, which requires 2-Step Verification; do not supply the main account password ([Google app-password help](https://support.google.com/mail/answer/185833)).
+OAuth is not implemented by this sender.
+If the account cannot create an app password, resolve that account constraint before activation.
+Never use a synthetic case to test live SMTP; the first real send must be a configured, independently approved blocker event.
+`tests/fm-captain-alert.test.sh` tests the deterministic gate with fixture transports, while `FM_CAPTAIN_ALERT_LIVE=1 bin/fm-test-run.sh tests/fm-captain-alert-live.test.sh` empirically tests native classification with real SMTP replaced by a local capture, which only the required-input control may reach, with the bound body and recipient.
 
 `FM_IMAP_PORT` (default 993), `FM_SMTP_PORT` (default 465), `FM_MAIL_TIMEOUT` (default 20 seconds), and `FM_MAIL_POLL_MAX_WAKES` (default 20, valid 1..200) are optional.
 The per-poll wake cap bounds the wakes of one `poll` run; header fetches scan a larger bounded window of new unseen uids plus already-surfaced retry-set uids, so a flood or large backlog still makes bounded progress every poll, keeping the durable wake queue bounded without ever dropping mail.
@@ -2404,7 +2442,7 @@ FM_TASK_INBOX_BUSY_MAX=2      # consecutive busy-deferred due polls before a stu
 FM_CHECK_TIMEOUT=30     # seconds allowed per slow check script
 FM_MAIL_CHECK_BUDGET=15   # seconds allowed for one standing mail poll; valid 5..25, cut to fit FM_CHECK_TIMEOUT
 FM_MAIL_POLL_MAX_WAKES=20   # per-poll wake cap for a mail poll; valid 1..200, keeps a flood from flooding firstmate
-FM_MAIL_TIMEOUT=20   # mail-plane IMAP/SMTP socket timeout in seconds; invalid or non-positive values become 20
+FM_MAIL_TIMEOUT=20   # mail-plane IMAP socket timeout in seconds; invalid or non-positive values become 20
 FM_TOOL_UPDATE_INTERVAL=900   # seconds between watched-tool probe sweeps; 0 probes on every run, other values must be 60..86400
 FM_TOOL_UPDATE_PROBE_SECS=5   # 1..30 seconds allowed for one version or git probe
 FM_TOOL_UPDATE_BUDGET_SECS=20   # 1..120 seconds allowed for a whole watched-tool sweep; cut to fit FM_CHECK_TIMEOUT, and the cut is reported
@@ -2429,6 +2467,8 @@ FM_IMAP_HOST=      # mail-plane IMAP server hostname
 FM_IMAP_PORT=993   # mail-plane IMAP server port
 FM_SMTP_HOST=      # mail-plane SMTP server hostname
 FM_SMTP_PORT=465   # mail-plane SMTP server port
+FM_CAPTAIN_ALERT_TO=       # outgoing blocker email recipient; every send passes the mandatory native critic
+FM_CAPTAIN_ALERT_CLAUDE=   # absolute path of that critic's Claude CLI; PATH is never searched
 FMX_PAIRING_TOKEN=      # Relay pairing token; .env opt-in authorizes replies and eligible lifecycle actions
 FMX_RELAY_URL=https://myfirstmate.io   # optional Relay endpoint override, mainly for local relay development
 FMX_ENV_FILE=           # optional alternate .env file for direct Relay client invocations; bootstrap still checks $FM_HOME/.env
