@@ -62,6 +62,7 @@ The absence of a routed work item is not a divergence and the guard never requir
 1. Read the complete investigation result and complete the visual review before declaring either complete.
 2. Inventory only genuine unresolved choices that require the captain, and find the task each one gates.
 3. Hold that task - or create one captain-held task for the review's open questions - with a concise reason carrying the question and options.
+   For a proposed blocker email, submit the source-backed analysis and attempted self-resolution through `bin/fm-mail.sh alert <request.json>` in that same event-handling turn; its mandatory independent critic, durable correction delivery and request format are owned by `bin/fm-captain-alert.py`.
 4. Run `complete` with the full captain-held inventory for that review pass.
 5. Relay the choices to the captain as decisions from Bearings' Captain's Call section under `AGENTS.md` section 9; do not use the word hold in captain chat.
 6. Close each call only through `answer` (or a channel that feeds `answers`), close a board-requested moot call through evidence-backed `reconcile close`, record a still-active reconciliation through `reconcile note`, use `--until` when the captain defers it, or confirm a channel already closed it.
