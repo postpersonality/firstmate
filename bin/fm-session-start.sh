@@ -43,7 +43,9 @@
 #                       outcome store's display tail copy when that is absent
 #                       (bin/fm-branch-outcome.sh seed-tail).
 #   4. supervision-instructions - the one emitted operating block for the
-#                       detected primary harness.
+#                       detected primary harness, carrying one mandatory
+#                       pointer to the ask-user-authority question owner
+#                       rather than the policy text itself.
 #   5. read-once contract - the do-not-re-read contract covering every source
 #                       represented by the two digests below.
 #   6. fleet digest   - a compact data/backlog.md identity/metadata listing,
