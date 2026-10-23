@@ -3,6 +3,8 @@
 # daemon, vendor settings, tmux, Herdr, browser, or other task is controlled.
 # The per-thread hook bypass requires separate review of the generated hooks
 # and this driver: FM_CODEX_STOP_LIVE_HOOKS_REVIEWED=1. Never persist hook trust.
+# FM_CODEX_STOP_NATIVE_CASE=standalone limits the proof to one private thread;
+# it retains the native 20-second Stop and 180-second quiet successor bounds.
 set -eu
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"

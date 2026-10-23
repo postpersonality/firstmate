@@ -17,6 +17,9 @@ VERSION = subprocess.check_output([BINARY, "--version"], text=True).strip()
 if VERSION != "codex-cli 0.163.0":
     raise RuntimeError(f"refresh native Stop evidence before using {VERSION}")
 MODEL = "gpt-6.1-sol"
+CASE = os.environ.get("FM_CODEX_STOP_NATIVE_CASE", "all")
+if CASE not in ("all", "standalone"):
+    raise RuntimeError(f"unsupported native Stop case: {CASE}")
 if sys.platform != "linux":
     raise RuntimeError(f"native Stop guard evidence is pinned to Linux, not {sys.platform}")
 AUTH = Path.home() / ".codex/auth.json"
@@ -209,9 +212,8 @@ else:
         })
         self.thread = result["thread"]["id"]
         no_event = (
-            "If there is no event, run bash bin/fm-watch-checkpoint.sh --seconds 2. "
-            "When that bounded lab checkpoint is quiet, drain again and start another 2-second checkpoint; "
-            "the 2-second bound is only the native lab's fast equivalent of the normal 180-second cycle. "
+            "If there is no event, run bash bin/fm-watch-checkpoint.sh --seconds \"${FM_CODEX_WATCH_CHECKPOINT:-180}\". "
+            "When that bounded checkpoint is quiet, drain again and start another normal checkpoint; "
             if self.standalone else
             "If there is no event, only acknowledge the drain. "
         )
@@ -323,7 +325,8 @@ else:
         return lock
 
     def close(self):
-        if self.thread and self.turn and self.proc.poll() is None:
+        if self.thread and self.turn and self.proc.poll() is None \
+                and not self.completed() and not self.completed("interrupted"):
             try:
                 self.request("turn/interrupt", {"threadId": self.thread, "turnId": self.turn})
             except (RuntimeError, TimeoutError, BrokenPipeError):
@@ -360,9 +363,10 @@ def stays_interrupted(native):
     assert not (native.home / "state/.watch.lock/pid").exists(), "native interruption leaked its watcher"
 
 
-for control in (True, False):
+for control in ((False,) if CASE == "standalone" else (True, False)):
     native = Native("before" if control else "after", control=control,
-                    primer=control, stop_checkpoint="2" if control else "20")
+                    primer=control, stop_checkpoint="2" if control else "20",
+                    watch_checkpoint="2" if control else "180")
     try:
         native.until(lambda: any(row.get("session_id") == native.thread
                                  for row in native.rows("native-stops.jsonl")))
@@ -388,13 +392,16 @@ for control in (True, False):
             assert not inbox.exists(), "negative control unexpectedly continued"
             print(f"ok - {VERSION}: old API Stop stayed idle after the late worker completion", flush=True)
         else:
-            # The project hook alone returns after its full 20-second budget.
-            # The primary then takes one quiet, shortened foreground checkpoint;
+            # The only registered Firstmate Stop callback returns after its full 20-second budget.
+            # The primary then takes one normal, quiet 180-second foreground checkpoint;
             # the controlled lab event arrives only after that quiet timeout, so
             # the next checkpoint must surface and handle it with no new input.
             tools_confirmed(native, host)
+            checkpoint_started = time.monotonic()
             native.until(lambda: native.command_completed("fm-watch-checkpoint.sh", 124),
-                         seconds=30)
+                         seconds=240)
+            assert time.monotonic() - checkpoint_started >= 170, \
+                "the standalone successor did not include the quiet 180-second primary checkpoint"
             (native.home / "state/worker.status").write_text("done: ready for already authorized validation\n")
             native.until(inbox.exists)
             native.until(native.sent_then_acked)
@@ -408,8 +415,11 @@ for control in (True, False):
             (native.home / "validation.ok").write_text("worker validation passed\n")
             results = native.rows("native-results.jsonl")
             assert any(row["status"] == 2 and "checkpoint:" in row["feedback"] for row in results), "quiet boundary had no native continuation"
-            assert any(row["payload"].get("stop_hook_active") and row["status"] == 2 for row in results), "the project hook did not retain its same-primary return after the first exit-2"
+            assert any(row["payload"].get("stop_hook_active") and row["status"] == 2 for row in results), "the Firstmate Stop callback did not retain its same-primary return after the first exit-2"
             stays_interrupted(native)
+            if CASE == "standalone":
+                print(f"ok - {VERSION}: the only registered Stop hook survived a quiet 20-second boundary, the same thread handled a post-boundary event after a quiet successor checkpoint, and interruption stayed stopped", flush=True)
+                continue
             owner = (native.home / "state/.lock-session").read_text()
             foreign = native.request("thread/start", {
                 "cwd": str(native.home), "model": MODEL, "approvalPolicy": "never",
@@ -462,12 +472,13 @@ for control in (True, False):
     finally:
         native.close()
 
-native = Native("empty", empty=True)
-try:
-    native.until(native.completed)
-    native.bound()
-    assert all(row["status"] == 0 for row in native.rows("native-results.jsonl")), "empty fleet caused a supervision continuation"
-    assert not (native.home / "state/.last-watcher-beat").exists(), "empty fleet started a watcher"
-    print(f"ok - {VERSION}: empty API primary completed without supervision work", flush=True)
-finally:
-    native.close()
+if CASE == "all":
+    native = Native("empty", empty=True)
+    try:
+        native.until(native.completed)
+        native.bound()
+        assert all(row["status"] == 0 for row in native.rows("native-results.jsonl")), "empty fleet caused a supervision continuation"
+        assert not (native.home / "state/.last-watcher-beat").exists(), "empty fleet started a watcher"
+        print(f"ok - {VERSION}: empty API primary completed without supervision work", flush=True)
+    finally:
+        native.close()
