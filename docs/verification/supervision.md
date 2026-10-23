@@ -52,7 +52,7 @@ The generated `InitializeParams`, `ThreadStartParams`, and `TurnInterruptParams`
 The `TurnStartParams` schema keeps the fixture's `threadId`, `effort`, and `input` fields unchanged; 0.164.0 adds one optional `responsesapiClientMetadataPatch` field that the fixture does not send.
 `ThreadStartParams.config` remains an arbitrary JSON object, as before.
 This offline comparison verifies request-shape compatibility only and does not show runtime execution of the hooks or a late-event handoff.
-The 0.163.0 native evidence above remains historical and does not establish 0.164.0 behavior.
+The 0.163.0 native evidence above remains historical and does not establish the separate 0.164.0 result recorded below.
 
 [`runtime-backends.md`](runtime-backends.md#native-codex-api-primary-identity) records the measured hook/tool identity distinction.
 The portable regression covers an existing healthy watcher, pending delivery across the boundary, idempotent acknowledgement, fail-closed repeated watcher failure, unhandled duplicate wakes and checkpoint-lock contention, foreign ownership, a read-only Stop of the recorded thread attached to another app-server (duplicate attachment), free, stale, PID-1 and legacy PID-only locks that Stop never adopts with its one-block guard and an empty fleet keeps silent, a live legacy PID-only lock that no thread adopts, host-side SessionStart resume binding after an app-server restart, a sandboxed lock writer in a real PID namespace that confirms a host-bound lock by thread id alone and never publishes PID 1 or replaces a PID-only, stale or PID-1 lock, a timeout fallback whose kill escalation returns 137, and held-only backlog.
@@ -68,6 +68,35 @@ That sandbox does not run under the app-server holding the lock, so its confirma
 The opt-in `tests/fm-codex-stop-watch-live-e2e.test.sh` refreshes native evidence after its generated hooks and invocation-local trust scope are separately reviewed.
 This proves the supported native return path with an executing trusted hook and functioning handler; it does not deploy or establish hook trust for any current client.
 The exact guarantee and failure boundary remain in [Codex API Stop ownership](../turnend-guard.md#codex-api-stop-ownership).
+
+### Codex 0.164.0 standalone native continuity
+
+Verified on 2026-10-23 on Linux with codex-cli 0.164.0, `gpt-6.1-sol`, the existing login, one CPU at nice 10, and a fresh isolated test home.
+The pre-run command `"$bin_real" --version` and post-run command `DISABLE_AUTOUPDATER=1 "$bin" --version` both printed `codex-cli 0.164.0`.
+The binary SHA-256 matched the value recorded in the compatibility refresh above.
+The run used an invocation-local hook-review flag and made no global hook, trust, settings, or live fleet changes.
+For fresh private `$testroot` and `$raw` directories, the run command (with their private values omitted) was:
+
+```sh
+TMPDIR="$testroot" \
+FM_CODEX_STOP_WATCH_LIVE_E2E=1 \
+FM_CODEX_STOP_NATIVE_CASE=standalone \
+FM_CODEX_STOP_LIVE_HOOKS_REVIEWED=1 \
+FM_CODEX_STOP_NATIVE_RECEIPT_DIR="$raw" \
+taskset -c 0 nice -n 10 timeout --signal=TERM --kill-after=30s 870s \
+  bash tests/fm-codex-stop-watch-live-e2e.test.sh
+```
+
+Observed output:
+
+```text
+ok - codex-cli 0.164.0: the only registered Stop hook survived a quiet 20-second boundary, the same thread handled a post-boundary event after a quiet successor checkpoint, and interruption stayed stopped
+```
+
+The runner exited 0.
+This supports the native Codex API primary path exercised by the isolated standalone fixture: an initial final response and Stop continuation, the quiet 20-second boundary, the same thread's quiet 180-second successor checkpoint, one controlled worker event with one real send and exact generation acknowledgement, a final `Handled.` response and active Stop continuation, and interruption without another Stop.
+It does not establish behavior for the current interactive UI, every current client or configuration, a live fleet or real worker, other CLI versions or platforms, or the separate `CASE=all` controls.
+It makes no 100-percent current-UI claim.
 
 ## Native session-start delivery
 
