@@ -455,6 +455,10 @@ for control in ((False,) if CASE == "standalone" else (True, False)):
             inbox.rename(inbox.parent / "handled/001.msg")
             subprocess.run(["bash", "-n", native.home / "fixture.sh"], check=True)
             (native.home / "validation.ok").write_text("worker validation passed\n")
+            native.until(lambda: any(
+                row["payload"].get("stop_hook_active") and row["status"] == 2
+                for row in native.rows("native-results.jsonl")
+            ), seconds=240)
             results = native.rows("native-results.jsonl")
             assert any(row["status"] == 2 and "checkpoint:" in row["feedback"] for row in results), "quiet boundary had no native continuation"
             assert any(row["payload"].get("stop_hook_active") and row["status"] == 2 for row in results), "the Firstmate Stop callback did not retain its same-primary return after the first exit-2"
