@@ -357,6 +357,7 @@ The ordinary successful path therefore keeps the backlog and live task set in sy
 Under that gate, dispatch accepts only an unheld, unblocked Queued or In flight item in this home; a missing, Done, held, or dependency-blocked item is refused before any endpoint or local copy is created.
 A `program` row is a long-lived umbrella row that stays In flight without a worker, gets role `program` in the snapshots, and is never dispatched.
 A `firstmate` row is an action firstmate itself owes, marked by `bin/fm-captain-hold.sh complete --firstmate-action`; it is never dispatched to a worker, and [`bin/fm-tasks-axi.sh`](../bin/fm-tasks-axi.sh) holds it only for the captain, an external condition, or a date.
+An external condition counts as a gate only when it names a live dependency row or a date, because those are the only two referents the backlog re-reads; a prose-only external wait is refused at the write and reported by `bin/fm-captain-hold.sh gate-audit` when it is already recorded, so a firstmate action cannot leave the ready queue while nothing can re-check it.
 
 [`bin/fm-tasks-axi.sh`](../bin/fm-tasks-axi.sh) refuses `add --start` and its `create --start` alias.
 Either would place a row In flight without a task record, status file, or inbox, counting it as live work that nobody is doing.

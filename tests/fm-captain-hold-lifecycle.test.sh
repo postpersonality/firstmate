@@ -4813,7 +4813,13 @@ test_outcome_review_preserves_real_gates_and_explicit_deliverables() {
     tasks_in "$home" add "$id" "Legitimate continuation gate" >/dev/null
     case "$kind" in
       captain) run_captain "$home" hold "$id" --reason "Explicit stop or missing paid network authority" >/dev/null ;;
-      external) tasks_in "$home" hold "$id" --reason "Executing job completion receipt" --kind external >/dev/null ;;
+      external)
+        # A genuine external condition is recorded through the referent the home
+        # re-reads: the job's own row. Prose alone is no longer a gate.
+        tasks_in "$home" add sample-importer "The external job whose receipt we await" >/dev/null
+        tasks_in "$home" block "$id" --by sample-importer >/dev/null
+        tasks_in "$home" hold "$id" --reason "Executing job completion receipt" --kind external >/dev/null
+        ;;
       dated) tasks_in "$home" hold "$id" --reason "External release window" --until 2099-01-01 --kind future >/dev/null ;;
       dependency) tasks_in "$home" block "$id" --by sample-running >/dev/null ;;
       running)
@@ -4827,10 +4833,15 @@ test_outcome_review_preserves_real_gates_and_explicit_deliverables() {
     --firstmate-action sample-dependency --remaining sample-running >/dev/null \
     || fail "a legitimate gate or already-running independent task was rejected"
   run_captain "$home" verify sample-outcome >/dev/null || fail "legitimate dispositions did not verify"
-  tasks_in "$home" unhold sample-external >/dev/null
+  # The external job finishes. The backlog drops the completed dependency, so
+  # the recorded external hold is left naming nothing the home re-reads.
+  tasks_in "$home" "done" sample-importer --keep 0 >/dev/null
   if run_captain "$home" verify sample-outcome > "$home/cleared.out" 2>&1; then
-    fail "a cleared external condition concealed the now-ready firstmate action"
+    fail "a completed external condition concealed the now-ready firstmate action"
   fi
+  assert_grep 'names no live dependency row and no date' "$home/cleared.out" \
+    "the completed external dependency did not surface the unbacked external hold"
+  tasks_in "$home" unhold sample-external >/dev/null
   home=$(make_completion_home origin-blocker)
   tasks_in "$home" add sample-other "An independent blocker" >/dev/null
   tasks_in "$home" add sample-after "Act after the milestone" >/dev/null
@@ -4903,13 +4914,26 @@ test_outcome_inventory_rejects_missing_self_and_nondispatchable_work() {
   pass "completion inventory refuses missing, self, program and conflicting-owner references"
 }
 
-test_firstmate_action_ownership_survives_milestone_cleanup() {
-  local home out before
+test_firstmate_action_ownership_survives_milestone_cleanup() {  local home out before
   home=$(make_completion_home retained-action)
   tasks_in "$home" add sample-deliver "Deliver after the external completion receipt" >/dev/null
+  tasks_in "$home" add sample-importer "The external job whose receipt we await" >/dev/null
+  tasks_in "$home" block sample-deliver --by sample-importer >/dev/null
   tasks_in "$home" hold sample-deliver --reason "Executing job completion receipt" --kind external >/dev/null
   run_captain "$home" complete sample-outcome --none --firstmate-action sample-deliver >/dev/null \
     || fail "a genuinely gated firstmate action could not be accepted"
+  # The receipt arrives before cleanup: the backlog drops the completed
+  # dependency, so the recorded external hold names nothing the home re-reads.
+  tasks_in "$home" "done" sample-importer --keep 0 >/dev/null
+  if run_captain "$home" verify sample-outcome > "$home/receipt.out" 2>&1; then
+    fail "a completed external dependency left the external hold looking like a gate"
+  fi
+  assert_grep 'names no live dependency row and no date' "$home/receipt.out" \
+    "the arrived receipt did not surface the now-unbacked external hold"
+  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-deliver --kind external \
+    --until 2099-01-01 --reason "The receipt is due before that date" >/dev/null \
+    || fail "a dated external wait was refused on a firstmate action"
+  run_captain "$home" verify sample-outcome >/dev/null || fail "a dated external wait did not verify"
   run_teardown "$home" sample-outcome > "$home/cleanup.out" 2>&1 \
     || fail "milestone cleanup failed: $(cat "$home/cleanup.out")"
   out=$(tasks_in "$home" show sample-deliver --full)
@@ -4929,6 +4953,65 @@ test_firstmate_action_ownership_survives_milestone_cleanup() {
   pass "firstmate ownership survives cleanup, refuses generic future waits, and preserves explicit stops"
 }
 
+# The one gate kind nothing re-read: an `external` condition is prose unless it
+# names a dependency row or a date. This pins both sides of that boundary - the
+# write is refused, a referent-backed wait is accepted, and a legacy prose row
+# is surfaced by the audit - plus the captain stop that must never be touched.
+test_firstmate_action_external_wait_needs_a_rereadable_referent() {
+  local home out before
+  home=$(make_completion_home external-referent)
+  tasks_in "$home" add sample-action "Run the acceptance Firstmate owes" >/dev/null
+  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-action >/dev/null 2>&1; then
+    fail "an unperformed firstmate action was accepted"
+  fi
+  out=$(tasks_in "$home" show sample-action --full)
+  assert_contains "$out" 'kind: firstmate' "the refused review did not record firstmate ownership"
+  before=$(cat "$home/data/backlog.md")
+  if FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-action --kind external \
+      --reason "Waiting for the user to organize acceptance" > "$home/prose.out" 2>&1; then
+    fail "a prose-only external wait parked a firstmate action"
+  fi
+  assert_grep 'external referent the home can re-read' "$home/prose.out" \
+    "the intake refusal did not name the missing referent"
+  assert_grep 'live dependency row' "$home/prose.out" \
+    "the intake refusal did not name the dependency row that would satisfy it"
+  [ "$before" = "$(cat "$home/data/backlog.md")" ] || fail "the refused external hold changed the backlog"
+  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-action --kind external --until 2099-01-01 \
+    --reason "The external receipt is due before that date" >/dev/null \
+    || fail "a dated external wait was refused on a firstmate action"
+  tasks_in "$home" unhold sample-action >/dev/null
+  tasks_in "$home" add sample-receipt "The external job whose receipt we await" >/dev/null
+  tasks_in "$home" block sample-action --by sample-receipt >/dev/null
+  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-action --kind external \
+    --reason "Executing job completion receipt" >/dev/null \
+    || fail "a dependency-backed external wait was refused"
+  run_captain "$home" complete sample-outcome --none --firstmate-action sample-action >/dev/null \
+    || fail "a referent-backed external wait was not accepted by the outcome gate"
+  # The receipt arrives. The backlog drops the completed dependency, so the
+  # recorded external hold is left naming nothing this home re-reads.
+  tasks_in "$home" "done" sample-receipt --keep 0 >/dev/null
+  if run_captain "$home" verify sample-outcome > "$home/stale.out" 2>&1; then
+    fail "a completed external dependency concealed the now-ready firstmate action"
+  fi
+  assert_grep 'names no live dependency row and no date' "$home/stale.out" \
+    "the stale external hold was not refused by its own lost referent"
+  out=$(run_captain "$home" gate-audit)
+  assert_contains "$out" sample-action "the gate audit did not report the unbacked external hold"
+  assert_contains "$out" 'no live dependency row and no date' \
+    "the gate audit did not name the missing referent"
+  # The captain's own stop is not an external claim and must survive untouched.
+  run_captain "$home" hold sample-action --origin sample-outcome \
+    --reason "Stop this acceptance until I explicitly ask again" >/dev/null \
+    || fail "an explicit stop was refused"
+  out=$(run_captain "$home" gate-audit)
+  [ -z "$out" ] || fail "the gate audit reported a genuine captain hold: $out"
+  run_captain "$home" verify sample-outcome >/dev/null || fail "a genuine captain stop failed verification"
+  case "$(tasks_in "$home" ready)" in
+    *sample-action*) fail "a captain-stopped firstmate action returned to the ready queue" ;;
+  esac
+  pass "firstmate external waits need a dependency row or a date, and a stale one is named without the user"
+}
+
 test_fulfilled_outcome_requires_a_live_metadata_sink
 test_in_flight_worker_requires_a_paired_task_record
 test_outcome_review_distinguishes_a_milestone_from_the_goal
@@ -4936,6 +5019,7 @@ test_prepared_firstmate_action_cannot_be_a_generic_wait
 test_outcome_review_preserves_real_gates_and_explicit_deliverables
 test_outcome_inventory_rejects_missing_self_and_nondispatchable_work
 test_firstmate_action_ownership_survives_milestone_cleanup
+test_firstmate_action_external_wait_needs_a_rereadable_referent
 
 test_hold_reason_round_trips_awkward_characters
 test_hold_origins_precede_backend_holds

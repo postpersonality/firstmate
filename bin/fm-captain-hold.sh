@@ -33,6 +33,7 @@
 #   fm-captain-hold.sh complete <origin-id> (--none | <task-id>...) \
 #     [--fulfilled | --remaining <task-id> | --firstmate-action <task-id>]...
 #   fm-captain-hold.sh verify <origin-id>
+#   fm-captain-hold.sh gate-audit
 #   fm-captain-hold.sh completion-task <task-id>
 #   fm-captain-hold.sh handoff-completion <secondmate-id> <task-id>...
 #   fm-captain-hold.sh open <task-id> [--identity] [--distinguish-absent]
@@ -186,9 +187,12 @@
 # keeping their owner visible after origin cleanup; such rows cannot dispatch
 # to workers. Queued worker work stays actionable; in-flight worker work needs
 # its exact paired task record with one valid spawn generation.
-# a firstmate action must be Done or genuinely gated by a captain/external hold,
-# future hold-until date, or unresolved dependency on a task other than its
-# origin. An undated generic future/parked/load hold is not such a condition.
+# a firstmate action must be Done or genuinely gated by a captain hold, a date,
+# or a dependency on a task other than its origin, and an `external` hold counts
+# only with one of those two referents because the backlog re-reads exactly those
+# (a dependency row stops counting when its blocker completes, a date expires).
+# A prose-only external condition, an undated generic future/parked/load hold, and
+# a dependency that only names the origin are not such conditions.
 # --fulfilled cannot erase an outstanding reference. A successful review writes
 # completion_reviewed= bound to kind:spawn_gen, so relaunch and scout promotion
 # require a fresh review.
@@ -2151,7 +2155,7 @@ command_handoff_completion() {  # <secondmate-id> <task-id>...
 # Only the supervisor can attest intent/authority; check their recorded disposition
 # without inferring it from report or wait prose.
 completion_work_verify() {  # <origin> <comma-separated owner refs> <fulfilled-0-or-1>
-  local origin=$1 refs=$2 fulfilled=$3 ref owner route id show state held blocked blocker kind until origin_identity="$1"
+  local origin=$1 refs=$2 fulfilled=$3 ref owner route id show state held blocked blocker kind until live_dependency gate origin_identity="$1"
   origin_identity=$(task_identity "$origin")
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
@@ -2172,15 +2176,29 @@ completion_work_verify() {  # <origin> <comma-separated owner refs> <fulfilled-0
     kind=$(show_field_value "$show" hold_kind)
     if [ "$(show_field_value "$show" kind)" = firstmate ]; then owner=firstmate; fi
     until=$(show_field_value "$show" hold_until)
+    live_dependency=
     if [ "$blocked" = yes ]; then
       for blocker in $(show_field_value "$show" blocked_by | tr ',' ' '); do
-        [ "$blocker" = "$origin" ] || [ "$blocker" = "$origin_identity" ] || continue 2
+        case "$blocker" in "$origin"|"$origin_identity") continue ;; esac
+        live_dependency=$blocker
+        break
       done
+      # A dependency row is re-read by the backlog itself: it stops counting as
+      # a gate the moment its blocker completes, so nothing here repeats that.
+      [ -z "$live_dependency" ] || continue
     fi
     if [ "$held" = yes ]; then
-      case "$kind" in captain|external) continue ;; esac
-      case "$until" in ????-??-??) continue ;; esac
-      fail "remaining task $id has a generic $kind wait; record its real captain, external, date or dependency gate"
+      gate=$(fm_backlog_gate_verdict "$kind" "$until" "$live_dependency") || case "$gate" in
+        external-unbacked)
+          fail "firstmate action $id is held for an external condition that names no live dependency row and no date; bind it to the row or date the home re-reads, or handle the action"
+          ;;
+        *)
+          fail "remaining task $id has a generic $kind wait; record its real captain, external, date or dependency gate"
+          ;;
+      esac
+      # A re-readable hold is the gate itself: the row waits on something this
+      # home re-reads, so the actionable-now check below does not apply.
+      continue
     fi
     case "$state" in queued|in_flight) ;; *) fail "remaining task $id has unsupported state $state" ;; esac
     if [ "$owner" = firstmate ]; then
@@ -2361,6 +2379,51 @@ EOF
   printf 'complete: %s captain-call inventory reviewed%s%s%s\n' "$origin" "${keys:+ ($keys)}" \
     "${attested_by_prefix:+ [attested through the configured prefix: $attested_by_prefix]}" \
     "${unrecorded_origin:+ [no recorded origin on: $unrecorded_origin; not checked against $origin]}"
+}
+
+# --- gate audit -------------------------------------------------------------
+#
+# Read-only inventory of held firstmate actions whose recorded gate the home can
+# no longer re-read: an external condition with no live dependency row and no
+# date (the state a completed dependency or a prose-only wait leaves behind), or
+# a legacy generic hold with no date. One "<id>\t<reason>" line per finding;
+# silent when every gate is re-readable. This is the join the fleet was missing:
+# `ready` hides held rows, the captain-call inventory only buckets captain holds,
+# and completion verification runs only while the originating record still
+# exists. It is a read, never a repair: it names owed work and changes nothing.
+command_gate_audit() {
+  local data listing line id kind held hold_kind until dependency verdict
+  [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+  data=$(fm_backlog_data_absolute "$DATA") || fail "data directory cannot be resolved: $DATA"
+  listing=$(fm_backlog_row_list "$data" --state held --kind firstmate --fields hold_kind) \
+    || fail "${listing:-cannot read the backlog}"
+  while IFS= read -r line; do
+    # Rows are indented two spaces; the header, the count and the help block are
+    # not, and a help bullet never carries an id charset.
+    case "$line" in '  '*) ;; *) continue ;; esac
+    line=${line#  }
+    id=${line%%,*}
+    case "$id" in ''|*[!A-Za-z0-9._-]*) continue ;; esac
+    task_show "$id" || continue
+    kind=$(show_field_value "$TASK_SHOW_OUTPUT" kind)
+    [ "$kind" = firstmate ] || continue
+    held=$(show_field_value "$TASK_SHOW_OUTPUT" held)
+    [ -z "$held" ] || [ "$held" = yes ] || continue
+    hold_kind=$(show_field_value "$TASK_SHOW_OUTPUT" hold_kind)
+    until=$(show_field_value "$TASK_SHOW_OUTPUT" hold_until)
+    dependency=
+    if [ "$(show_field_value "$TASK_SHOW_OUTPUT" blocked)" = yes ]; then
+      dependency=$(show_field_value "$TASK_SHOW_OUTPUT" blocked_by)
+      case "$dependency" in ''|-|'"-"') dependency= ;; esac
+    fi
+    case "$until" in -|'"-"'|'') until= ;; esac
+    verdict=$(fm_backlog_gate_verdict "$hold_kind" "$until" "$dependency") || case "$verdict" in
+      external-unbacked) printf '%s\tan external wait that names no live dependency row and no date cannot be re-read\n' "$id" ;;
+      *) printf '%s\tan undated %s wait cannot be re-read\n' "$id" "$hold_kind" ;;
+    esac
+  done <<EOF
+$listing
+EOF
 }
 
 command_verify() {
@@ -2602,6 +2665,7 @@ case "${1:-}" in
   binding) shift; command_binding "$@" ;;
   complete) shift; command_complete "$@" ;;
   verify) shift; command_verify "$@" ;;
+  gate-audit) shift; command_gate_audit "$@" ;;
   completion-task) shift; command_completion_task "$@" ;;
   handoff-completion) shift; command_handoff_completion "$@" ;;
   question) shift; command_question "$@" ;;

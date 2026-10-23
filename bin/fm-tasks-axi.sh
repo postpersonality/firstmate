@@ -59,7 +59,9 @@
 #     later would notice (`start <id>` stays a documented direct transition);
 #   - closing a live completion_required=1 task before its outcome review;
 #   - holding a kind=firstmate action behind an undated future/parked/load
-#     wait instead of a captain, external, date or dependency gate;
+#     wait instead of a captain, external, date or dependency gate, or behind an
+#     `external` condition with no live dependency row and no date, because only
+#     those two referents are re-read after the write;
 #   - `archive` with any command but `list` or `show`, or on a home whose
 #     backlog is not markdown;
 #   - a data directory that cannot be resolved, or whose backend configuration
@@ -225,6 +227,8 @@ esac
 task_id=''
 hold_kind=untyped
 hold_until=''
+dependency=''
+gate=''
 case "${1:-}" in
   done|close|hold)
     for ((i=1; i<${#ARGS[@]}; i++)); do
@@ -262,13 +266,28 @@ case "${1:-}" in
     ;;
 esac
 # A coordinator action retains its owner after the originating milestone is
-# cleaned up. Do not hide that ready action behind an undated generic wait.
+# cleaned up. Do not hide that ready action behind a wait nothing re-reads: a
+# firstmate row may name the captain, a date, or a dependency row, and an
+# `external` condition counts only through one of the last two, because the
+# backlog itself re-reads exactly those. Prose alone is refused here, at the one
+# write that could otherwise park the action outside its owner's next move.
 if [ "${1:-}" = hold ] && [ -n "$task_id" ]; then
   fm_backlog_row_probe "$DATA" "$task_id" || fail "cannot read task $task_id before holding it"
   if [ "$FM_BACKLOG_ROW_KIND" = firstmate ]; then
-    case "$hold_kind" in
-      captain|external) ;;
-      *) [ -n "$hold_until" ] || fail "firstmate action $task_id needs a real captain, external, date or dependency gate; an undated $hold_kind wait cannot hide its next action" ;;
+    # The probe's state line is "<state> <held> <blocked>", and a dependency only
+    # reaches it while its blocker is unfinished: the backlog drops a completed
+    # one, so `blocked: yes` is a live referent rather than a claim. The gate rule
+    # itself is bin/fm-backlog-transition-lib.sh's, so this write cannot disagree
+    # with the outcome review or the startup audit about what counts as a gate.
+    dependency=
+    [ "${FM_BACKLOG_ROW_STATE##* }" != yes ] || dependency=live
+    gate=$(fm_backlog_gate_verdict "$hold_kind" "$hold_until" "$dependency") || case "$gate" in
+      external-unbacked)
+        fail "firstmate action $task_id needs an external referent the home can re-read: a live dependency row (tasks-axi block $task_id --by <other>) or a date (--until); a prose-only external wait would never be re-checked"
+        ;;
+      *)
+        fail "firstmate action $task_id needs a real captain, external, date or dependency gate; an undated $hold_kind wait cannot hide its next action"
+        ;;
     esac
   fi
 fi

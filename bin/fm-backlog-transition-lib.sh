@@ -291,6 +291,29 @@ fm_backlog_tasks_axi_addressing() {  # <data-dir>
   fi
 }
 
+# The one owner of "is this hold a gate the home re-reads?", shared by the write
+# that records a firstmate action's wait (bin/fm-tasks-axi.sh), the outcome review
+# that accepts the milestone (bin/fm-captain-hold.sh completion_work_verify) and
+# the startup audit that surfaces a legacy row (bin/fm-captain-hold.sh gate-audit).
+# Only three anchors survive a re-read, and each is re-read by something other
+# than the supervisor's own prose: the captain, whose answer closes the row; a
+# dependency row, which the backlog drops as soon as its blocker completes; and a
+# date, which the backlog expires by itself. An `external` condition with none of
+# them is an assertion nothing re-checks, which is how a firstmate action leaves
+# the ready queue, the captain-call inventory and the aging net at once.
+# Prints the verdict: re-readable, external-unbacked, or generic-undated.
+# Returns 1 for the two invalid gates.
+fm_backlog_gate_verdict() {  # <hold-kind> <hold-until> <live-dependency>
+  local kind=$1 until=$2 dependency=$3
+  [ -n "$dependency" ] && { printf 're-readable'; return 0; }
+  [ -n "$until" ] && { printf 're-readable'; return 0; }
+  case "$kind" in
+    captain) printf 're-readable'; return 0 ;;
+    external) printf 'external-unbacked'; return 1 ;;
+    *) printf 'generic-undated'; return 1 ;;
+  esac
+}
+
 fm_backlog_transition_applies() {  # <config-dir> <data-dir> <kind>
   local config=$1 data authorized_data=$2 kind=$3 file root backend authorized_root
   FM_BACKLOG_TRANSITION_SKIP=

@@ -897,6 +897,44 @@ test_routine_bootstrap_contract_runs_under_system_bash() {
   pass "bootstrap routine contract runs under system /bin/bash"
 }
 
+# A firstmate action parked behind prose leaves every existing net at once: the
+# ready queue hides held rows, the captain-call buckets only take captain holds,
+# and aging covers captain holds alone. The startup pass therefore has to name
+# the row itself, and it must keep its hands off a genuine captain stop.
+test_firstmate_gate_audit_reaches_the_startup_pass() {
+  local case_dir fakebin home out real_axi
+  real_axi=$(command -v tasks-axi 2>/dev/null) || { pass "firstmate gate audit wiring skipped without tasks-axi"; return; }
+  case_dir="$TMP_ROOT/gate-audit"
+  home="$case_dir/home"
+  mkdir -p "$home/data" "$home/state" "$home/config" "$home/projects"
+  cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$home/data/backlog.md"
+  (cd "$home" \
+    && tasks-axi add act "Act later" >/dev/null \
+    && tasks-axi hold act --kind external --reason "Waiting for the user to organize acceptance" >/dev/null \
+    && tasks-axi update act --kind firstmate >/dev/null) \
+    || fail "could not record the fixture firstmate action"
+  fakebin=$(make_fake_toolchain "$case_dir")
+  # The audit reads a real backlog, so the real toolchain has to win over the
+  # fakes - including node, which the real tasks-axi CLI itself runs on.
+  rm -f "$fakebin/tasks-axi"
+  add_real_jq "$fakebin"
+  out=$(PATH="$(dirname "$real_axi"):$fakebin:$BASE_PATH" FM_BACKEND=tmux FM_HOME="$home" \
+        FM_ROOT_OVERRIDE="$ROOT" FM_BOOTSTRAP_NETWORK=skip FM_FAKE_TREEHOUSE_LEASE_HELP=1 \
+        "$ROOT/bin/fm-bootstrap.sh" 2>&1 | grep '^BACKLOG_RECONCILE: act:' || true)
+  case "$out" in
+    *'no live dependency row and no date'*) ;;
+    *) fail "the startup pass did not surface the unbacked external wait: $out" ;;
+  esac
+  (cd "$home" && tasks-axi hold act --kind captain --reason "Explicit user stop" >/dev/null) \
+    || fail "could not record the fixture captain stop"
+  out=$(PATH="$(dirname "$real_axi"):$fakebin:$BASE_PATH" FM_BACKEND=tmux FM_HOME="$home" \
+        FM_ROOT_OVERRIDE="$ROOT" FM_BOOTSTRAP_NETWORK=skip FM_FAKE_TREEHOUSE_LEASE_HELP=1 \
+        "$ROOT/bin/fm-bootstrap.sh" 2>&1 | grep '^BACKLOG_RECONCILE: act:' || true)
+  [ -z "$out" ] || fail "the startup pass reported a genuine captain stop: $out"
+  pass "the startup pass names an unbacked firstmate external wait and leaves a captain stop alone"
+}
+
 # FM_BOOTSTRAP_NETWORK splits one bootstrap run into its local and network
 # halves so a session start can compose its digest from the local half alone and
 # run the network half concurrently. The property that has to hold is that the
@@ -1277,6 +1315,7 @@ test_fleet_sync_timeout_empty_override_uses_default
 test_fleet_sync_timeout_is_computed_before_launch
 test_routine_bootstrap_confirmations_are_silent
 test_routine_bootstrap_contract_runs_under_system_bash
+test_firstmate_gate_audit_reaches_the_startup_pass
 test_network_phase_partitions_the_run
 test_network_sweeps_recheck_lock_ownership
 test_network_phases_record_per_step_elapsed_times

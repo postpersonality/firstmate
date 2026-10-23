@@ -37,6 +37,7 @@ It never reads report bodies, review artifacts, terminal output, or chat.
 | `answer` | Records the captain's exact words and resolves the call. | [Answering a call](#answering-a-call-answer) |
 | `complete` | Records the outcome disposition and reviewed captain-held task ids. | [Recording a reviewed inventory](#recording-a-reviewed-inventory-complete) |
 | `verify` | Read-only completion check before teardown removes source state. | [Checking before teardown](#checking-before-teardown-verify) |
+| `gate-audit` | Read-only report of held firstmate actions whose recorded gate the home can no longer re-read. | [Checking before teardown](#checking-before-teardown-verify) |
 | `open` | Read-only check of whether a row is still an open captain call. | [Cleanup never closes a captain call](#cleanup-never-closes-a-captain-call) |
 | `answers` | Channel-agnostic entry point for keyed answers. | [Answer-time resolution](#answer-time-resolution) |
 | `bind`, `unbind`, `binding` | Record that a captured-answer source feeds the keyed-answer intake. | [Source bindings](#source-bindings) |
@@ -124,7 +125,8 @@ Scout teardown and new ship teardown call the read-only `verify` subcommand befo
 The outcome review and continuation record are owned by `bin/fm-captain-hold.sh --help`; the procedure is owned by the [lifecycle skill](../.agents/skills/captain-hold-lifecycle/SKILL.md#outcome-review).
 `verify` checks:
 
-- For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by an unfinished task other than its origin, held for the captain, an external condition, or a date, or, for worker work only, Queued or In flight with the exact paired worker record in its recorded owner home.
+- For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by an unfinished task other than its origin, held for the captain, held to a date, held for an external condition that names a live dependency row or a date, or, for worker work only, Queued or In flight with the exact paired worker record in its recorded owner home.
+  A firstmate action held for an external condition with neither a live dependency row nor a date is refused, because nothing re-reads a prose-only claim; `bin/fm-captain-hold.sh gate-audit` reports the rows already carrying one.
 - A continuation moved to a secondmate is referenced by its registered secondmate id; verification reads only that registered local home or remote task transport, including its Done archive.
 - The recorded attestation exists.
 - Every recorded inventory entry still passes the [completion inventory checks](#recording-a-reviewed-inventory-complete).

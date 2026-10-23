@@ -15,6 +15,10 @@
 #                 "HOME_SUMMARY: <ledger never published|not republished since
 #                 <stamp>>; <n> failed attempt(s) ... last: <recorded failure>",
 #                 "BACKLOG_RECONCILE: <id>: <what this home could not reconcile>",
+#                 "BACKLOG_RECONCILE: <id>: <a firstmate action's recorded gate
+#                 cannot be re-read>; handle it or record a captain, dependency
+#                 or date gate" (read-only: the judgment is
+#                 bin/fm-captain-hold.sh `gate-audit`, and nothing is repaired),
 #                 "BACKLOG_RECONCILE: code-root <file> is not this home's <file>; ...",
 #                 "TANGLE: <remediation>",
 #                 "SECONDMATE_SYNC: secondmate <id>: skipped: <reason>",
@@ -1332,6 +1336,41 @@ backlog_record_reconcile() {
   done
 }
 
+# Surface firstmate actions whose recorded gate the home can no longer re-read.
+# This is the one row class that leaves every existing net at once: `ready`
+# hides held work, the captain-call inventory only buckets captain holds, aging
+# applies to captain holds alone, and completion verification runs only while
+# the originating record still exists. So a supervisor that parks its own owed
+# action behind prose - or behind a dependency row that has since completed, or
+# a date that has passed - is read by nothing afterwards.
+# The judgment itself is bin/fm-captain-hold.sh's `gate-audit`, the same predicate
+# completion verification uses, so this sweep cannot invent a second rule; it only
+# turns each finding into the actionable line this pass already owns.
+firstmate_action_gate_reconcile() {
+  local out status line id reason
+  # The audit reads through the configured backlog backend, so it shares the
+  # backlog gate's applicability decision; a manual home has nothing here to
+  # re-read. It asks as `ship` rather than reusing the sweep's inferred kind on
+  # purpose: a home whose task records are all gone - exactly the state an
+  # origin teardown leaves behind - infers `secondmate` there and would skip the
+  # one case this audit exists for.
+  fm_backlog_transition_applies "$CONFIG" "$DATA" ship || return 0
+  out=$(FM_DATA_OVERRIDE="$DATA" FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-captain-hold.sh" gate-audit 2>&1)
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    printf 'BACKLOG_RECONCILE: firstmate action gates could not be audited: %s\n' \
+      "$(printf '%s\n' "$out" | head -1)"
+    return 0
+  fi
+  while IFS=$'\t' read -r id reason; do
+    [ -n "$id" ] || continue
+    printf 'BACKLOG_RECONCILE: %s: %s; handle it or record a captain, dependency or date gate\n' \
+      "$id" "$reason"
+  done <<EOF
+$out
+EOF
+}
+
 startup_memory_budget_setup() {
   # Primary bootstrap owns default publication. A secondmate is deliberately
   # passive here because its setting must converge from the primary through the
@@ -1424,6 +1463,7 @@ if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ] && local_phase; then
       exit 1
     fi
   fi
+  firstmate_action_gate_reconcile
 fi
 
 # Local detection: presence, version floors, and configuration. Nothing here
