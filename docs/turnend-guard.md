@@ -307,7 +307,11 @@ The checkpoint fits beneath its existing 30-second registration; the script head
 It retains the existing foreground checkpoint's result and returns it through exit-2 Stop feedback, so a short assistant reply cannot discard that return.
 An existing healthy watcher is followed through the durable wake queue, without starting another watcher.
 A pending wake is delivered before another wait, and a quiet checkpoint also compels a primary continuation.
+That feedback tells the same primary to drain and acknowledge first, then start the next bounded foreground checkpoint (180 seconds by default) while any work, process-event source, registered check or Relay poll still needs supervision; a quiet 20-second Stop checkpoint is not completion, and the return is delivered through this project hook's own exit-2 feedback.
 The script never decides fleet actions or acknowledges wakes; the resumed primary uses the ordinary drain, handler and generation-bound acknowledgement.
+
+When every in-flight metadata record has a current `captain-held` transfer and there is no pending wake, registered event source, custom check or Relay poll, the hook allows the primary to wait for the captain instead of repeatedly forcing continuations.
+It uses `status_declared_wait_line` and `status_is_captain_held` from `bin/fm-classify-lib.sh`, and rechecks supervision need before returning; unhandled `needs-decision` and `blocked` events remain actionable.
 
 Successful bounded parks may continue even when another Stop hook set `stop_hook_active`.
 That flag describes a previous hook continuation, not a delivered fleet wake or an explicit captain stop.
@@ -316,7 +320,7 @@ A Stop from a thread the lock does not record never parks and never claims the l
 While another live session holds the lock, that Stop is read-only: it gets a notice and is not blocked.
 Under a free, stale, PID-1 or legacy PID-only lock with supervision work pending, it keeps the one-block guard bounded by `stop_hook_active`, and the block names the upgrade below; an empty fleet stays silent.
 The Stop of the recorded thread attached to another app-server is not blocked either while the app-server holding the lock is live: it gets a read-only notice and starts no checkpoint. That attachment's sandboxed model tools are not refused; see the sandbox limitation below.
-Native interruption cancels the synchronous return owner; an empty fleet or held/parked backlog alone starts no supervision work.
+Native interruption cancels the synchronous return owner; an empty fleet or held/parked backlog alone starts no supervision work, and a fully captain-held in-flight set is a legitimate wait when no other supervision source remains.
 The existing away daemon remains a legitimate alternate owner.
 
 `bin/fm-session-lock-lib.sh` partitions a shared app-server PID by its native thread id in the existing `state/.lock-session` sidecar.
@@ -350,7 +354,7 @@ Thread liveness is not observed; moving the primary to another thread requires e
 The guarantee requires the enabled, trusted project Stop hook to execute in a live native runtime with that event identity and verifiable app-server ancestry.
 It does not cover a disabled/untrusted or timed-out hook, native interruption, runtime termination, a lock not yet claimed for this thread, which keeps only the one-block guard, a duplicate attachment while the lock's app-server is live, or a client whose native event and ancestry cannot establish that identity.
 The global semantic Stop checker, native goals and domain completion/decision authority remain separate owners.
-[`verification/supervision.md`](verification/supervision.md) owns native evidence; `tests/fm-codex-stop-watch.test.sh` covers portable behavior and the opt-in native API guard exercises actual continuations and worker steering.
+[`verification/supervision.md`](verification/supervision.md) owns native evidence; `tests/fm-codex-stop-watch.test.sh` covers portable behavior, including the quiet-successor instruction and captain-held wait, while the opt-in native API guard exercises actual continuations and worker steering.
 
 ### Claude and Codex blocking
 

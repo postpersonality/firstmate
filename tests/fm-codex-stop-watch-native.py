@@ -37,8 +37,10 @@ def one_cpu():
 
 
 class Native:
-    def __init__(self, name, control=False, empty=False):
+    def __init__(self, name, control=False, empty=False, primer=True,
+                 stop_checkpoint="2", watch_checkpoint="2"):
         self.home = LAB / name
+        self.standalone = not primer
         self.home.mkdir()
         self.user = self.home / "user"
         self.user.mkdir(mode=0o700)
@@ -101,8 +103,8 @@ exit "$rc"
                     if not key.startswith(("FM_", "CODEX_", "CLAUDE_"))
                     and key not in ("CLAUDECODE", "NO_MISTAKES_GATE")}
         self.env.update(CODEX_HOME=str(self.user), FM_HOME=str(self.home),
-                        FM_ROOT_OVERRIDE=str(self.home), FM_CODEX_STOP_CHECKPOINT="2",
-                        FM_CODEX_WATCH_CHECKPOINT="2",
+                        FM_ROOT_OVERRIDE=str(self.home), FM_CODEX_STOP_CHECKPOINT=stop_checkpoint,
+                        FM_CODEX_WATCH_CHECKPOINT=watch_checkpoint,
                         FM_POLL="1", FM_CHECK_INTERVAL="999999", FM_HEARTBEAT="999999")
         # Only this synthetic terminal's read/send boundary is mocked. The
         # real fm-send command, guards, identity, queue and inbox run natively.
@@ -151,12 +153,13 @@ else:
             'jq -cn --argjson payload "$payload" --argjson status "$status" --rawfile feedback "$output" '
             "'{payload:$payload,status:$status,feedback:$feedback}' >> \"$FM_HOME/native-results.jsonl\"\n"
             'cat "$output" >&2\nrm -f "$output"\nexit "$status"\n')
+        stop_hooks = []
+        if primer:
+            stop_hooks.append({"type": "command", "command": 'bash "$FM_HOME/primer.sh"', "timeout": 30})
+        stop_hooks.append({"type": "command", "command": 'bash "$FM_HOME/native-hook.sh"', "timeout": 30})
         hooks = {"hooks": {"SessionStart": [{"hooks": [
             {"type": "command", "command": 'bash "$FM_HOME/native-start.sh"', "timeout": 30},
-        ]}], "Stop": [{"hooks": [
-            {"type": "command", "command": 'bash "$FM_HOME/primer.sh"', "timeout": 30},
-            {"type": "command", "command": 'bash "$FM_HOME/native-hook.sh"', "timeout": 30},
-        ]}]}}
+        ]}], "Stop": [{"hooks": stop_hooks}]}}
         (self.user / "hooks.json").write_text(json.dumps(hooks))
         self.thread = None
         self.spawn()
@@ -200,11 +203,18 @@ else:
         result = self.request("thread/start", {
             "cwd": str(self.home), "model": MODEL, "approvalPolicy": "never",
             "sandbox": "workspace-write", "ephemeral": False,
-            # Invocation-local consent for these three reviewed fixture hooks.
+            # Invocation-local consent for these reviewed fixture hooks.
             # No trust store or global Codex settings are modified.
             "config": {"bypass_hook_trust": True, "project_doc_max_bytes": 0},
         })
         self.thread = result["thread"]["id"]
+        no_event = (
+            "If there is no event, run bash bin/fm-watch-checkpoint.sh --seconds 2. "
+            "When that bounded lab checkpoint is quiet, drain again and start another 2-second checkpoint; "
+            "the 2-second bound is only the native lab's fast equivalent of the normal 180-second cycle. "
+            if self.standalone else
+            "If there is no event, only acknowledge the drain. "
+        )
         prompt = (
             f"This is an isolated native Firstmate supervision test in {self.home}. "
             "Only work inside that directory; never use tmux, Herdr, network, other tasks or delegation. "
@@ -219,7 +229,7 @@ else:
             '"Proceed with the already authorized validation". '
             "This validation is explicitly authorized; no human decision is required. "
             "Then execute the exact WAKE_ACK_REQUIRED command printed by that drain. "
-            "If there is no event, only acknowledge the drain. Leave the lab check registered. "
+            f"{no_event}Leave the lab check registered. "
             "Reply 'Handled.' after performing the action; do not manually arm a watcher or create work. "
             "Native interruption is authoritative. Do not claim a tool or delivery happened without doing it."
         )
@@ -292,6 +302,13 @@ else:
                 return True
         return False
 
+    def command_completed(self, fragment, exit_code):
+        return any(value.get("method") == "item/completed"
+                   and value["params"]["item"].get("type") == "commandExecution"
+                   and value["params"]["item"].get("exitCode") == exit_code
+                   and fragment in value["params"]["item"].get("command", "")
+                   for value in self.records)
+
     def bound(self, source=None):
         start = [row for row in self.rows("native-starts.jsonl")
                  if row["payload"].get("session_id") == self.thread]
@@ -344,27 +361,41 @@ def stays_interrupted(native):
 
 
 for control in (True, False):
-    native = Native("before" if control else "after", control=control)
+    native = Native("before" if control else "after", control=control,
+                    primer=control, stop_checkpoint="2" if control else "20")
     try:
-        native.until(lambda: any(row.get("stop_hook_active") for row in native.rows("native-stops.jsonl")))
+        native.until(lambda: any(row.get("session_id") == native.thread
+                                 for row in native.rows("native-stops.jsonl")))
+        stop_started = time.monotonic()
         host = native.bound()
         if control:
             native.until(native.completed)
         else:
             native.until(lambda: any(row["status"] == 2 and "checkpoint:" in row["feedback"]
                                      for row in native.rows("native-results.jsonl")))
-        # The event arrives after the short reply and a real native Stop with
-        # stop_hook_active=true, never as additional input supplied by the client.
-        (native.home / "state/worker.status").write_text("done: ready for already authorized validation\n")
+            assert time.monotonic() - stop_started >= 18, "the standalone project Stop did not exhaust its native 20-second bound"
+            stop_hooks = json.loads((native.user / "hooks.json").read_text())["hooks"]["Stop"][0]["hooks"]
+            assert len(stop_hooks) == 1 and "native-hook.sh" in stop_hooks[0]["command"], \
+                "the standalone case unexpectedly retained a primer/global Stop hook"
         inbox = native.home / "state/worker.inbox/001.msg"
         if control:
+            # This negative control receives its late event after the old guard
+            # allowed Stop, with no second user turn to revive it.
+            (native.home / "state/worker.status").write_text("done: ready for already authorized validation\n")
             end = time.monotonic() + 6
             while time.monotonic() < end:
                 native.poll()
             assert not inbox.exists(), "negative control unexpectedly continued"
             print(f"ok - {VERSION}: old API Stop stayed idle after the late worker completion", flush=True)
         else:
+            # The project hook alone returns after its full 20-second budget.
+            # The primary then takes one quiet, shortened foreground checkpoint;
+            # the controlled lab event arrives only after that quiet timeout, so
+            # the next checkpoint must surface and handle it with no new input.
             tools_confirmed(native, host)
+            native.until(lambda: native.command_completed("fm-watch-checkpoint.sh", 124),
+                         seconds=30)
+            (native.home / "state/worker.status").write_text("done: ready for already authorized validation\n")
             native.until(inbox.exists)
             native.until(native.sent_then_acked)
             assert "already authorized validation" in inbox.read_text()
@@ -377,7 +408,7 @@ for control in (True, False):
             (native.home / "validation.ok").write_text("worker validation passed\n")
             results = native.rows("native-results.jsonl")
             assert any(row["status"] == 2 and "checkpoint:" in row["feedback"] for row in results), "quiet boundary had no native continuation"
-            assert any(row["payload"].get("stop_hook_active") and row["status"] == 2 for row in results), "cross-hook continuation bypass was not exercised"
+            assert any(row["payload"].get("stop_hook_active") and row["status"] == 2 for row in results), "the project hook did not retain its same-primary return after the first exit-2"
             stays_interrupted(native)
             owner = (native.home / "state/.lock-session").read_text()
             foreign = native.request("thread/start", {
@@ -396,7 +427,7 @@ for control in (True, False):
             assert any(row["payload"].get("session_id") == foreign
                        and "another live firstmate session holds the lock" in row["output"]
                        for row in native.rows("native-starts.jsonl")), "another thread's native SessionStart was not refused"
-            print(f"ok - {VERSION}: quiet and late API Stop continuations performed one worker validation; interruption stayed stopped", flush=True)
+            print(f"ok - {VERSION}: the standalone project Stop and a quiet successor checkpoint handled one late worker event; interruption stayed stopped", flush=True)
             print(f"ok - {VERSION}: SessionStart bound the host lock; sandboxed tools only confirmed it, refused legacy and free locks, ran drain/ack/send/checkpoint; another actual thread's native SessionStart refused", flush=True)
             with (native.home / "state/worker.status").open("a") as stream:
                 stream.write("done: ready for already authorized validation after the host restart\n")

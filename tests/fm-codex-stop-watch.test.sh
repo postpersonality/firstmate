@@ -62,6 +62,8 @@ status=0
 run_stop "$home" || status=$?
 expect_code 2 "$status" 'a successful quiet Stop checkpoint must compel the successor even when stop_hook_active=true'
 assert_contains "$(cat "$home/err")" 'checkpoint:' 'quiet checkpoint was not delivered through Stop feedback'
+assert_contains "$(cat "$home/err")" 'start the next bounded foreground checkpoint' 'quiet continuation omitted its executable successor path'
+assert_contains "$(cat "$home/err")" 'FM_CODEX_WATCH_CHECKPOINT:-180' 'quiet continuation omitted the standard 180-second fallback'
 assert_absent "$home/state/.watch.lock/pid" 'quiet Stop leaked a watcher'
 pass 'Codex API Stop: a quiet checkpoint returns an executable continuation, despite the old loop flag'
 
@@ -199,6 +201,45 @@ expect_code 0 "$status" 'held/parked backlog alone must not create supervision w
 [ ! -s "$home/out" ] && [ ! -s "$home/err" ] || fail 'held-only home produced a continuation'
 assert_absent "$home/state/.watch.lock/pid" 'empty/held-only home started a watcher'
 pass 'Codex API Stop: an empty fleet with held or parked backlog stays legitimately idle'
+
+home=$(make_home captain-held-only)
+FM_HOME="$home" bash "$ROOT/bin/fm-check-unregister.sh" lab >/dev/null
+printf 'captain-held [key=approval]: tracked by approval-call\n' > "$home/state/approval.status"
+printf 'task=approval-call\n' > "$home/state/approval.meta"
+status=0
+run_stop "$home" || status=$?
+expect_code 0 "$status" 'a fleet durably held for a captain decision must not force another primary continuation'
+[ ! -s "$home/out" ] && [ ! -s "$home/err" ] || fail 'captain-held-only home produced a continuation'
+assert_absent "$home/state/.watch.lock/pid" 'captain-held-only home started a watcher'
+pass 'Codex API Stop: a verified captain-held fleet remains a legitimate wait'
+
+home=$(make_home open-decision)
+FM_HOME="$home" bash "$ROOT/bin/fm-check-unregister.sh" lab >/dev/null
+printf 'needs-decision [key=approval]: choose restricted or open access\n' > "$home/state/approval.status"
+printf 'task=approval-call\n' > "$home/state/approval.meta"
+status=0
+run_stop "$home" || status=$?
+expect_code 2 "$status" 'an untransferred captain decision must keep the primary continuation available'
+pass 'Codex API Stop: an open decision is not mistaken for a completed captain wait'
+
+home=$(make_home captain-held-with-check)
+printf 'captain-held [key=approval]: tracked by approval-call\n' > "$home/state/approval.status"
+printf 'task=approval-call\n' > "$home/state/approval.meta"
+status=0
+run_stop "$home" || status=$?
+expect_code 2 "$status" 'an independent registered check must remain supervised beside captain-held work'
+pass 'Codex API Stop: a registered independent check is not hidden by a captain-held task'
+
+home=$(make_home captain-held-pending)
+FM_HOME="$home" bash "$ROOT/bin/fm-check-unregister.sh" lab >/dev/null
+printf 'captain-held [key=approval]: tracked by approval-call\n' > "$home/state/approval.status"
+printf 'task=approval-call\n' > "$home/state/approval.meta"
+FM_HOME="$home" bash -c '. "$1/bin/fm-wake-lib.sh"; fm_wake_append signal approval.status "done: approved work is ready"' _ "$ROOT"
+status=0
+run_stop "$home" || status=$?
+expect_code 2 "$status" 'a pending natural wake must override the captain-held wait shortcut'
+assert_contains "$(cat "$home/err")" 'pending durable wake' 'the wake beside a captain-held item did not reach the primary'
+pass 'Codex API Stop: a pending wake stays actionable beside a captain-held task'
 
 home=$(make_home failure)
 mkdir "$home/fakebin"

@@ -23,11 +23,13 @@
 # decides or dispatches work.
 # Once the recorded thread has pending work, Stop fails closed: lock failure,
 # checkpoint-lock contention, checkpoint failure and an unhandled repeated wake
-# each return another continuation. Another thread's Stop never parks here,
-# and a duplicate attachment while the owning app-server lives is never blocked.
-# Interrupting the native turn cancels its synchronous hook and its foreground
-# checkpoint. Empty homes and a verified away daemon with a fresh watcher
-# beacon do not park here.
+# each return another continuation. A fleet whose only in-flight items are
+# durably transferred to captain-held records, with no independent checks or
+# event sources, is a legitimate human wait and may return normally. Another
+# thread's Stop never parks here, and a duplicate attachment while the owning
+# app-server lives is never blocked. Interrupting the native turn cancels its
+# synchronous hook and its foreground checkpoint. Empty homes and a verified
+# away daemon with a fresh watcher beacon do not park here.
 # FM_CODEX_STOP_CHECKPOINT may shorten the bound (1..20), never raise it.
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,6 +45,8 @@ fm_primary_scope_matches "$FM_ROOT" "$STATE" || exit 0
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
 # shellcheck source=bin/fm-supervision-lib.sh
 . "$SCRIPT_DIR/fm-supervision-lib.sh"
+# shellcheck source=bin/fm-classify-lib.sh
+. "$SCRIPT_DIR/fm-classify-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
@@ -69,14 +73,41 @@ fi
 # Revalidate through the existing writer. A live foreign owner is never stolen.
 lock_status=0
 owned || (fm_exec_timed 8 1 "$SCRIPT_DIR/fm-lock.sh") >/dev/null 2>&1 || lock_status=$?
+
+fm_codex_only_captain_held() {
+  local meta id status wait_line count=0
+  [ "$FM_SUP_IN_FLIGHT" -gt 0 ] || return 1
+  [ "$FM_SUP_SOURCES" -eq 0 ] && [ "$FM_SUP_CHECKS" -eq 0 ] || return 1
+  [ ! -f "$STATE/x-watch.check.sh" ] || return 1
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || continue
+    [ -f "$meta" ] && [ ! -L "$meta" ] || return 1
+    id=${meta##*/}
+    id=${id%.meta}
+    [ -n "$id" ] || return 1
+    status="$STATE/$id.status"
+    [ -f "$status" ] && [ ! -L "$status" ] || return 1
+    wait_line=$(status_declared_wait_line "$status") || return 1
+    [ -n "$wait_line" ] && status_is_captain_held "$wait_line" || return 1
+    count=$((count + 1))
+  done
+  [ "$count" -eq "$FM_SUP_IN_FLIGHT" ] && [ "$count" -gt 0 ]
+}
+
 fm_supervision_status "$STATE"
 if [ "$FM_SUP_NEEDED" = false ] && [ "$FM_SUP_QUEUE_PENDING" = false ]; then exit 0; fi
+if fm_codex_only_captain_held; then
+  # Re-read immediately before yielding; pending wakes and unrelated check owners
+  # still require the primary even when every task itself is captain-held.
+  fm_supervision_status "$STATE"
+  if [ "$FM_SUP_QUEUE_PENDING" = false ] && fm_codex_only_captain_held; then exit 0; fi
+fi
 if fm_afk_daemon_owns_supervision "$STATE" && [ "$FM_SUP_WATCHER_FRESH" = true ]; then exit 0; fi
 
 continuation() {
   mine || { notice 'FIRSTMATE SUPERVISION: session-lock ownership changed during Stop; checkpoint feedback withheld.'; exit 0; }
   printf 'firstmate watcher wake: %s\n' "$1" >&2
-  printf 'Drain bin/fm-wake-drain.sh, handle its current wakes and permitted next fleet actions, then run its exact WAKE_ACK_REQUIRED command. Respect real captain/security waits and explicit stops.\n' >&2
+  printf '%s\n' "Continue on this same primary. Drain bin/fm-wake-drain.sh, handle its current wakes and permitted next fleet actions, then run its exact WAKE_ACK_REQUIRED command. Process any newly submitted user message; never synthesize user text. If no actionable wake remains while tasks, process-event sources, registered checks or Relay polling still need supervision, start the next bounded foreground checkpoint with bin/fm-watch-checkpoint.sh --seconds \"\${FM_CODEX_WATCH_CHECKPOINT:-180}\"; a quiet checkpoint alone is not completion. Respect durable captain-held/security waits and explicit stops." >&2
   exit 2
 }
 owned || continuation "session-lock verification failed (exit $lock_status); the next native Stop retries it outside the tool sandbox"
