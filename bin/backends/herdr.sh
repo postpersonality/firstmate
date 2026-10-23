@@ -1266,12 +1266,28 @@ fm_backend_herdr_workspace_find() {  # <session>
 #       to its per-home container. HERDR_ENV=1 on its own is only a backend
 #       SELECTION marker (bin/fm-backend.sh's fm_backend_detect), never a
 #       parent binding - herdr always injects the pane id alongside it.
+#       Also returned in <scope> identity-only, which verifies the claim's
+#       session and server identity and then reports no launcher binding.
 #   1 - a launcher pane IS claimed but its binding is missing, stale,
 #       contradictory, or belongs to another herdr session. The caller must
 #       refuse before creating or publishing any worker endpoint rather than
 #       degrading to a label search.
-fm_backend_herdr_launcher_identity() {  # <session>
-  local session=$1 pane=${HERDR_PANE_ID:-} claimed_session claimed_socket session_socket
+#
+# <scope> (optional 2nd arg):
+#   full          - the complete binding verification above (default).
+#   identity-only - verify only that a claimed parent belongs to this exact
+#                   session and server, then return 2. It exists for a caller
+#                   whose placement authority is NOT the parent: a fresh
+#                   project-Space launch that names its Space explicitly must
+#                   not be blocked by an inherited pane id the session has
+#                   since forgotten (a restarted server, a closed parent).
+#                   The session and server identity refusals still apply, so a
+#                   claim from another session or another server keeps refusing.
+#
+# Everything above exists because a worker's parent only ever decides placement
+# for the HOME container; the project Space never depends on it.
+fm_backend_herdr_launcher_identity() {  # <session> [<scope>]
+  local session=$1 scope=${2:-full} pane=${HERDR_PANE_ID:-} claimed_session claimed_socket session_socket
   local pane_out tab_out list tab workspace
   FM_BACKEND_HERDR_LAUNCHER_PANE_ID=""
   FM_BACKEND_HERDR_LAUNCHER_TAB_ID=""
@@ -1304,6 +1320,13 @@ fm_backend_herdr_launcher_identity() {  # <session>
   if [ "$claimed_socket" != "$session_socket" ]; then
     echo "error: herdr launcher pane '$pane' belongs to the server at '$claimed_socket', not session '$session' at '$session_socket'; refusing to place a worker from a cross-session parent identity" >&2
     return 1
+  fi
+  if [ "$scope" = identity-only ]; then
+    # The claim is on this exact session and server, which is all this scope
+    # verifies. Nothing is read or inherited from the pane itself, so a stale
+    # or unreadable inherited pane id cannot refuse a placement that does not
+    # depend on it.
+    return 2
   fi
 
   pane_out=$(fm_backend_herdr_cli "$session" pane get "$pane" 2>/dev/null) || {
@@ -1551,8 +1574,19 @@ fm_backend_herdr_project_path_is_home() {  # <path>
 # Native worktree fields take precedence over pane shell cwd. Home, mixed
 # and legacy projection containers are passed over without mutation. Exact own
 # worker bindings distinguish reported home cwd from management evidence.
-fm_backend_herdr_project_workspace_ensure() {  # <session> <project>
-  local session=$1 project=$2 identity label workspaces panes rows ws paths kind path key
+#
+# <explicit-workspace-id> (optional 3rd arg) is one already identified project
+# Space chosen by the caller for this exact spawn (fm-spawn.sh
+# --herdr-project-space; docs/herdr-backend.md "Explicit project Space
+# selection"). It is authority ONLY as an exact id inside the discovery set
+# this call just computed: among the identity-confirmed matches, never a label,
+# an unresolved same-name candidate, an unrelated Space, or another session's
+# id - all of which keep refusing. When it matches, it replaces the ambiguity
+# refusal and selects that Space without creating, moving, renaming, closing or
+# adopting anything; no Space is created even when the project has no
+# identity-confirmed match. Absent, placement behaves exactly as before.
+fm_backend_herdr_project_workspace_ensure() {  # <session> <project> [<explicit-workspace-id>]
+  local session=$1 project=$2 explicit=${3:-} identity label workspaces panes rows ws paths kind path key
   local matches='' unknown='' known matched foreign home count out state meta id own_home candidate
   local bound='[]' tab pane
   FM_BACKEND_HERDR_WS_ID=
@@ -1633,6 +1667,17 @@ EOF
 $rows
 EOF
   count=$(printf '%s' "$matches" | grep -c '[^[:space:]]' || true)
+  if [ -n "$explicit" ]; then
+    # Exact membership in the identity-confirmed set is the ONLY authority an
+    # explicit selection has, so ambiguity and unresolved same-name candidates
+    # cannot be settled by guessing. This branch never creates anything.
+    if [[ "$explicit" != *$'\n'* ]] && printf '%s' "$matches" | grep -qxF -- "$explicit"; then
+      FM_BACKEND_HERDR_WS_ID=$explicit
+      return 0
+    fi
+    echo "error: selected herdr project Space '$explicit' is not one of the identity-confirmed project Spaces for '$project' in session '$session'; identity-confirmed matching Spaces: ${matches//$'\n'/ } unresolved same-name Spaces: ${unknown//$'\n'/ }; refusing to place a worker in an unverified Space - no Space was created, moved, renamed, closed or adopted" >&2
+    return 1
+  fi
   if [ "$count" -gt 1 ] || [ -n "$unknown" ]; then
     echo "error: ambiguous herdr project Space for '$project' in session '$session'; matching Spaces: ${matches//$'\n'/ } unresolved same-name Spaces: ${unknown//$'\n'/ }; preserve them and identify the intended project Space before retrying" >&2
     return 1
@@ -1660,19 +1705,33 @@ EOF
 
 # Serialize discovery and creation across homes on this session's existing
 # presentation lock. No mutable workspace mapping or global Herdr setting.
-fm_backend_herdr_project_container_ensure() {  # <project> [<session>]
+# <explicit-workspace-id> (optional 3rd arg) is passed straight through to
+# fm_backend_herdr_project_workspace_ensure, which owns its meaning; the
+# echoed container then carries an empty seeded-tab field because an explicitly
+# selected Space is never created by this call. A selection also scopes the
+# launcher check to the claim's session and server identity: the parent never
+# selects a project Space, so an inherited pane id this session has forgotten
+# must not block the placement the selection already decided.
+fm_backend_herdr_project_container_ensure() {  # <project> [<session>] [<explicit-workspace-id>]
   if ! declare -F fm_treehouse_project_identity >/dev/null 2>&1; then
     # shellcheck source=bin/fm-wake-lib.sh
     . "$FM_BACKEND_HERDR_ROOT/bin/fm-wake-lib.sh"
   fi
   # The subshell scopes the lock-release EXIT trap to this call.
   (
-    local project=$1 session=${2:-} lock status
+    local project=$1 session=${2:-} explicit=${3:-} lock status
     fm_backend_herdr_version_check || return 1
     [ -n "$session" ] || session=$(fm_backend_herdr_session)
     fm_backend_herdr_server_ensure "$session" || return 1
     # A claimed parent must still be valid, but never selects the project Space.
-    fm_backend_herdr_launcher_identity "$session" && status=0 || status=$?
+    # An explicit per-spawn selection names that Space instead, so only the
+    # claim's session and server identity is verified: a stale or unreadable
+    # inherited pane id must not block a placement that does not use it.
+    if [ -n "$explicit" ]; then
+      fm_backend_herdr_launcher_identity "$session" identity-only && status=0 || status=$?
+    else
+      fm_backend_herdr_launcher_identity "$session" && status=0 || status=$?
+    fi
     [ "$status" = 0 ] || [ "$status" = 2 ] || return 1
     lock=$(fm_backend_herdr_presentation_session_lock_path "$session") || {
       echo "error: cannot resolve herdr session/socket lock for project Space discovery in '$session'" >&2
@@ -1683,7 +1742,7 @@ fm_backend_herdr_project_container_ensure() {  # <project> [<session>]
       return 1
     }
     trap 'fm_lock_release "$lock" || true' EXIT
-    fm_backend_herdr_project_workspace_ensure "$session" "$project" || return 1
+    fm_backend_herdr_project_workspace_ensure "$session" "$project" "$explicit" || return 1
     printf '%s:%s\t%s' "$session" "$FM_BACKEND_HERDR_WS_ID" "$FM_BACKEND_HERDR_WS_SEEDED_TAB_ID"
   )
 }

@@ -3189,6 +3189,104 @@ test_project_spaces_pass_over_legacy_projections() {
   pass 'v1, foreign-home, metadata-less, rebound and owned legacy Spaces are passed over without mutation'
 }
 
+# --- explicit per-spawn project Space selection ------------------------------
+
+# An explicit selection is authority ONLY as an exact workspace id inside the
+# identity-confirmed matches this launch discovered, and it never mutates a
+# Space. Exercised through the same public container entry point fm-spawn calls,
+# so the session lock, the seeded-tab field and the creation path are covered
+# together. Every case scripts a fake herdr CLI; no live session is touched.
+test_project_space_explicit_selection_matrix() {
+  local dir project other mode log resp fb out rc selector
+  dir="$TMP_ROOT/project-space-selection"; mkdir -p "$dir/home/state"
+  project="$dir/project"; other="$dir/other"
+  git init -q "$project"; git init -q "$other"
+  for mode in single single-explicit two-default two-explicit two-label two-absent same-name foreign absent projection; do
+    mkdir -p "$dir/$mode/responses"
+    log="$dir/$mode/log"; resp="$dir/$mode/responses"; : > "$log"
+    selector=
+    jq -n --arg d "$dir/$mode" '{sessions:[{name:"fmtest",running:true,socket_path:($d + "/herdr.sock")}]}' > "$resp/1.out"
+    printf '{"result":{"workspace":{"workspace_id":"wnew"},"tab":{"tab_id":"seed"}}}\n' > "$resp/4.out"
+    case "$mode" in
+    single|single-explicit)
+      printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"}]}}\n' > "$resp/2.out"
+      jq -n --arg p "$project" '{result:{panes:[{workspace_id:"w1",tab_id:"w1:t1",pane_id:"w1:p1",cwd:$p}]}}' > "$resp/3.out"
+      [ "$mode" = single ] || selector=w1
+      ;;
+    two-default|two-explicit|two-label|two-absent)
+      printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"},{"workspace_id":"w2","label":"project"}]}}\n' > "$resp/2.out"
+      jq -n --arg p "$project" '{result:{panes:[{workspace_id:"w1",tab_id:"w1:t1",pane_id:"w1:p1",cwd:$p},{workspace_id:"w2",tab_id:"w2:t1",pane_id:"w2:p1",cwd:$p}]}}' > "$resp/3.out"
+      case "$mode" in
+      two-explicit) selector=w2 ;;
+      two-label) selector=project ;;
+      two-absent) selector=w9 ;;
+      esac
+      ;;
+    same-name)
+      # w3 carries the project's label with no usable path identity at all: an
+      # unresolved same-name candidate a selection may not adopt.
+      printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"},{"workspace_id":"w3","label":"project"}]}}\n' > "$resp/2.out"
+      jq -n --arg p "$project" '{result:{panes:[{workspace_id:"w1",tab_id:"w1:t1",pane_id:"w1:p1",cwd:$p}]}}' > "$resp/3.out"
+      selector=w3
+      ;;
+    foreign)
+      printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"},{"workspace_id":"w2","label":"renamed"}]}}\n' > "$resp/2.out"
+      jq -n --arg p "$project" --arg o "$other" '{result:{panes:[{workspace_id:"w1",tab_id:"w1:t1",pane_id:"w1:p1",cwd:$p},{workspace_id:"w2",tab_id:"w2:t1",pane_id:"w2:p1",cwd:$o}]}}' > "$resp/3.out"
+      selector=w2
+      ;;
+    absent)
+      printf '{"result":{"workspaces":[]}}\n' > "$resp/2.out"
+      printf '{"result":{"panes":[]}}\n' > "$resp/3.out"
+      selector=w1
+      ;;
+    projection)
+      printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"└ task-old · p:ABCDEFGHIJKLMNOPQRSTUV"}]}}\n' > "$resp/2.out"
+      jq -n --arg p "$project" '{result:{panes:[{workspace_id:"w1",tab_id:"w1:t1",pane_id:"w1:p1",cwd:$p}]}}' > "$resp/3.out"
+      selector=w1
+      ;;
+    esac
+    fb=$(make_herdr_fakebin "$dir/$mode")
+    out=$(PATH="$fb:$PATH" FM_HOME="$dir/home" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" bash -c '
+      . "$0/bin/fm-backend.sh"; fm_backend_source herdr; . "$0/bin/fm-wake-lib.sh"
+      fm_backend_herdr_project_container_ensure "$1" fmtest "$2" || exit
+    ' "$ROOT" "$project" "$selector" 2> "$dir/$mode/err"); rc=$?
+    assert_contains "$(cat "$log")" 'HERDR_SESSION=fmtest' "$mode: discovery did not read the selected session"
+    case "$mode" in
+    single|single-explicit)
+      [ "$rc" = 0 ] || fail "$mode: placement failed: $(cat "$dir/$mode/err")"
+      [ "$out" = $'fmtest:w1\t' ] || fail "$mode: unexpected selection '$out'"
+      assert_not_contains "$(cat "$log")" $'\x1f''workspace'$'\x1f''create' "$mode: placement created a Space"
+      ;;
+    two-explicit)
+      [ "$rc" = 0 ] || fail "two-explicit: selected placement failed: $(cat "$dir/$mode/err")"
+      [ "$out" = $'fmtest:w2\t' ] || fail "two-explicit: selection was not the requested Space ('$out')"
+      assert_not_contains "$(cat "$log")" $'\x1f''workspace'$'\x1f''create' 'two-explicit: selection created a Space'
+      ;;
+    *)
+      [ "$rc" -ne 0 ] || fail "$mode: an unverified selection was accepted ('$out')"
+      assert_not_contains "$(cat "$log")" $'\x1f''workspace'$'\x1f''create' "$mode: refusal created a Space"
+      ;;
+    esac
+    for out in move rename close; do
+      assert_not_contains "$(cat "$log")" $'\x1f'"$out" "$mode: selection ran $out"
+    done
+    case "$mode" in
+    two-default)
+      assert_contains "$(cat "$dir/$mode/err")" 'ambiguous herdr project Space' 'two-default: ambiguity must keep refusing'
+      assert_contains "$(cat "$dir/$mode/err")" 'w1 w2' 'two-default: refusal did not name both candidates'
+      ;;
+    same-name)
+      assert_contains "$(cat "$dir/$mode/err")" 'is not one of the identity-confirmed project Spaces' 'same-name: unresolved candidate was not refused as unverified'
+      assert_contains "$(cat "$dir/$mode/err")" 'unresolved same-name Spaces: w3' 'same-name: refusal did not name the unresolved candidate'
+      ;;
+    two-label|two-absent|foreign|absent|projection)
+      assert_contains "$(cat "$dir/$mode/err")" 'is not one of the identity-confirmed project Spaces' "$mode: refusal diagnostic missing"
+      ;;
+    esac
+  done
+  pass 'explicit project Space selection takes only an exact identity-confirmed id, settles ambiguity without mutating any Space, and keeps every unverified id refusing'
+}
+
 # --- target parsing, key normalization ---------------------------------------
 
 test_parse_target() {
@@ -5455,6 +5553,7 @@ test_list_live_scoped_to_this_homes_workspace_only
 test_project_workspace_path_and_ambiguity_matrix
 test_project_spaces_exclude_operating_homes_with_same_origin
 test_project_spaces_pass_over_legacy_projections
+test_project_space_explicit_selection_matrix
 test_project_task_husk_requires_exact_own_binding
 test_originless_identity_uses_primary_checkout
 test_parse_target

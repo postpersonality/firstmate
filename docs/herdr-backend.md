@@ -18,6 +18,7 @@ Herdr provides the terminal session while Treehouse continues to provide task wo
 | Install Herdr and select it | [Setup](#setup) |
 | Why a command ran on a different `herdr` client | [Client selection](#client-selection) |
 | Where task tabs appear and how to watch them | [Watching and task containers](#watching-and-task-containers) |
+| How to choose one of several project Spaces for a launch | [Explicit project Space selection](#explicit-project-space-selection) |
 | Existing one-task workspaces, recovery, and cleanup | [Presentation spaces](#presentation-spaces) |
 | Why a seeded default tab is or is not closed | [Default-tab prune safety](#default-tab-prune-safety) |
 | What task metadata records for a Herdr endpoint | [Endpoint metadata](#endpoint-metadata) |
@@ -136,6 +137,24 @@ Multiple remaining project Spaces or a same-name Space with no usable path ident
 The conservative same-name check also recognizes the automatic-rename plugin's documented `[1-9] ` jump-key prefix, including a stale index; it grants no adoption authority.
 Labels alone never authorize placement, and unknown candidates are preserved.
 If several Spaces represent the same project, identify the intended layout before retrying rather than letting focus break the tie.
+When the intended layout is already known, [explicit project Space selection](#explicit-project-space-selection) supplies that answer for one launch.
+
+### Explicit project Space selection
+
+`bin/fm-spawn.sh --herdr-project-space <workspace-id>` names the project Space for one fresh Herdr ship or scout launch when repository identity matches more than one existing Space.
+The value is an exact workspace ID from `herdr workspace list`, never a label, and it is per task only: the spawn records nothing about it and never creates a registry or global setting from it.
+
+The adapter accepts the value only as an exact ID inside the discovery it performs for this launch, so it must equal one of the identity-confirmed matching project Spaces of the resolved Herdr session.
+A label, an unresolved same-name Space, an unrelated Space, another session's ID, and an ID that no longer exists all refuse with the candidates it did find.
+An unresolvable selection never falls back to creating a Space.
+
+With a valid selection, placement creates only the worker's tab, without focus, in that Space.
+No Space is created, moved, renamed, closed or adopted by an explicit selection.
+An absent selection keeps the default behavior exactly: a unique identity-confirmed Space is reused, an absent one is created, and ambiguity or an unresolved same-name Space refuses.
+The selection, not the caller's parent pane, decides placement, so an inherited launcher pane that the session can no longer read does not block the launch; a parent claim from another session or another server still refuses.
+The selection is refused on a persistent second-mate launch, which keeps its own home container, and on a relaunch, which stays bound to the task's recorded endpoint and Space.
+It is also refused in batch dispatch, alongside an existing exact presentation binding, and whenever the resolved backend is not Herdr.
+Recovery after the launch is unchanged, because the task record's own endpoint and Space stay authoritative.
 
 ### Launcher identity and detached callers
 

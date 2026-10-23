@@ -1505,6 +1505,10 @@ Native worktree path precedence, same-origin operating homes, exact own worker b
 The concurrent creation proof calls the public backend resolver from two homes; the public spawn path separately proves reuse of the resulting Space.
 Paid harness trust and readiness behavior is outside this placement proof and remains covered by its existing guards.
 
+Explicit per-spawn Space selection adds no new Herdr call, so it is proven against a scripted fake CLI rather than live: `tests/fm-backend-herdr.test.sh` covers the resolution matrix (one match with and without a selection, two matches refusing without one and resolving to the named one, a label, a stale or other-session id, an unrelated Space, an unresolved same-name candidate, and an absent project) and `tests/fm-spawn-herdr-project-space.test.sh` covers the public spawn contract (documented flag, unchanged ambiguity refusal, ship and scout placement in the selected Space, and refusal on a non-Herdr backend, a secondmate launch, a relaunch, batch dispatch, and a missing or empty value).
+Both assert that no selected placement issues a `workspace create`, `move`, `rename`, or `close` call.
+The public-spawn regression also covers a stale inherited launcher pane, rejection of a cross-server parent claim, and rejection of a multiline selection that contains an otherwise valid Space ID.
+
 ### Restored legacy shell cleanup
 
 The restored-shell session-start cleanup ran on 2026-07-24 against Herdr 0.7.5 protocol 17:

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
-#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--read-only-dir <absolute-path>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-project-space <workspace-id>] [--herdr-resume-lock-wait]
+#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--read-only-dir <absolute-path>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-project-space <workspace-id>] [--herdr-resume-lock-wait]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
@@ -144,6 +144,24 @@
 #   The backend owns path identity, ambiguity refusal and serialized creation.
 #   A claimed parent must still pass launcher identity checks. Detached callers
 #   use the same project resolver. --secondmate keeps its own home container.
+#   --herdr-project-space <workspace-id> is the optional per-spawn selection of
+#   an already identified project Space (docs/herdr-backend.md "Explicit project
+#   Space selection"), for the case where repository identity matches more than
+#   one existing Space. The adapter accepts it ONLY as an exact workspace id
+#   among that session's identity-confirmed matching project Spaces, so a label,
+#   an unresolved same-name Space, an unrelated Space, and an id from another
+#   session all refuse. Placement then creates only the worker's tab, without
+#   focus, in that Space: no Space is created, moved, renamed, closed or adopted,
+#   even when no identity-confirmed match exists.
+#   Because the selection, never the caller's parent, decides placement, an
+#   inherited launcher pane that the session can no longer read does not block
+#   the launch; a claimed parent from another session or another server still
+#   refuses.
+#   Without it placement is unchanged. It is refused on --secondmate (which
+#   keeps its own home container) and --relaunch (which stays bound to the
+#   recorded endpoint), in batch dispatch, and whenever the resolved backend is
+#   not herdr. The value is per task only: it is never recorded in the task
+#   record and never becomes a registry or a global setting.
 #   Existing task metadata whose recorded endpoint, in any Space, is live,
 #   stale-agent, unknown, malformed or ambiguous refuses the launch first.
 #   New tasks never create presentation projections, regardless of the retained
@@ -730,6 +748,10 @@ RELAUNCH=0
 # Opt-in only: exact-resume presentation-order lock waits instead of refusing.
 # Absent/unset keeps upstream refuse-on-contention. See header.
 HERDR_RESUME_LOCK_WAIT=0
+# Optional per-spawn selection of one already identified Herdr project Space.
+# Meaning, authority and refusals are owned by the header paragraph above.
+HERDR_PROJECT_SPACE=
+HERDR_PROJECT_SPACE_SET=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -780,6 +802,10 @@ for a in "$@"; do
     traceparent)
       TRACEPARENT_ARG=$a
       TRACEPARENT_SET=1
+      ;;
+    herdr-project-space)
+      HERDR_PROJECT_SPACE=$a
+      HERDR_PROJECT_SPACE_SET=1
       ;;
     *)
       echo "error: internal parser state for --$want_value" >&2
@@ -850,6 +876,11 @@ for a in "$@"; do
     TRACEPARENT_ARG=${a#--traceparent=}
     TRACEPARENT_SET=1
     ;;
+  --herdr-project-space) want_value="herdr-project-space" ;;
+  --herdr-project-space=*)
+    HERDR_PROJECT_SPACE=${a#--herdr-project-space=}
+    HERDR_PROJECT_SPACE_SET=1
+    ;;
   *) POS+=("$a") ;;
   esac
 done
@@ -883,6 +914,10 @@ done
 }
 [ "$TRACEPARENT_SET" -eq 0 ] || [ -n "$TRACEPARENT_ARG" ] || {
   echo "error: --traceparent requires a non-empty value" >&2
+  exit 1
+}
+[ "$HERDR_PROJECT_SPACE_SET" -eq 0 ] || [ -n "$HERDR_PROJECT_SPACE" ] || {
+  echo "error: --herdr-project-space requires a non-empty value" >&2
   exit 1
 }
 # A parent-delivered carrier replaces this home's own resolution, so it is
@@ -939,6 +974,10 @@ if [ "$RELAUNCH" -eq 1 ]; then
     echo "error: --relaunch reuses the task's recorded read-only folder; --read-only-dir cannot override it" >&2
     exit 1
   }
+  [ "$HERDR_PROJECT_SPACE_SET" -eq 0 ] || {
+    echo "error: --relaunch stays bound to the task's recorded endpoint and herdr Space; --herdr-project-space cannot override it" >&2
+    exit 1
+  }
 else
   [ "$READONLY_DIR_SET" -eq 0 ] || [ "$KIND" = scout ] || {
     echo "error: --read-only-dir applies only to --scout spawns; a ship writes its project and a secondmate runs its own home" >&2
@@ -990,6 +1029,10 @@ else
     }
     [ "$KIND" != secondmate ] || [ "$BASE_BRANCH_SET" -eq 0 ] || {
       echo "error: --base-branch applies only to ship and scout spawns; a secondmate charter has no task base" >&2
+      exit 1
+    }
+    [ "$KIND" != secondmate ] || [ "$HERDR_PROJECT_SPACE_SET" -eq 0 ] || {
+      echo "error: --herdr-project-space applies only to fresh ship and scout launches; a secondmate keeps its own home container" >&2
       exit 1
     }
   fi
@@ -1637,6 +1680,10 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
     exit 1
   fi
   rc=0
+  [ "$HERDR_PROJECT_SPACE_SET" -eq 0 ] || {
+    echo "error: --herdr-project-space is single-task only; it selects one project Space for one launch, so spawn each task explicitly" >&2
+    exit 1
+  }
   shared_args=()
   [ -z "$HARNESS_ARG" ] || shared_args+=(--harness "$HARNESS_ARG")
   [ -z "$MODEL" ] || shared_args+=(--model "$MODEL")
@@ -1843,6 +1890,10 @@ if [ "$RELAUNCH" -eq 0 ]; then
   fi
   fm_backend_validate_spawn "$BACKEND" || exit 1
   fm_backend_source "$BACKEND" || exit 1
+  if [ "$HERDR_PROJECT_SPACE_SET" -eq 1 ] && [ "$BACKEND" != herdr ]; then
+    echo "error: --herdr-project-space applies only to the herdr backend; this spawn resolved backend '$BACKEND'" >&2
+    exit 1
+  fi
   if [ "$BACKEND" = orca ] && [ "$KIND" = secondmate ]; then
     echo "error: backend=orca does not support --secondmate spawns yet" >&2
     exit 1
@@ -3835,6 +3886,13 @@ else
     HERDR_PRESENTATION_JOURNAL=$(fm_backend_herdr_projection_journal_path "$STATE" "$ID")
     HERDR_PROJECTED=0
     if [ "$KIND" != secondmate ] && { [ -e "$HERDR_PRESENTATION_JOURNAL" ] || [ -L "$HERDR_PRESENTATION_JOURNAL" ]; }; then
+      # An existing exact presentation binding is recovered in its recorded
+      # Space, so an explicit per-spawn selection has nothing to place and must
+      # refuse rather than be silently ignored.
+      [ "$HERDR_PROJECT_SPACE_SET" -eq 0 ] || {
+        echo "error: task $ID already has a recorded herdr presentation Space; --herdr-project-space cannot place a worker beside it" >&2
+        exit 1
+      }
       HERDR_SES=$(fm_backend_herdr_session)
       HERDR_PARENT_LABEL=$(FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_workspace_label)
       fm_backend_herdr_server_ensure "$HERDR_SES" || {
@@ -3896,7 +3954,14 @@ else
         HERDR_TAB_POLICY=
         HERDR_CONTAINER_RAW=$(FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_container_ensure "$PROJ_ABS" other-home) || exit 1
       else
-        HERDR_CONTAINER_RAW=$(fm_backend_herdr_project_container_ensure "$PROJ_ABS") || exit 1
+        if [ "$HERDR_PROJECT_SPACE_SET" -eq 1 ]; then
+          # The selected Space is discovered, identity-confirmed and adopted by
+          # the adapter's existing placement owner; this layer adds no Space
+          # mutation and records nothing about the selection.
+          HERDR_CONTAINER_RAW=$(fm_backend_herdr_project_container_ensure "$PROJ_ABS" "" "$HERDR_PROJECT_SPACE") || exit 1
+        else
+          HERDR_CONTAINER_RAW=$(fm_backend_herdr_project_container_ensure "$PROJ_ABS") || exit 1
+        fi
       fi
       # fm_backend_herdr_container_ensure echoes "<session>:<workspace_id>\t<seeded_default_tab_id>"
       # (the second field empty when this call ADOPTED a pre-existing workspace
