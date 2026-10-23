@@ -80,8 +80,8 @@
 # acknowledged record drops its mark. The remote steer leg has no watcher
 # ladder and owes no retry.
 #
-# Inbox names containing bytes outside printable ASCII are unsupported. The
-# doorbell refuses them rather than sending terminal control bytes to a pane.
+# Printed inbox references containing bytes outside printable ASCII are
+# unsupported; doorbells refuse them before sending terminal control bytes.
 #
 # fm_task_inbox_ring requires bin/fm-backend.sh's dispatch (sourced below); the
 # other helpers are dependency-light. Sourced by bin/fm-send.sh, bin/fm-watch.sh,
@@ -314,16 +314,16 @@ fm_task_inbox_body() {  # <record-path>
 # resolve it from its own environment even after losing its brief context.
 # The short `<task>.inbox` name follows as the fallback for a worker launched
 # before that export, whose brief carries the full path (bin/fm-dod-lib.sh
-# role contract, bin/fm-brief.sh inbox section). No absolute path is printed,
-# so the line's length never grows with the home's depth: a long line wraps
-# past what a harness composer read can prove, and a Herdr submit then reports
-# it did not reach the pane on every re-ring. The leading `: ` is the POSIX
+# role contract, bin/fm-brief.sh inbox section). External bindings have neither
+# launch context, so their rings supply the exact absolute inbox instead.
+# Spawned workers keep the short reference: a deep home can wrap beyond the
+# composer's readable region. The leading `: ` is the POSIX
 # shell no-op, so the same line typed into a pane whose agent has exited (a
 # bare shell) runs nothing; see the dead-pane note in the header. A
 # non-printable inbox name fails without output so terminal controls never
 # reach the pane's line discipline.
-fm_task_inbox_doorbell_line() {  # <record-path>
-  local dir=${1%/*} abs name quoted LC_ALL=C
+fm_task_inbox_doorbell_line() {  # <record-path> [absolute-inbox-path]
+  local dir=${1%/*} absolute_inbox=${2:-} abs name quoted listing LC_ALL=C
   abs=$(cd "$dir" 2>/dev/null && pwd) || abs=$dir
   abs=${abs%/handled}
   name=${abs##*/}
@@ -331,8 +331,16 @@ fm_task_inbox_doorbell_line() {  # <record-path>
     ''|*[![:print:]]*) return 1 ;;
   esac
   quoted=$(printf '%s' "$name" | sed "s/'/'\\\\''/g")
-  printf ": Firstmate instruction waiting: list \"\$FM_TASK_INBOX\"/*.msg in your '%s' steering inbox, read and act on each in numeric order, then mv each into its handled/." \
-    "$quoted"
+  listing="\"\$FM_TASK_INBOX\"/*.msg"
+  if [ -n "$absolute_inbox" ]; then
+    abs=$(cd "$abs" 2>/dev/null && pwd -P) || return 1
+    absolute_inbox=$(cd "$absolute_inbox" 2>/dev/null && pwd -P) || return 1
+    [ "$absolute_inbox" = "$abs" ] || return 1
+    case "$abs" in *[![:print:]]*) return 1 ;; esac
+    listing="'$(printf '%s' "$abs" | sed "s/'/'\\\\''/g")'/*.msg"
+  fi
+  printf ": Firstmate instruction waiting: list %s in your '%s' steering inbox, read and act on each in numeric order, then mv each into its handled/." \
+    "$listing" "$quoted"
 }
 
 # Ring the doorbell, best-effort: one endpoint-liveness pre-check, one advisory
@@ -355,10 +363,25 @@ fm_task_inbox_doorbell_line() {  # <record-path>
 # a lost first Enter gets one confirmed retry.
 fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
   local backend=$1 target=$2 rec=$3 label=${4:-} line cstate verdict
+  local external_binding external_task external_rc=0 absolute_inbox=
   case "$(fm_backend_agent_state "$backend" "$target" 2>/dev/null || true)" in
     dead|missing) return 3 ;;
   esac
-  if ! line=$(fm_task_inbox_doorbell_line "$rec"); then
+  if [ "$backend" = herdr ] && [ -n "${FM_HOME:-}" ]; then
+    # Shared by first sends and watcher re-rings; no launch environment is assumed.
+    # shellcheck source=/dev/null
+    . "$_FM_TASK_INBOX_LIB_DIR/fm-external-session-lib.sh"
+    external_binding=$(fm_external_find "$target") || external_rc=$?
+    case "$external_rc" in
+      0)
+        external_task=${external_binding##*/}
+        absolute_inbox=$(fm_task_inbox_dir "${external_binding%/*}" "${external_task%.external.json}")
+        ;;
+      1) ;;
+      *) return 2 ;;
+    esac
+  fi
+  if ! line=$(fm_task_inbox_doorbell_line "$rec" "$absolute_inbox"); then
     return 2
   fi
   cstate=$(fm_backend_composer_state "$backend" "$target" "$label" 2>/dev/null) || cstate=unknown

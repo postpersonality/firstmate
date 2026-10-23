@@ -151,6 +151,27 @@ print(json.dumps(out))
         call([ROOT / 'bin/fm-send.sh', 'research', 'plain instruction through the existing inbox'])
         pending = list((home / 'state/research.inbox').glob('*.msg'))
         assert len(pending) == 1 and 'plain instruction' in pending[0].read_text()
+        assert 'FM_TASK_INBOX' not in env  # An attached process never received a Firstmate launch brief/env.
+        initial_ring = json.loads(config.read_text())['typed']
+        assert str(pending[0].parent) in initial_ring, initial_ring
+        assert '$FM_TASK_INBOX' not in initial_ring and 'plain instruction' not in initial_ring
+        assert 'numeric order' in initial_ring and 'handled/' in initial_ring
+        ring = '. "$1/bin/fm-task-inbox-lib.sh"; fm_task_inbox_ring herdr test-external:w1:p2 "$2"'
+        call(['bash', '-c', ring, 'test', ROOT, pending[0]])
+        assert json.loads(config.read_text())['typed'] == initial_ring, 'watcher re-ring must carry the same absolute inbox'
+        assert pending[0].exists(), 'a re-ring is neither another record nor an acknowledgement'
+        # Absolute paths retain the shell no-op guarantee, including quotes and shell syntax.
+        hostile = temp / "operator's home; touch marker; #" / 'task.inbox'
+        hostile.mkdir(parents=True)
+        record = hostile / '001.msg'; record.write_text('pending')
+        line = '. "$1/bin/fm-task-inbox-lib.sh"; fm_task_inbox_doorbell_line "$2" "$3"'
+        quoted_ring = call(['bash', '-c', line, 'test', ROOT, record, hostile]).stdout
+        assert call(['bash', '-c', quoted_ring], cwd=temp).stdout == ''
+        assert not (temp / 'marker').exists() and record.read_text() == 'pending'
+        call(['bash', '-c', line, 'test', ROOT, pending[0], hostile], ok=False)
+        alias = temp / 'alias.inbox'; alias.symlink_to(hostile, target_is_directory=True)
+        assert "'alias.inbox' steering inbox" in call(['bash', '-c', line, 'test', ROOT, alias / record.name, '']).stdout
+        call(['bash', '-c', line, 'test', ROOT, alias / record.name, hostile])
         handled = pending[0].parent / 'handled'; handled.mkdir(exist_ok=True)
         pending[0].rename(handled / pending[0].name)
         # Receipt is separate from binding and native done; only explicit evidence is recorded.
