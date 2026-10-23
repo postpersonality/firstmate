@@ -160,20 +160,23 @@ test_unverified_selection_refuses() {
   home=$(setup_home unverified)
   fm_test_spawn_brief "$home" space-bad
   reset_herdr_log
-  out=$(run_spawn "$home" space-bad "$PROJECT" --mode no-mistakes --yolo off --herdr-project-space w9)
-  [ $? -ne 0 ] || fail 'an unverified selection id was accepted'
+  if out=$(run_spawn "$home" space-bad "$PROJECT" --mode no-mistakes --yolo off --herdr-project-space w9); then
+    fail 'an unverified selection id was accepted'
+  fi
   assert_contains "$out" 'is not one of the identity-confirmed project Spaces' 'unverified-selection refusal missing'
   log=$(herdr_log)
   assert_not_contains "$log" $'\x1ftab\x1fcreate' 'an unverified selection opened a tab'
   assert_not_contains "$log" $'\x1fworkspace\x1fcreate' 'an unverified selection created a Space'
   reset_herdr_log
-  out=$(run_spawn "$home" space-bad "$PROJECT" --mode no-mistakes --yolo off --herdr-project-space project)
-  [ $? -ne 0 ] || fail 'a Space label was accepted as a selection'
+  if out=$(run_spawn "$home" space-bad "$PROJECT" --mode no-mistakes --yolo off --herdr-project-space project); then
+    fail 'a Space label was accepted as a selection'
+  fi
   assert_contains "$out" 'is not one of the identity-confirmed project Spaces' 'label selection refusal missing'
   assert_not_contains "$(herdr_log)" $'\x1fworkspace\x1fcreate' 'a label selection created a Space'
   reset_herdr_log
-  out=$(run_spawn "$home" space-bad "$PROJECT" --mode no-mistakes --yolo off --herdr-project-space $'w1\nw9')
-  [ $? -ne 0 ] || fail 'a multiline selection was accepted'
+  if out=$(run_spawn "$home" space-bad "$PROJECT" --mode no-mistakes --yolo off --herdr-project-space $'w1\nw9'); then
+    fail 'a multiline selection was accepted'
+  fi
   assert_contains "$out" 'is not one of the identity-confirmed project Spaces' 'multiline selection refusal missing'
   assert_not_contains "$(herdr_log)" $'\x1ftab\x1fcreate' 'a multiline selection opened a tab'
   pass 'an unverified selection id or a label refuses and creates nothing'
