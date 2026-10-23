@@ -731,6 +731,49 @@ test_watcher_waits_on_busy_pane() {
   pass "watcher: busy deferrals survive restart, escalate once at the bound, and never type"
 }
 
+test_watcher_external_rering_passes_resolved_home_without_exported_fm_home() {
+  local dir state rec status had_home=0 saved_home=${FM_HOME-}
+  dir=$(setup_watch_case external-home)
+  state="$dir/state"
+  cp -R "$ROOT/bin" "$dir/bin"
+  cat > "$dir/bin/fm-attach.sh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+[ "${1:-}" = state ] || exit 2
+printf '%s\n' "${FM_HOME:-UNSET}" > "$FM_ATTACH_HOME_CAPTURE"
+[ "${FM_HOME:-}" = "$FM_ATTACH_EXPECT_HOME" ] || {
+  printf 'fm-attach: FM_HOME must be explicitly set\n' >&2
+  exit 1
+}
+printf '{"identity":"verified","activity":"working"}\n'
+SH
+  chmod +x "$dir/bin/fm-attach.sh"
+  printf '{"identity":{"session":"fixture","pane_id":""}}\n' > "$state/t1.external.json"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  age_path "$rec"
+  [ "${FM_HOME+x}" = x ] && had_home=1
+  unset FM_HOME
+  status=0
+  FM_ROOT_OVERRIDE="$dir" FM_STATE_OVERRIDE="$state" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    FM_CREW_STATE_BIN="$dir/fakebin/fm-crew-state.sh" \
+    FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)' \
+    FM_FAKE_TMUX_CAPTURE="$(idle_capture "$dir")" \
+    FM_TASK_INBOX_GRACE_SECS=0 FM_TASK_INBOX_BUSY_MAX=1 \
+    FM_ATTACH_HOME_CAPTURE="$dir/attach-home" FM_ATTACH_EXPECT_HOME="$dir" \
+    PATH="$dir/fakebin:$PATH" "$dir/bin/fm-watch-checkpoint.sh" --seconds 10 \
+    > "$dir/checkpoint.out" 2>&1 || status=$?
+  if [ "$had_home" -eq 1 ]; then export FM_HOME="$saved_home"; else unset FM_HOME; fi
+  [ "$status" -eq 0 ] || fail "the direct checkpoint did not surface the external inbox: $(cat "$dir/checkpoint.out")"
+  [ "$(cat "$dir/attach-home")" = "$dir" ] \
+    || fail "the external verifier did not receive the locally resolved FM_HOME: $(cat "$dir/attach-home")"
+  grep -qF 'stuck-busy after 1 consecutive busy-deferred' "$state/.wake-queue" \
+    || fail "the verified external worker did not follow the busy path: $(cat "$state/.wake-queue")"
+  ! grep -qF 'identity is unverified or lost' "$state/.wake-queue" \
+    || fail "the watcher falsely reported the verified external identity as lost"
+  pass "watcher: a direct checkpoint passes its resolved home to the external re-ring verifier without exported FM_HOME"
+}
+
 test_watcher_busy_budget_resets_on_ring_and_ack() {
   local dir rec
   dir=$(busy_case busy-reset)
@@ -1198,6 +1241,7 @@ test_fire_and_forget_retry_is_quiet_without_the_flag
 test_ring_ladder_policy
 test_watcher_rerings_idle_pane_quietly
 test_watcher_waits_on_busy_pane
+test_watcher_external_rering_passes_resolved_home_without_exported_fm_home
 test_watcher_busy_budget_resets_on_ring_and_ack
 test_watcher_busy_bookkeeping_failure_surfaces
 test_watcher_successor_busy_reset_failure_surfaces idle

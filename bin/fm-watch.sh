@@ -543,7 +543,7 @@ inbox_steer_check() {  # <window> <task>
   local external_binding="$STATE/$task.external.json" external_observation='' external_activity='' label
   label=$(window_label "$w")
   if [ -f "$external_binding" ]; then
-    external_observation=$("$SCRIPT_DIR/fm-attach.sh" state "$task") || external_observation='{}'
+    external_observation=$(FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-attach.sh" state "$task") || external_observation='{}'
     if [ "$(jq -r '.identity' <<<"$external_observation")" != verified ]; then
       inbox_steer_escalate_unavailable "$w" "$task" "$rec"
       return 0
