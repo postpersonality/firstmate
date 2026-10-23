@@ -26,11 +26,12 @@ export const agentInput = z.object({
 });
 export const closeCaseInput = z.object({ confirmed: z.array(id).default([]) });
 export const goalPatch = z.object({ title: line.min(1).optional(), body: text.optional(), personal: z.boolean().optional(), repo: line.optional(), folder: line.optional(), state: state.optional() });
-export const actionInput = z.object({ attempt: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(), reason: line.optional(), answer: z.string().max(500).refine(v => !v.includes('\t'), 'Без табуляции').optional(), until: day.optional() });
+export const questionVersion = z.string().regex(/^[a-f0-9]{64}$/, 'Обновите состояние вопроса');
+export const actionInput = z.object({ questionVersion: questionVersion.optional(), attempt: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(), reason: line.optional(), answer: z.string().max(500).refine(v => !v.includes('\t'), 'Без табуляции').optional(), until: day.optional() });
 export const personalLine = 'Личное';
 
 // Card buttons by backlog row state (plan section 5); the server refuses any action not listed here.
-export type Action = 'start' | 'pause' | 'unhold' | 'close' | 'decline' | 'answer' | 'release' | 'later' | 'reopen' | 'stop';
+export type Action = 'start' | 'pause' | 'unhold' | 'close' | 'decline' | 'answer' | 'release' | 'later' | 'reopen' | 'stop' | 'handoff';
 export function actions(task: { state: string; held?: string | boolean; hold_kind?: string; kind?: string }): Action[] {
   if (task.kind === 'program') return []; // A дело has its own buttons on its page.
   if (task.state === 'in_flight') return task.hold_kind === 'captain' ? ['answer', 'stop', 'close'] : ['stop', 'close'];
@@ -39,6 +40,17 @@ export function actions(task: { state: string; held?: string | boolean; hold_kin
   if (task.held === true || task.held === 'yes') return ['unhold', 'close', 'decline'];
   return ['start', 'pause', 'close', 'decline'];
 }
+
+// Only backlog captain holds expose user answer actions; worker decisions belong to Firstmate.
+export const questionOccurrence = (body: string, pending: boolean) => (body.match(/^Resolution recorded by fm-(?:captain|decision)-hold\.$/gm)?.length ?? 0) + Number(pending);
+export const questionOwner = (body: string): 'user' | 'firstmate' => /^Captain question handoff: [a-f0-9]{64}$/m.test(body) ? 'firstmate' : 'user';
+export const pendingQuestion = (task: Parameters<typeof actions>[0]) => actions(task).some(a => a === 'answer' || a === 'release');
+
+export type QuestionItem = {
+  kind: 'question'; id: string; title: string; action: string; task: { id: string; title: string };
+  case?: { id: string; title: string }; project?: string; author: string; receivedAt: string; pinned: boolean; draft: boolean;
+  questionOccurrence: number; questionOwner: 'user' | 'firstmate'; completedAt?: never; outcome?: never;
+};
 
 // Where a row stands for a дело's counters and task list; overview.position owns classification.
 export type Phase = 'waiting' | 'working' | 'next' | 'done';
@@ -49,6 +61,6 @@ export type TaskRequest = { action: 'start' | 'stop' | 'close'; requestId: strin
 export type Goal = {
   review?: Review; reviewProgress?: ReviewProgress; caseType?: 'ordinary' | 'duty';
   id: string; title: string; state: z.infer<typeof state>; body: string; kind?: string; repo?: string; personal: boolean; actions: Action[]; requests?: TaskRequest[];
-  description?: string; managedBrief?: boolean; prUrl?: string; reason?: string; blockers?: { id: string; title: string }[];
+  questionOccurrence?: number; questionVersion?: string; questionOwner?: 'user' | 'firstmate'; questionSince?: string; description?: string; managedBrief?: boolean; prUrl?: string; reason?: string; blockers?: { id: string; title: string }[];
   why: string; doneWhen: string; context: string; constraints: string[]; holdKind?: string; inFlight?: boolean; links: string[]; report: boolean; folder: string; harness: string;
 };

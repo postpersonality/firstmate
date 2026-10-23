@@ -1,10 +1,12 @@
 import { test } from 'node:test';
+import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { actions } from '../src/model.ts';
 import { Store } from '../src/store.ts';
+import { router } from '../src/server.ts';
 import { run } from '../src/process.ts';
 import { firstmateHome, stubLog } from './firstmate-home.ts';
 
@@ -223,5 +225,129 @@ test('explicit retries use stable attempts across reopen and restarts, while nat
     store.firstmate.done(row); store.firstmate.reopen(row);
     assert.throws(() => restart.act(row, 'close', { attempt: 3 }), /Повторная просьба недоступна/);
     assert.equal(store.firstmate.show(row).state, 'queued', 'stale close retry cannot close reopened work directly');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('the review queue projects native pending questions once and never republishes resolved calls', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-question-queue-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root) });
+    const fm = store.firstmate.home;
+    const hold = (id: string) => run(join(fm, 'bin', 'fm-captain-hold.sh'), ['hold', id, '--reason', 'Нужен выбор'], fm, 45000, { ...process.env, FM_HOME: fm });
+    const call = store.firstmate.add('call', 'Выбор решения', 'Полный контекст', { kind: 'captain', repo: 'firstmate' });
+    hold(call.id);
+    const work = store.create({ title: 'Работа с вопросом' }); store.firstmate.start(work.id); hold(work.id);
+    const parked = store.create({ title: 'Ждёт Firstmate' }); store.act(parked.id, 'pause', {});
+    const artifact = store.publishArtifact({ source: 'https://example.com/result', title: 'Результат', action: 'Прочитать', taskId: work.id });
+    const handle = router(store);
+    const queue = async () => (await (await handle(new Request('http://localhost:4317/api/review-queue'))).json()) as any[];
+    assert.deepEqual((await queue()).map(q => q.id).sort(), [artifact.id, 'question:call', `question:${work.id}`].sort());
+    assert.equal((await queue()).find(q => q.kind === 'question').author, 'Firstmate');
+    assert.deepEqual(await queue(), await queue(), 'refresh reads existing questions, without publishing copies');
+    store.act('call', 'answer', { answer: 'Второй вариант' });
+    assert.equal(store.firstmate.show('call').state, 'done');
+    assert.equal((await queue()).some(q => q.id === 'question:call'), false);
+    store.act(work.id, 'answer', { answer: 'Продолжить' });
+    assert.deepEqual([store.firstmate.show(work.id).state, store.firstmate.show(work.id).held], ['in_flight', 'no']);
+    assert.deepEqual((await queue()).map(q => q.id), [artifact.id]);
+    assert.deepEqual(store.artifacts.list().map(a => a.id), [artifact.id], 'questions have no artifact or answer copies');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('question handoff is durable next-action ownership, not an answer, and stale versions cannot answer a later call', () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-question-handoff-'));
+  try {
+    let store = new Store({ firstmateHome: firstmateHome(root) }); const fm = store.firstmate.home;
+    const hold = () => run(join(fm, 'bin', 'fm-captain-hold.sh'), ['hold', 'handoff-call', '--title', 'Выбрать решение', '--reason', 'A или B?'], fm, 45000, { ...process.env, FM_HOME: fm });
+    hold(); const original = store.getQuestion('handoff-call');
+    writeFileSync(join(fm, 'state', 'inbox'), 'inbox unavailable');
+    assert.throws(() => store.act('handoff-call', 'handoff', { questionVersion: original.questionVersion }));
+    assert.equal(store.getQuestion('handoff-call').questionOwner, 'user', 'a failed inbox handoff cannot hide the question');
+    rmSync(join(fm, 'state', 'inbox'));
+    store.act('handoff-call', 'handoff', { questionVersion: original.questionVersion });
+    assert.equal(store.firstmate.show('handoff-call').state, 'queued');
+    assert.equal(store.firstmate.show('handoff-call').held, 'yes');
+    assert.doesNotMatch(store.firstmate.show('handoff-call').body, /Resolution recorded/);
+    assert.match(readFileSync(join(fm, 'state', '.wake-queue'), 'utf8'), /captain inbox note/);
+    const notes = store.firstmate.receipts().pending; assert.equal(notes.length, 1);
+    assert.match(notes[0].body, /handoff-call[\s\S]*ask-user-authority/);
+    store.act('handoff-call', 'handoff', { questionVersion: original.questionVersion });
+    assert.equal(store.firstmate.receipts().pending.length, 1, 'handoff retry reuses the durable request');
+    store = new Store({ firstmateHome: fm });
+    assert.equal(store.getQuestion('handoff-call').questionOwner, 'firstmate');
+    assert.equal(store.reviewQueue().filter(q => q.kind === 'question').find(q => q.id === 'question:handoff-call')?.questionOwner, 'firstmate');
+    const handed = store.getQuestion('handoff-call');
+    store.act('handoff-call', 'answer', { answer: 'Выбираю A', questionVersion: handed.questionVersion });
+    assert.equal(store.firstmate.show('handoff-call').state, 'done');
+    assert.throws(() => store.act('handoff-call', 'answer', { answer: 'Устаревший B', questionVersion: original.questionVersion }));
+    assert.doesNotMatch(store.firstmate.show('handoff-call').body, /Устаревший B/);
+
+    const work = store.create({ title: 'Следующее ожидание' }); store.firstmate.start(work.id);
+    const askWork = () => run(join(fm, 'bin', 'fm-captain-hold.sh'), ['hold', work.id, '--reason', 'Требуется выбор'], fm, 45000, { ...process.env, FM_HOME: fm });
+    askWork(); const previous = store.getQuestion(work.id);
+    store.act(work.id, 'answer', { answer: 'Первое решение', questionVersion: previous.questionVersion });
+    askWork();
+    assert.throws(() => store.act(work.id, 'answer', { answer: 'Устаревшее решение', questionVersion: previous.questionVersion }), /changed|изменил/);
+    assert.equal(store.firstmate.show(work.id).held, 'yes');
+    assert.doesNotMatch(store.firstmate.show(work.id).body, /Устаревшее решение/);
+    const next = store.getQuestion(work.id); store.act(work.id, 'handoff', { questionVersion: next.questionVersion });
+    askWork(); const returned = store.getQuestion(work.id);
+    assert.equal(returned.questionOwner, 'user', 'a genuine new captain call returns the action to the user');
+    assert.notEqual(returned.questionVersion, next.questionVersion, 'ownership return cannot reuse an earlier form version');
+    assert.throws(() => store.act(work.id, 'handoff', { questionVersion: next.questionVersion }), /changed/);
+    const beforeRetry = store.firstmate.receipts().pending.length;
+    store.act(work.id, 'handoff', { questionVersion: returned.questionVersion });
+    assert.equal(store.firstmate.receipts().pending.length, beforeRetry + 1, 'a fresh handoff after return has its own actionable wake');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test('two process answers with one native version serialize and retain the actual Firstmate actor', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-question-race-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root) }); const fm = store.firstmate.home;
+    const command = join(fm, 'bin', 'fm-captain-hold.sh'); const env = { ...process.env, FM_HOME: fm };
+    run(command, ['hold', 'racing-call', '--title', 'Решение', '--reason', 'A или B'], fm, 45000, env);
+    const question = store.getQuestion('racing-call');
+    const answer = (value: string) => new Promise<{ code: number | null; stderr: string }>((resolve, reject) => {
+      const path = join(root, value + '.txt'); writeFileSync(path, value);
+      const child = spawn('bash', [command, 'answer', 'racing-call', '--decision-file', path, '--expected-version', question.questionVersion, '--actor', 'firstmate'], { cwd: fm, env, stdio: ['ignore', 'ignore', 'pipe'] });
+      let stderr = ''; child.stderr.on('data', chunk => { stderr += chunk; });
+      child.once('error', reject); child.once('close', code => resolve({ code, stderr }));
+    });
+    const statuses = await Promise.all([answer('Firstmate-A'), answer('Firstmate-B')]);
+    t.diagnostic(JSON.stringify({ firstmateBin: process.env.DELO_TEST_FIRSTMATE_BIN, answers: statuses }));
+    assert.deepEqual(statuses.map(s => s.code).sort(), [0, 1], JSON.stringify(statuses));
+    assert.match(statuses.find(s => s.code === 1)!.stderr, /question changed/, 'the losing process rejects the stale version');
+    const body = store.firstmate.show('racing-call').body;
+    assert.equal((body.match(/Resolution recorded by fm-captain-hold/g) ?? []).length, 1);
+    assert.match(body, /Firstmate decision:/); assert.match(body, /Resolution actor: firstmate/);
+    assert.doesNotMatch(body, /Captain decision:/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('HTTP rejects report handoff, missing versions and handoff of an ordinary task', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delo-question-boundary-'));
+  try {
+    const store = new Store({ firstmateHome: firstmateHome(root) }); const task = store.create({ title: 'Прочитать отчёт' });
+    const artifact = store.publishArtifact({ source: 'https://example.com/report', title: 'Отчёт', action: 'Прочитать', taskId: task.id });
+    const handle = router(store); const base = 'http://localhost:4317';
+    const meta = await (await handle(new Request(base + '/api/meta'))).json();
+    const post = (path: string, body: unknown) => handle(new Request(base + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-delo-csrf': meta.csrf }, body: JSON.stringify(body) }));
+    assert.equal((await post(`/api/artifacts/${artifact.id}/handoff`, { questionVersion: '0'.repeat(64) })).status, 404);
+    assert.equal((await post(`/api/artifacts/${artifact.id}/complete`, { submissionId: 'report-handoff', action: { kind: 'handoff', label: 'Передать Яну' } })).status, 400);
+    assert.equal((await post(`/api/tasks/${task.id}/handoff`, { questionVersion: '0'.repeat(64) })).status, 400);
+    assert.equal((await post(`/api/tasks/${task.id}/answer`, { answer: 'Без версии' })).status, 400);
+    assert.equal(store.artifacts.get(artifact.id).completion, undefined);
+    assert.equal(store.firstmate.receipts().pending.length, 0);
+    const fm = store.firstmate.home; const command = join(fm, 'bin', 'fm-captain-hold.sh');
+    const env = { ...process.env, FM_HOME: fm };
+    run(command, ['hold', task.id, '--reason', 'Первый вопрос'], fm, 45000, env);
+    const old = store.getQuestion(task.id);
+    run(command, ['hold', task.id, '--reason', 'Обновлённый вопрос'], fm, 45000, env);
+    assert.equal((await post(`/api/tasks/${task.id}/release`, { answer: 'Старое разрешение', questionVersion: old.questionVersion })).status, 400);
+    assert.equal(store.firstmate.show(task.id).held, 'yes');
+    assert.doesNotMatch(store.firstmate.show(task.id).body, /Старое разрешение/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

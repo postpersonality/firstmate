@@ -415,8 +415,9 @@ test('browser app uses the real router for goal forms, the card and task actions
     run(join(store.firstmate.home, 'bin', 'fm-captain-hold.sh'), ['hold', 'ui-call', '--title', 'Вопрос капитану', '--reason', 'Нужен выбор'], store.firstmate.home, 45000, env);
     assert.deepEqual(await buttons('ui-call'), ['answer', 'later', 'close']);
     (window.document.querySelector('[data-task-action="answer"]') as HTMLButtonElement).click();
-    (window.document.querySelector('[name=answer]') as HTMLInputElement).value = 'Ответ из карточки';
-    (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await until(() => window.document.getElementById('question-answer'));
+    (window.document.querySelector('[name=answer]') as HTMLTextAreaElement).value = 'Ответ из карточки';
+    (window.document.querySelector('[data-task-action="answer"]') as HTMLButtonElement).click();
     await until(() => store.firstmate.show('ui-call').state === 'done');
     assert.match(readFileSync(join(store.firstmate.home, 'data', 'backlog.md'), 'utf8'), /Ответ из карточки/);
     const obsolete = store.create({ title: 'Неактуальная задача' }).id;
@@ -482,11 +483,12 @@ test('browser app uses the real router for goal forms, the card and task actions
     assert.match(window.document.querySelector('main')!.textContent!, /Остановка запрошена/);
     assert.match(window.document.querySelector('main')!.textContent!, /Закрытие запрошено/);
     (window.document.querySelector('[data-task-action="answer"]') as HTMLButtonElement).click();
-    assert.equal(window.document.getElementById('answer-question')?.textContent, 'Какой вариант брать?\nA или B', 'the dialog shows the whole question');
+    await until(() => window.document.getElementById('question-answer'));
+    assert.equal(window.document.getElementById('answer-question')?.textContent, 'Какой вариант брать?\nA или B', 'the desk shows the whole question');
     const reply = window.document.querySelector('[name=answer]') as HTMLTextAreaElement;
     assert.equal(reply.tagName, 'TEXTAREA');
     reply.value = 'Выбираю A\nпотому что быстрее';
-    (window.document.getElementById('dialog-form') as HTMLFormElement).dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    (window.document.querySelector('[data-task-action="answer"]') as HTMLButtonElement).click();
     await until(() => store.firstmate.show(nativeId).held === 'no');
     assert.equal(store.firstmate.show(nativeId).state, 'in_flight');
     assert.match(store.firstmate.show(nativeId).body ?? '', /Answer: Выбираю A \/ потому что быстрее/);

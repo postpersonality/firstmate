@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { z, ZodError } from 'zod';
 import markdownit from 'markdown-it';
 import type { Store } from './store.ts';
-import { id, type Action } from './model.ts';
+import { id, questionVersion, type Action } from './model.ts';
 import { artifactId, contentType } from './artifacts.ts';
 
 const web = fileURLToPath(new URL('../web/', import.meta.url));
@@ -57,6 +57,7 @@ export function router(store: Store, opener = 'xdg-open') {
         if (!type) headers['content-disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(name.split('/').pop()!)}`;
         return new Response(content, { headers });
       }
+      if (req.method === 'GET' && url.pathname === '/api/review-queue') return send(store.reviewQueue());
       const artifact = /^\/api\/artifacts(?:\/([^/]+)(?:\/(draft|pin|complete|supplement))?)?$/.exec(url.pathname);
       if (artifact) {
         if (!artifact[1]) return req.method === 'GET' ? send(store.artifacts.list()) : send({ error: 'Метод не поддерживается' }, 405);
@@ -70,6 +71,8 @@ export function router(store: Store, opener = 'xdg-open') {
       }
       if (req.method === 'GET' && url.pathname === '/api/meta') return Response.json({ csrf, draftScope: createHash('sha256').update(store.firstmate.home).digest('hex') }, { headers: { 'cache-control': 'no-store' } });
       if (req.method === 'GET' && url.pathname === '/api/overview') return send(await store.overview());
+      const question = /^\/api\/questions\/([^/]+)$/.exec(url.pathname);
+      if (req.method === 'GET' && question) return send(store.getQuestion(id.parse(decodeURIComponent(question[1]))));
       const terminal = /^\/api\/tasks\/([^/]+)\/terminal\/open$/.exec(url.pathname);
       if (req.method === 'POST' && terminal) {
         const taskId = id.parse(decodeURIComponent(terminal[1]));
@@ -82,10 +85,12 @@ export function router(store: Store, opener = 'xdg-open') {
         const taskId = decodeURIComponent(pin[1]); id.parse(taskId);
         return send(await store.pin(taskId, z.object({ pinned: z.boolean() }).parse(await req.json()).pinned));
       }
-      const act = /^\/api\/tasks\/([^/]+)\/(start|pause|unhold|close|stop|decline|answer|release|later|reopen)$/.exec(url.pathname);
+      const act = /^\/api\/tasks\/([^/]+)\/(start|pause|unhold|close|stop|decline|answer|release|later|reopen|handoff)$/.exec(url.pathname);
       if (req.method === 'POST' && act) {
         const taskId = decodeURIComponent(act[1]); id.parse(taskId);
-        return send(store.act(taskId, act[2] as Action, await req.json()));
+        const input = await req.json();
+        if (['answer', 'release', 'handoff'].includes(act[2])) questionVersion.parse(input.questionVersion);
+        return send(store.act(taskId, act[2] as Action, input));
       }
       if (req.method === 'POST' && url.pathname === '/api/goals') return send(store.create(await req.json()), 201);
       if (req.method === 'POST' && url.pathname === '/api/cases') return send(store.createCase(await req.json()), 201);
@@ -127,7 +132,7 @@ export function router(store: Store, opener = 'xdg-open') {
       }
       if (req.method === 'PATCH') return send(store.update(goalId, await req.json()));
       return send({ error: 'Метод не поддерживается' }, 405);
-    } catch (error: any) { return send({ error: error instanceof ZodError ? error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : error.message }, error.status ?? (['Цель не найдена', 'Отчёт не найден', 'Материал не найден'].includes(error.message) ? 404 : 400)); }
+    } catch (error: any) { return send({ error: error instanceof ZodError ? error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ') : error.message }, (Number.isInteger(error.status) && error.status >= 400 && error.status <= 599 ? error.status : undefined) ?? (['Цель не найдена', 'Отчёт не найден', 'Материал не найден'].includes(error.message) ? 404 : 400)); }
   };
 }
 

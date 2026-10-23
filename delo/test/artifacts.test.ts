@@ -130,7 +130,8 @@ test('HTTP serves the copied material sandboxed, keeps the API from it and rejec
     assert.equal((await call(`/api/artifacts/${id}/draft`, { draft: { comment: 'черновик' } }, 'PUT')).status, 200);
     assert.equal((await call(`/api/artifacts/${id}/pin`, { pinned: true })).status, 200);
     const list = await (await handle(new Request('http://localhost:4317/api/artifacts'))).json();
-    assert.deepEqual([list[0].pinned, list[0].draft], [true, true]);
+    const pinned = list.find((item: { id: string }) => item.id === id);
+    assert.deepEqual([pinned.pinned, pinned.draft], [true, true]);
     const answered = await call(`/api/artifacts/${id}/complete`, { submissionId: 'http-answer-1', action: { kind: 'done', label: 'Ознакомился' } });
     assert.equal(answered.status, 200); assert.equal((await answered.json()).delivered, true);
     assert.equal((await call(`/api/artifacts/${id}/complete`, { submissionId: 'http-answer-2', action: { kind: 'done', label: 'Ознакомился' } })).status, 409);

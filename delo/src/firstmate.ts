@@ -8,7 +8,7 @@ import { workerTerminal } from './terminal.ts';
 export type FirstmateState = 'queued' | 'in_flight' | 'done';
 export type FirstmateTask = {
   id: string; title: string; state: FirstmateState; body: string;
-  kind?: string; repo?: string; created?: string; closed?: string;
+  kind?: string; repo?: string; priority?: string | number; created?: string; closed?: string;
   pr_url?: string; blocked_by?: string; blocked_by_ids?: string[]; unresolved_blocker_ids?: string[];
   held?: string | boolean; hold_reason?: string; hold_kind?: string; hold_until?: string; links?: unknown;
 };
@@ -132,7 +132,7 @@ printf '%s %s' "$state" "$head"
     const tasks = (decode(this.call(args)) as { tasks?: unknown }).tasks;
     return (Array.isArray(tasks) ? tasks : []) as FirstmateTask[];
   }
-  list(state?: FirstmateState) { return this.tasks(['list', ...(state ? ['--state', state] : []), '--fields', 'body,created,closed,held,hold_reason,hold_kind,hold_until,links']); }
+  list(state?: FirstmateState) { return this.tasks(['list', ...(state ? ['--state', state] : []), '--fields', 'body,created,closed,held,hold_reason,hold_kind,hold_until,links,priority']); }
   archive() { return this.tasks(['archive', 'list', '--fields', 'body,closed,links']); }
 
   update(id: string, patch: { title?: string; body?: string; kind?: string; repo?: string; archiveBody?: boolean }) {
@@ -164,6 +164,8 @@ printf '%s %s' "$state" "$head"
   receipts() { return JSON.parse(this.script('fm-inbox.sh', ['receipts', '--all-pending', '--all-handled'])); }
   ready() { return JSON.parse(this.script('fm-inbox.sh', ['ready'])); }
   // The answers intake reads one line per task, so each line break of a multi-line answer is kept as « / ».
-  answer(id: string, answer: string, label: string, mode: 'done' | 'release') { return this.script('fm-captain-hold.sh', ['answers', '--source', 'delo', '--wake'], `${id}\t${answer.trim().split(/\s*\n\s*/).join(' / ')}\t${label}\t${mode}\n`); }
+  answer(id: string, answer: string, label: string, mode: 'done' | 'release', version?: string) { return this.script('fm-captain-hold.sh', ['answers', '--source', 'delo', '--wake', ...(version ? ['--expected-version', version] : [])], `${id}\t${answer.trim().split(/\s*\n\s*/).join(' / ')}\t${label}\t${mode}\n`); }
+  question(id: string) { return decode(this.script('fm-captain-hold.sh', ['question', id])) as { task: FirstmateTask; question_version: string; question_owner: 'user' | 'firstmate' }; }
+  handoff(id: string, version: string) { return this.script('fm-captain-hold.sh', ['handoff', id, '--expected-version', version]); }
   captainLater(id: string, reason: string, until: string) { return this.script('fm-captain-hold.sh', ['hold', id, '--reason', reason, '--until', until]); }
 }

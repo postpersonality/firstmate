@@ -1,4 +1,4 @@
-import type { Goal, TaskRequest } from '../src/model.ts';
+import type { Goal, TaskRequest, QuestionItem } from '../src/model.ts';
 import type { Overview, Row, CaseRow, Position } from '../src/overview.ts';
 import type { Diagnostics } from '../src/diagnostics.ts';
 import type { TerminalNavigation } from '../src/terminal.ts';
@@ -212,21 +212,29 @@ const requestLabel = (r: TaskRequest) => r.action === 'start'
 const retryLabel = (action: string) => ({ start: 'Повторить просьбу о запуске', stop: 'Повторить просьбу об остановке', close: 'Повторить просьбу о закрытии' } as Record<string, string>)[action];
 function taskControls(g: Pick<Goal, 'id' | 'title' | 'actions' | 'holdKind' | 'reason' | 'inFlight' | 'requests'>) {
   const pending = pendingTasks.has(g.id);
-  return `<div class="actions task-actions" aria-busy="${pending}">${g.actions.filter(a => !g.requests?.some(r => r.action === a)).map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}"${a === 'answer' ? ` data-question="${esc(g.reason)}"` : ''} ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}${(g.requests ?? []).filter(r => g.actions.includes(r.action)).map(r => `<small role="status">${requestLabel(r)}</small>${r.state === 'handled' ? `<button data-task-action="${r.action}" data-task-attempt="${Number(r.requestId.split('-').at(-1)) + 1}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-in-flight="${g.inFlight ? '1' : ''}" ${pending ? 'disabled' : ''}>${retryLabel(r.action)}</button>` : ''}`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Отправляем…</small></div>`;
+  return `<div class="actions task-actions" aria-busy="${pending}">${g.actions.filter(a => !g.requests?.some(r => r.action === a)).map(a => `<button data-task-action="${a}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-hold-kind="${esc(g.holdKind)}" data-in-flight="${g.inFlight ? '1' : ''}" ${pending ? 'disabled' : ''}>${a === 'close' && g.inFlight ? 'Запросить закрытие' : a === 'close' && g.holdKind === 'captain' ? 'Закрыть как неактуальную' : actionLabels[a]}</button>`).join('')}${(g.requests ?? []).filter(r => g.actions.includes(r.action)).map(r => `<small role="status">${requestLabel(r)}</small>${r.state === 'handled' ? `<button data-task-action="${r.action}" data-task-attempt="${Number(r.requestId.split('-').at(-1)) + 1}" data-id="${esc(g.id)}" data-title="${esc(g.title)}" data-in-flight="${g.inFlight ? '1' : ''}" ${pending ? 'disabled' : ''}>${retryLabel(r.action)}</button>` : ''}`).join('')}<small data-task-pending data-id="${esc(g.id)}" role="status" ${pending ? '' : 'hidden'}>Отправляем…</small></div>`;
 }
 function taskPending(id: string, on: boolean) {
   if (on) pendingTasks.add(id); else pendingTasks.delete(id);
+  const answer = document.getElementById('question-answer') as HTMLTextAreaElement | null;
+  if (questionDesk?.id === id && answer) answer.disabled = on;
   document.querySelectorAll<HTMLElement>('.task-actions').forEach(group => { if ([...group.querySelectorAll<HTMLElement>('[data-task-pending]')].some(e => e.dataset.id === id)) group.setAttribute('aria-busy', String(on)); });
   document.querySelectorAll<HTMLButtonElement>('[data-task-action], [data-action="pin"]').forEach(b => { if (b.dataset.id === id) b.disabled = on; });
   document.querySelectorAll<HTMLElement>('[data-task-pending]').forEach(e => { if (e.dataset.id === id) e.hidden = !on; });
 }
-async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'> & { question?: string }, action: string, attempt?: number) {
+async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'>, action: string, attempt?: number) {
+  if ((action === 'answer' || action === 'release') && questionDesk?.id !== g.id) { location.hash = `question:${encodeURIComponent(g.id)}`; return; }
   const path = `/api/tasks/${encodeURIComponent(g.id)}/${action}`;
   const run = async (body: Record<string, unknown> = {}) => {
     if (pendingTasks.has(g.id)) return;
     taskPending(g.id, true);
     try {
-      const result = await api(path, { ...body, ...(attempt === undefined ? {} : { attempt }) });
+      const result = await api(path, { ...body, ...(questionDesk?.id === g.id ? { questionVersion: questionDesk.questionVersion } : {}), ...(attempt === undefined ? {} : { attempt }) });
+      if (questionDesk?.id === g.id && (action === 'answer' || action === 'release' || action === 'later' || action === 'close' && !g.inFlight)) {
+        const key = questionDraftKey(g.id, String(questionDesk.questionOccurrence));
+        if (action !== 'later') { draftMemory.delete(key); try { localStorage.removeItem(key); } catch { /* The submitted draft is already cleared in memory. */ } }
+        questionDesk = undefined; location.hash = 'artifacts';
+      }
       const requested = action === 'stop' || action === 'close' && g.inFlight;
       const feedback = requested
         ? `${receipt(result)} ${action === 'stop' ? 'Остановка ещё не подтверждена. Просьба: сохранить сделанное и оставить задачу открытой.' : 'Закрытие ещё не подтверждено; задача пока остаётся в работе.'}`
@@ -251,8 +259,12 @@ async function taskAction(g: Pick<Goal, 'id' | 'title' | 'holdKind' | 'inFlight'
     $('dialog-cancel').hidden = false;
   }
   else if (action === 'decline') modal('Отказ', field('reason', 'Причина отказа', '', false, true), async f => run({ reason: f.get('reason') }), 'Отказаться');
-  else if (action === 'answer') modal('Ответить', `${g.question ? `<p class="prose" id="answer-question">${esc(g.question)}</p>` : ''}${field('answer', 'Ответ', '', true, true)}`, async f => run({ answer: f.get('answer') }), 'Ответить');
-  else if (action === 'release') modal('Разрешить работу', field('answer', 'Комментарий (необязательно)'), async f => run(f.get('answer') ? { answer: f.get('answer') } : {}), 'Разрешить работу');
+  else if (action === 'answer' || action === 'release') {
+    if (questionDesk?.stale) return;
+    const answer = ($('question-answer') as HTMLTextAreaElement).value;
+    if (action === 'answer' && !answer.trim()) { $('question-error').textContent = 'Напишите ответ'; $('question-answer').focus(); return; }
+    try { await run({ answer }); } catch (e: any) { if (questionDesk?.id === g.id) { $('question-error').textContent = e.message; await checkQuestion().catch(() => {}); } else message(e.message, true); }
+  }
   else if (action === 'later') modal('Позже', `${field('reason', 'Почему позже', '', false, true)}<label>Вернуться<input type="date" name="until" required></label>`, async f => run({ reason: f.get('reason'), until: f.get('until') }), 'Отложить');
   else await run();
 }
@@ -336,7 +348,7 @@ function renderGoal(g: ViewGoal) {
   const blockers = g.blockers?.length ? `<p>Ждёт: ${g.blockers.map(b => `<a href="#${encodeURIComponent(b.id)}">${esc(b.title)}</a>`).join(', ')}</p>` : '';
   const pr = g.worker?.prUrl || g.prUrl;
   const refs = [pr && /^https?:\/\//.test(pr) ? `<a href="${esc(pr)}" target="_blank" rel="noopener noreferrer">PR</a>` : '', g.report ? reportAnchor(g.id) : ''].filter(Boolean).join(' · ');
-  renderMain(`<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(taskState({ ...g, phase: g.worker?.phase }))}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p>${esc(status)}</p>${reasons.map(reason => `<p class="prose">${esc(reason)}</p>`).join('')}${g.worker ? `<p class="muted">${esc(waitNote(g.worker))}</p>` : ''}${owner}${blockers}${refs ? `<p>${refs}</p>` : ''}<details class="muted"><summary>Технические сведения</summary><p>ID: <code>${esc(g.id)}</code></p>${executor(g)}</details>${requests(g)}${reviewDetails(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${taskControls(g)}${terminalControl(g)}</div></div><section class="section" id="task-assignment"><div class="section-heading"><h2>Задание</h2></div>${g.managedBrief ? brief(g) : `<div class="brief-box prose">${esc(bodyText(g) || 'Задание не записано')}</div>`}</section>${diagnosticSection}<section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section>`);
+  renderMain(`<a class="back" href="#">← Что происходит</a><div class="page-heading"><div><p class="eyebrow">Задача Firstmate · ${esc(taskState({ ...g, phase: g.worker?.phase }))}${g.personal ? ' · личное' : ''}</p><h1>${esc(g.title)}</h1><p>${esc(status)}</p>${reasons.map(reason => `<p class="prose">${esc(reason)}</p>`).join('')}${g.worker ? `<p class="muted">${esc(waitNote(g.worker))}</p>` : ''}${owner}${questionPending(g) ? `<p><a href="#question:${encodeURIComponent(g.id)}">Открыть вопрос на просмотр</a></p>` : ''}${blockers}${refs ? `<p>${refs}</p>` : ''}<details class="muted"><summary>Технические сведения</summary><p>ID: <code>${esc(g.id)}</code></p>${executor(g)}</details>${requests(g)}${reviewDetails(g)}</div><div class="actions"><button data-action="edit" ${closed(g) ? 'disabled' : ''}>Править</button>${taskControls(g)}${terminalControl(g)}</div></div><section class="section" id="task-assignment"><div class="section-heading"><h2>Задание</h2></div>${g.managedBrief ? brief(g) : `<div class="brief-box prose">${esc(bodyText(g) || 'Задание не записано')}</div>`}</section>${diagnosticSection}<section class="section"><div class="section-heading"><h2>Ссылки</h2></div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : '<p class="muted">У задачи нет ссылок в Firstmate.</p>'}</section>`);
 }
 
 const brief = (g: Goal) => `<div class="brief-box"><dl><dt>Зачем</dt><dd class="prose">${esc(g.why)}</dd><dt>Готово, когда</dt><dd class="prose">${esc(g.doneWhen)}</dd><dt>Контекст</dt><dd class="prose">${esc(g.context)}</dd><dt>Ограничения</dt><dd class="prose">${esc(g.constraints.join('\n'))}</dd></dl></div>`;
@@ -392,44 +404,89 @@ async function caseAction(c: ViewCase, action: string) {
 type ArtifactItem = { id: string; kind: 'file' | 'url' | 'html'; title: string; action: string; entry?: string; interactive: boolean; source: { url?: string }; task: { id: string; title: string }; case?: { id: string; title: string }; project?: string; author: string; receivedAt: string; continues?: string; pinned: boolean; draft: boolean; completedAt?: string; outcome?: { kind: string; label: string } };
 type ArtifactDraft = { comment?: string; fields?: Record<string, unknown>; prompts?: unknown[] };
 type ArtifactView = ArtifactItem & { draftValue?: { savedAt: string; draft: ArtifactDraft }; completion?: { submissionId: string; completedAt: string; action: { kind: string; label: string }; comment: string; reason: string; payload?: { prompts?: { prompt: string; tag?: string }[]; fields?: Record<string, unknown> } }; completionPath: string; supplements: { submissionId: string; at: string; comment: string }[]; receipts: Record<string, unknown> };
-let artifacts: ArtifactItem[] | undefined;
+type ReviewItem = ArtifactItem | QuestionItem;
+let artifacts: ReviewItem[] | undefined;
+let questionDesk: (ViewGoal & { stale?: boolean }) | undefined;
+const questionDraftKey = (id: string, since = '') => `delo:draft:${draftScope}:question:${id}:${since}`;
+function questionDraft(id: string, since = '') {
+  const key = questionDraftKey(id, since);
+  try { return draftMemory.get(key) ?? localStorage.getItem(key) ?? ''; } catch { return draftMemory.get(key) ?? ''; }
+}
+function saveQuestionDraft(g: Goal, value: string) {
+  const key = questionDraftKey(g.id, String(g.questionOccurrence)); draftMemory.set(key, value);
+  const item = artifacts?.find(a => a.id === `question:${g.id}`); if (item) item.draft = !!value.trim();
+  try { localStorage.setItem(key, value); $('question-draft-state').textContent = 'Черновик сохранён в этом браузере'; } catch { $('question-error').textContent = 'Черновик хранится только до перезагрузки страницы: браузер не разрешил сохранение.'; }
+}
+const questionPending = (g: Goal) => g.actions.some(a => a === 'answer' || a === 'release');
+function renderQuestion(g: ViewGoal) {
+  current = undefined; questionDesk = g; document.title = `${g.title} — На просмотр`; document.body.classList.add('desk');
+  renderMain(`<a class="back" href="#artifacts">← К очереди</a><div class="page-heading"><div><p class="eyebrow" id="question-eyebrow">На просмотр · Вопрос</p><h1>${esc(g.title)}</h1><p class="muted">${esc(g.repo || 'Без проекта')}${g.questionSince ? ` · поступил ${esc(when(g.questionSince))}` : ''}</p><details class="muted"><summary>Технические сведения</summary><p>ID: <code>${esc(g.id)}</code></p></details></div></div><section class="section"><h2>Вопрос</h2><div class="brief-box prose" id="answer-question">${esc(g.reason || g.title)}</div>${g.worker ? `<p class="muted">${esc(waitNote(g.worker))}</p>` : ''}</section><section class="section" id="question-context"><h2>Контекст</h2><div class="brief-box prose">${esc(bodyText(g))}</div>${g.links.length ? `<div class="rows">${g.links.map(ref => link(ref, g.report ? g.id : undefined)).join('')}</div>` : ''}</section><section class="section desk-answer"><p id="question-status" role="status"></p><details id="question-current" hidden><summary>Текущее решение в Firstmate</summary><pre id="question-current-answer" class="report-text"></pre></details><label>${g.actions.includes('answer') ? 'Ответ' : 'Комментарий (необязательно)'}<textarea id="question-answer" name="answer" maxlength="500">${esc(questionDraft(g.id, String(g.questionOccurrence)))}</textarea></label><p class="muted">${!questionPending(g) ? 'Ответ и текущий статус находятся в записи задачи Firstmate.' : g.inFlight ? 'Ответ снимет ожидание. Задача останется в работе.' : g.kind === 'captain' ? 'Ответ сохранится в Firstmate и закроет этот вопрос.' : 'Разрешение снимет ожидание. Запуском работы управляет Firstmate.'}</p><p id="question-draft-state" class="muted" role="status"></p><p id="question-error" class="error-text" role="alert"></p>${questionPending(g) ? taskControls(g) : ''}${questionPending(g) && g.questionOwner !== 'firstmate' ? '<button data-action="question-handoff">Передать Яну</button>' : ''}<p><a href="#${encodeURIComponent(g.id)}">Открыть задачу</a></p></section>`);
+  showQuestionStatus(g, g);
+  $('question-answer').oninput = () => saveQuestionDraft(g, ($('question-answer') as HTMLTextAreaElement).value);
+}
+
+function showQuestionStatus(opened: NonNullable<typeof questionDesk>, latest: ViewGoal) {
+  const resolved = !questionPending(latest);
+  opened.stale = opened.questionVersion !== latest.questionVersion || resolved;
+  $('question-eyebrow').textContent = resolved ? 'На просмотр · Вопрос · Ответ сохранён' : 'На просмотр · Вопрос · Можно ответить самостоятельно';
+  $('question-status').textContent = resolved ? 'На вопрос уже ответили или закрыли его. Ваш черновик сохранён; повторная отправка недоступна.'
+    : opened.stale ? 'Вопрос изменился. Ваш черновик сохранён. Откройте вопрос заново перед ответом.'
+    : latest.questionOwner === 'firstmate' ? 'Передано Яну. Можно также ответить самостоятельно.' : 'Можно ответить самостоятельно или передать Яну.';
+  if (opened.stale) {
+    $('question-current').hidden = false; $('question-current-answer').textContent = latest.body;
+    ($('question-answer') as HTMLTextAreaElement).readOnly = resolved;
+    document.querySelectorAll<HTMLButtonElement>('.desk-answer [data-task-action], [data-action="question-handoff"]').forEach(b => { b.disabled = true; });
+  }
+}
+async function checkQuestion() {
+  const d = questionDesk; if (!d) return;
+  try {
+    const latest = await api<ViewGoal>(`/api/questions/${encodeURIComponent(d.id)}`);
+    if (questionDesk === d) showQuestionStatus(d, latest);
+  } catch (e: any) { if (questionDesk === d) $('question-error').textContent = `Не удалось проверить состояние вопроса: ${e.message}`; }
+}
+const delegatedQuestion = (a: ReviewItem) => a.kind === 'question' && a.questionOwner === 'firstmate';
+const pendingReview = (a: ReviewItem) => !a.completedAt && !delegatedQuestion(a);
+function reviewBucket(a: ReviewItem, archive: boolean, delegated = false) { return delegated ? delegatedQuestion(a) : archive ? !!a.completedAt : pendingReview(a); }
+
 const artifactFilter = { search: '', group: '', started: false };
 let desk: { view: ArtifactView; draft: ArtifactDraft; submission: string; timer?: number } | undefined;
 const when = (iso?: string) => iso ? new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-const artifactGroup = (a: ArtifactItem) => a.case ? { key: `case:${a.case.id}`, label: a.case.title } : { key: `project:${a.project ?? ''}`, label: a.project ? `Проект ${a.project}` : 'Без дела' };
+const artifactGroup = (a: ReviewItem) => a.case ? { key: `case:${a.case.id}`, label: a.case.title } : { key: `project:${a.project ?? ''}`, label: a.project ? `Проект ${a.project}` : 'Без дела' };
 const artifactFile = (a: ArtifactItem, name = a.entry ?? '') => `/artifacts/${encodeURIComponent(a.id)}/files/${name.split('/').map(encodeURIComponent).join('/')}`;
 async function loadArtifacts() {
-  const next = await api<ArtifactItem[]>('/api/artifacts');
+  const next = await api<ReviewItem[]>('/api/review-queue');
+  for (const item of next) if (item.kind === 'question') item.draft = !!questionDraft(item.task.id, String(item.questionOccurrence)).trim();
   const known = artifacts && new Set(artifacts.map(a => a.id));
-  const arrived = known ? next.filter(a => !known.has(a.id) && !a.completedAt) : [];
+  const arrived = known ? next.filter(a => !known.has(a.id) && pendingReview(a)) : [];
   artifacts = next;
-  $('artifacts-count').textContent = String(next.filter(a => !a.completedAt).length);
+  $('artifacts-count').textContent = String(next.filter(pendingReview).length);
   // D-04: a quiet in-app note; the open desk and the visible rows stay as they are.
   if (arrived.length) message(arrived.length === 1 ? `Поступил материал на просмотр: «${arrived[0].title}».` : `Поступило материалов на просмотр: ${arrived.length}.`);
   const rows = document.getElementById('artifact-rows');
   if (rows && !rows.contains(document.activeElement)) renderArtifactRows();
 }
-function artifactRow(a: ArtifactItem, archive: boolean) {
-  const marks = [a.draft ? badge('Есть черновик') : '', a.pinned ? badge('Закреплено') : '', archive && a.outcome ? badge(a.outcome.label) : ''].join('');
+function artifactRow(a: ReviewItem, archive: boolean) {
+  const marks = [a.kind === 'question' ? badge(a.questionOwner === 'firstmate' ? 'Вопрос · У Яна' : 'Вопрос') : badge('Материал · Только вам'), a.draft ? badge('Есть черновик') : '', a.pinned ? badge('Закреплено') : '', archive && a.outcome ? badge(a.outcome.label) : ''].join('');
   const detail = [artifactGroup(a).label, `задача «${a.task.title}»`, a.author, archive ? `обработано ${when(a.completedAt)}` : `поступил ${when(a.receivedAt)}`].join(' · ');
-  const pin = archive ? '' : `<button class="quiet" data-action="artifact-pin" data-id="${esc(a.id)}" data-on="${a.pinned ? '' : '1'}">${a.pinned ? 'Открепить' : 'Закрепить'}</button>`;
-  return `<div class="row go"><div class="row-content"><strong><a href="#artifact:${encodeURIComponent(a.id)}">${esc(a.title)}</a></strong> ${marks}<small>${esc(detail)}<br>Что требуется: ${esc(a.action)}</small></div><div class="row-actions">${pin}</div></div>`;
+  const pin = archive ? '' : `<button class="quiet" data-action="${a.kind === 'question' ? 'question-pin' : 'artifact-pin'}" data-id="${esc(a.kind === 'question' ? a.task.id : a.id)}" data-on="${a.pinned ? '' : '1'}">${a.pinned ? 'Открепить' : 'Закрепить'}</button>`;
+  return `<div class="row go"><div class="row-content"><strong><a href="#${a.kind === 'question' ? `question:${encodeURIComponent(a.task.id)}` : `artifact:${encodeURIComponent(a.id)}`}">${esc(a.title)}</a></strong> ${marks}<small>${esc(detail)}<br>Что требуется: ${esc(a.action)}</small></div><div class="row-actions">${pin}</div></div>`;
 }
 function renderArtifactRows() {
-  const archive = location.hash === '#artifacts:archive';
+  const archive = location.hash === '#artifacts:archive', delegated = location.hash === '#artifacts:delegated';
   const search = artifactFilter.search.trim().toLocaleLowerCase('ru');
-  const list = (artifacts ?? []).filter(a => !!a.completedAt === archive && (!search || a.title.toLocaleLowerCase('ru').includes(search)) && (!artifactFilter.group || artifactGroup(a).key === artifactFilter.group) && (archive || !artifactFilter.started || a.draft));
+  const list = (artifacts ?? []).filter(a => reviewBucket(a, archive, delegated) && (!search || a.title.toLocaleLowerCase('ru').includes(search)) && (!artifactFilter.group || artifactGroup(a).key === artifactFilter.group) && (archive || !artifactFilter.started || a.draft));
   // D-03: oldest first, so a new material lands at the end; pinned ones go on top. The archive shows the latest answers first.
   list.sort((x, y) => archive ? (y.completedAt ?? '').localeCompare(x.completedAt ?? '') : Number(y.pinned) - Number(x.pinned) || x.receivedAt.localeCompare(y.receivedAt));
-  $('artifact-rows').innerHTML = list.length ? `<div class="rows">${list.map(a => artifactRow(a, archive)).join('')}</div>` : `<p class="muted">${artifacts?.some(a => !!a.completedAt === archive) ? 'Ничего не найдено. Измените поиск или фильтры.' : archive ? 'В архиве пока нет обработанных материалов.' : 'Материалов на просмотр нет.'}</p>`;
+  $('artifact-rows').innerHTML = list.length ? `<div class="rows">${list.map(a => artifactRow(a, archive)).join('')}</div>` : `<p class="muted">${artifacts?.some(a => reviewBucket(a, archive, delegated)) ? 'Ничего не найдено. Измените поиск или фильтры.' : archive ? 'В архиве пока нет обработанных материалов.' : 'Материалов на просмотр нет.'}</p>`;
   decorateActions($('artifact-rows'));
   const count = document.getElementById('artifact-queue-count'); if (count) count.textContent = String(list.length);
 }
-function renderQueue(archive: boolean) {
-  current = undefined; document.title = `${archive ? 'Архив материалов' : 'На просмотр'} — Дело`;
-  const groups = new Map((artifacts ?? []).filter(a => !!a.completedAt === archive).map(a => [artifactGroup(a).key, artifactGroup(a).label]));
+function renderQueue(archive: boolean, delegated = false) {
+  current = undefined; document.title = `${delegated ? 'Вопросы у Яна' : archive ? 'Архив материалов' : 'На просмотр'} — Дело`;
+  const groups = new Map((artifacts ?? []).filter(a => reviewBucket(a, archive, delegated)).map(a => [artifactGroup(a).key, artifactGroup(a).label]));
   if (artifactFilter.group && !groups.has(artifactFilter.group)) artifactFilter.group = '';
-  renderMain(`<a class="back" href="${archive ? '#artifacts' : '#'}">← ${archive ? 'К очереди' : 'Что происходит'}</a><div class="page-heading"><div><p class="eyebrow">Материалы работников</p><h1>${archive ? 'Архив материалов' : 'На просмотр'} <span class="count" id="artifact-queue-count"></span></h1></div><div class="actions">${archive ? '' : '<a href="#artifacts:archive">Архив</a>'}</div></div><div class="artifact-filters" role="search"><label>Поиск по названию<input type="search" id="artifact-search" value="${esc(artifactFilter.search)}"></label><label>Дело<select id="artifact-group"><option value="">Все дела и проекты</option>${[...groups].map(([key, label]) => `<option value="${esc(key)}" ${key === artifactFilter.group ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>${archive ? '' : `<label class="checkbox"><input type="checkbox" id="artifact-started" ${artifactFilter.started ? 'checked' : ''}> Только начатые</label>`}</div><div id="artifact-rows"></div>`);
+  renderMain(`<a class="back" href="${archive || delegated ? '#artifacts' : '#'}">← ${archive || delegated ? 'К очереди' : 'Что происходит'}</a><div class="page-heading"><div><p class="eyebrow">Материалы работников</p><h1>${delegated ? 'Вопросы у Яна' : archive ? 'Архив материалов' : 'На просмотр'} <span class="count" id="artifact-queue-count"></span></h1></div><div class="actions">${archive || delegated ? '' : '<a href="#artifacts:delegated">Вопросы у Яна</a><a href="#artifacts:archive">Архив</a>'}</div></div><div class="artifact-filters" role="search"><label>Поиск по названию<input type="search" id="artifact-search" value="${esc(artifactFilter.search)}"></label><label>Дело<select id="artifact-group"><option value="">Все дела и проекты</option>${[...groups].map(([key, label]) => `<option value="${esc(key)}" ${key === artifactFilter.group ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>${archive ? '' : `<label class="checkbox"><input type="checkbox" id="artifact-started" ${artifactFilter.started ? 'checked' : ''}> Только начатые</label>`}</div><div id="artifact-rows"></div>`);
   $('artifact-search').oninput = e => { artifactFilter.search = (e.target as HTMLInputElement).value; renderArtifactRows(); };
   $('artifact-group').onchange = e => { artifactFilter.group = (e.target as HTMLSelectElement).value; renderArtifactRows(); };
   const started = document.getElementById('artifact-started') as HTMLInputElement | null;
@@ -458,7 +515,7 @@ function renderDesk(a: ArtifactView) {
   const delivery = (id: string) => a.receipts[id] ? 'Передано Firstmate' : 'Ждёт передачи Firstmate';
   const answer = done ? `<section class="section desk-answer"><h2>Ответ · ${esc(done.action.label)}</h2><p class="muted">Отправлен ${esc(when(done.completedAt))} · ${esc(delivery(done.submissionId))}</p>${done.reason ? `<p class="prose">Причина: ${esc(done.reason)}</p>` : ''}${done.comment ? `<p class="prose">${esc(done.comment)}</p>` : ''}${done.payload?.prompts?.length ? `<details><summary>Ответ из материала (${done.payload.prompts.length})</summary><pre class="report-text">${esc(done.payload.prompts.map(p => p.prompt).join('\n\n'))}</pre></details>` : ''}<p class="muted">Полный ответ: <code>${esc(a.completionPath)}</code></p>${a.supplements.map(s => `<div class="brief-box"><p class="muted">Дополнение ${esc(when(s.at))} · ${esc(delivery(s.submissionId))}</p><p class="prose">${esc(s.comment)}</p></div>`).join('')}<div class="actions"><button data-action="artifact-supplement">Дополнить ответ</button></div></section>`
     : `<section class="section desk-answer"><label>Общий комментарий (необязательно)<textarea id="artifact-comment">${esc(d.draft.comment ?? '')}</textarea></label><p id="artifact-draft-state" class="muted" role="status">${a.draftValue ? `Черновик сохранён ${esc(when(a.draftValue.savedAt))}` : ''}</p><p id="artifact-error" class="error-text" role="alert"></p><div class="actions">${a.interactive ? '<p class="muted">Ответ отправляется кнопкой внутри материала; комментарий выше уйдёт вместе с ним.</p>' : '<button id="artifact-submit" class="primary" data-action="artifact-done"></button>'}<button class="quiet" data-action="artifact-irrelevant">Убрать как неактуальное</button></div></section>`;
-  renderMain(`<a class="back" href="${done ? '#artifacts:archive' : '#artifacts'}">← ${done ? 'К архиву' : 'К очереди'}</a><div class="page-heading"><div><p class="eyebrow">${done ? 'Архив материалов' : 'На просмотр'}</p><h1>${esc(a.title)}</h1><p>Что требуется: ${esc(a.action)}</p><p class="muted">${esc(meta)}</p>${a.continues ? `<p>Продолжение материала ${origin ? `<a href="#artifact:${encodeURIComponent(origin.id)}">«${esc(origin.title)}»</a>` : esc(a.continues)}</p>` : ''}</div></div><section class="artifact-view">${artifactViewer(a)}</section>${answer}`);
+  renderMain(`<a class="back" href="${done ? '#artifacts:archive' : '#artifacts'}">← ${done ? 'К архиву' : 'К очереди'}</a><div class="page-heading"><div><p class="eyebrow">Материал · Только вам · ${done ? 'Архив материалов' : 'На просмотр'}</p><h1>${esc(a.title)}</h1><p>Что требуется: ${esc(a.action)}</p><p class="muted">${esc(meta)}</p>${a.continues ? `<p>Продолжение материала ${origin ? `<a href="#artifact:${encodeURIComponent(origin.id)}">«${esc(origin.title)}»</a>` : esc(a.continues)}</p>` : ''}</div></div><section class="artifact-view">${artifactViewer(a)}</section>${answer}`);
   const comment = document.getElementById('artifact-comment') as HTMLTextAreaElement | null;
   if (comment) comment.oninput = () => { d.draft.comment = comment.value; submitLabel(); queueDeskDraft(); };
   submitLabel();
@@ -542,20 +599,25 @@ async function navigate() {
   const goalId = decodeURIComponent(route.slice(1));
   const active = () => request === navigation && route === location.hash;
   // T-02: the desk takes the full width; leaving it keeps the last edits.
-  document.body.classList.toggle('desk', goalId.startsWith('artifact:'));
+  document.body.classList.toggle('desk', goalId.startsWith('artifact:') || goalId.startsWith('question:'));
+  if (questionDesk && goalId !== questionDesk.id && goalId !== `question:${questionDesk.id}`) questionDesk = undefined;
   if (desk && goalId !== `artifact:${desk.view.id}`) leaveDesk();
   if (!goalId) return renderOverview();
   try {
-    if (goalId === 'artifacts' || goalId === 'artifacts:archive') { if (!artifacts) await loadArtifacts(); if (active()) renderQueue(goalId === 'artifacts:archive'); return; }
+    if (goalId === 'artifacts' || goalId === 'artifacts:archive' || goalId === 'artifacts:delegated') { if (!artifacts) await loadArtifacts(); if (active()) renderQueue(goalId === 'artifacts:archive', goalId === 'artifacts:delegated'); return; }
     const artifactRoute = /^artifact:(.+)$/.exec(goalId)?.[1];
     if (artifactRoute) { const a = await api<ArtifactView>(`/api/artifacts/${encodeURIComponent(artifactRoute)}`); if (active()) renderDesk(a); return; }
     if (goalId === ':closed') { const list = await api('/api/cases'); if (active()) renderClosed(list); return; }
     const reportId = /^report:(.+)$/.exec(goalId)?.[1];
     if (reportId) { const report = await api(`/api/reports/${encodeURIComponent(reportId)}`); if (active()) renderReport(reportId, report); return; }
     const caseId = /^case:(.+)$/.exec(goalId)?.[1];
-    const goal = caseId ? undefined : await api<ViewGoal>(`/api/goals/${encodeURIComponent(goalId)}`);
+    const questionId = /^question:(.+)$/.exec(goalId)?.[1];
+    const goal = caseId ? undefined : await api<ViewGoal>(`/api/${questionId ? 'questions' : 'goals'}/${encodeURIComponent(questionId ?? goalId)}`);
     if (!active()) return;
-    if (goal && goal.kind !== 'program') return renderGoal(goal);
+    if (goal && goal.kind !== 'program') {
+      if (questionId) return renderQuestion(goal);
+      questionDesk = undefined; document.body.classList.remove('desk'); return renderGoal(goal);
+    }
     const c = await api<ViewCase>(`/api/cases/${encodeURIComponent(caseId ?? goalId)}`);
     if (active()) renderCase(c);
   }
@@ -564,8 +626,9 @@ async function navigate() {
 async function reload() {
   const request = ++refreshRequest;
   await loadArtifacts().catch(() => {});
+  if (questionDesk) await checkQuestion();
   // The queue rows refresh with the count, and an open desk never re-renders under the person's input.
-  if (location.hash && (!location.hash.startsWith('#artifact') || !markup)) await navigate();
+  if (location.hash && !questionDesk && (!location.hash.startsWith('#artifact') || !markup)) await navigate();
   const next = await api<Overview>('/api/overview');
   if (request !== refreshRequest) return;
   // Snapshot timestamps change on every read even when the visible data is identical.
@@ -587,11 +650,18 @@ $('dialog-form').onsubmit = async event => {
 };
 $('main').onclick = async event => {
   const taskButton = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-task-action]');
-  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, title: taskButton.dataset.title!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight, question: taskButton.dataset.question }, taskButton.dataset.taskAction!, taskButton.dataset.taskAttempt ? Number(taskButton.dataset.taskAttempt) : undefined); } catch (e: any) { message(e.message, true); } return; }
+  if (taskButton) { event.preventDefault(); if (taskButton.disabled || pendingTasks.has(taskButton.dataset.id!)) return; try { await taskAction({ id: taskButton.dataset.id!, title: taskButton.dataset.title!, holdKind: taskButton.dataset.holdKind, inFlight: !!taskButton.dataset.inFlight }, taskButton.dataset.taskAction!, taskButton.dataset.taskAttempt ? Number(taskButton.dataset.taskAttempt) : undefined); } catch (e: any) { message(e.message, true); } return; }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action]');
   if (!button) { const go = (event.target as HTMLElement).closest('.row.go'); if (go && !(event.target as HTMLElement).closest('a, button, input, select, textarea, label, details, .task-actions, .row-actions')) go.querySelector('a')?.click(); return; }
   if (button.disabled || button.dataset.action === 'pin' && pendingTasks.has(button.dataset.id!)) return;
   try { button.disabled = true; button.setAttribute('aria-busy', 'true'); if (button.dataset.action === 'new') return await newGoal(); if (button.dataset.action === 'copy-path') return await copyPath(); if (button.dataset.action === 'open-terminal') { button.disabled = true; await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/terminal/open`, { binding: button.dataset.binding }); message('Терминал выбран. Переключитесь в окно Herdr.'); return; } if (button.dataset.action === 'open-report') { button.disabled = true; await api(`/api/reports/${encodeURIComponent(button.dataset.id!)}/open`, {}); message('Отчёт передан приложению для открытия.'); return; } if (button.dataset.action === 'refresh') { button.disabled = true; await reload(); message('Список обновлён.'); return; }
+    if (button.dataset.action === 'question-handoff') {
+      const d = questionDesk; if (!d || d.stale) return;
+      try { await api(`/api/tasks/${encodeURIComponent(d.id)}/handoff`, { questionVersion: d.questionVersion }); message('Вопрос передан Яну. Ваш черновик сохранён.'); questionDesk = undefined; location.hash = 'artifacts'; await loadArtifacts(); }
+      catch (e: any) { $('question-error').textContent = e.message; await checkQuestion(); }
+      return;
+    }
+    if (button.dataset.action === 'question-pin') { await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); await loadArtifacts(); return; }
     if (button.dataset.action === 'pin') { taskPending(button.dataset.id!, true); await api(`/api/tasks/${encodeURIComponent(button.dataset.id!)}/pin`, { pinned: !!button.dataset.on }); const feedback = button.dataset.on ? 'Задача закреплена.' : 'Задача откреплена.'; message(feedback); try { await reload(); } catch { message(`${feedback} Не удалось обновить список. Нажмите «Обновить».`, true); } return; } if (button.dataset.action!.startsWith('artifact-')) return await artifactAction(button.dataset.action!, button); if (button.dataset.action!.endsWith('-case') && current) return await caseAction(current as ViewCase, button.dataset.action!); await goalAction(button.dataset.action!); }
   catch (e: any) { message(e.message, true); } finally { button.disabled = false; button.removeAttribute('aria-busy'); if (button.dataset.action === 'pin') taskPending(button.dataset.id!, false); }
 };

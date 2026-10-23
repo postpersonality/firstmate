@@ -1,14 +1,14 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, id } from './model.ts';
-import type { Goal, Action } from './model.ts';
+import { goalInput, goalPatch, actions, actionInput, personalLine, caseInput, closeCaseInput, agentInput, id, pendingQuestion, questionOwner, questionOccurrence } from './model.ts';
+import type { Goal, Action, QuestionItem } from './model.ts';
 import { validateReview, reviewProjects, reviewOf, reviewLine, reviewInstructions, readReviewProgress } from './review.ts';
 import { Firstmate, type FirstmateTask } from './firstmate.ts';
 import { ArtifactStore, type Artifact, type Message } from './artifacts.ts';
 import { diagnosticText, taskDiagnostics } from './diagnostics.ts';
 import { checkFolder } from './folder.ts';
-import { type Overview, overview, position, requestsByTask, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath } from './overview.ts';
+import { type Overview, overview, position, requestsByTask, workerState, taskBlockers, pinRefusal, caseOf, hasReport, linkEntries, reportPath, pinned } from './overview.ts';
 
 const sections = ['Обложка', 'Зачем', 'Критерий готовности', 'Контекст', 'Ограничения'];
 
@@ -113,6 +113,27 @@ export class Store {
   constructor(options: { firstmateHome?: string } = {}) {
     this.firstmate = new Firstmate(options.firstmateHome || process.env.DELO_FIRSTMATE_HOME || defaultFirstmateHome());
     this.artifacts = new ArtifactStore(this.firstmate.home);
+  }
+
+  // Questions are views of live task holds, never artifact publications or copied answers.
+  reviewQueue() {
+    const tasks = this.firstmate.list();
+    const questions: QuestionItem[] = tasks.filter(pendingQuestion).map(row => {
+      const task = this.whole(row);
+      const caseId = caseOf(task.body), parent = tasks.find(t => t.id === caseId && t.kind === 'program');
+      return {
+        kind: 'question', id: `question:${task.id}`, title: task.title,
+        action: actions(task).includes('answer') ? 'Ответить' : 'Разрешить работу',
+        task: { id: task.id, title: task.title }, case: parent && { id: parent.id, title: parent.title },
+        questionOccurrence: questionOccurrence(task.body, true), questionOwner: questionOwner(task.body), project: field(task.repo), author: 'Firstmate', receivedAt: /^Captain hold set: (.+)$/m.exec(task.body)?.[1] ?? '', pinned: pinned(task), draft: false,
+      };
+    });
+    return [...this.artifacts.list(), ...questions];
+  }
+
+  getQuestion(taskId: string) {
+    const snapshot = this.firstmate.question(taskId);
+    return { ...this.get(taskId, snapshot.task), questionVersion: snapshot.question_version, questionOwner: snapshot.question_owner };
   }
 
   // Creation writes only the Firstmate backlog, never --start.
@@ -258,6 +279,8 @@ export class Store {
     return {
       id: task.id, title: task.title, state: task.state === 'done' ? 'done' : held(task) ? 'paused' : 'active',
       body, description: descriptionOf(body), managedBrief: managed, prUrl: field(task.pr_url) ?? linkEntries(task.links).find((ref): ref is string => typeof ref === 'string' && ref.startsWith('pr:'))?.slice(3), reason: field(task.hold_reason), blockers: taskBlockers(task, records), kind: field(task.kind), repo: field(task.repo), personal: isPersonal(body), actions: actions(task),
+      questionOccurrence: questionOccurrence(body, pendingQuestion(task)),
+      questionSince: pendingQuestion(task) ? /^Captain hold set: (.+)$/m.exec(body)?.[1] : undefined,
       holdKind: field(task.hold_kind), inFlight: task.state === 'in_flight',
       why: managed ? section(body, 'Зачем') : '', doneWhen: managed ? section(body, 'Критерий готовности') : '', context: managed ? section(body, 'Контекст') : body,
       constraints: managed ? section(body, 'Ограничения').split('\n').filter(s => s.startsWith('- ')).map(s => s.slice(2)) : [],
@@ -310,7 +333,7 @@ export class Store {
     this.invalidateOverview();
     const data = actionInput.parse(input);
     const task = this.firstmate.show(taskId);
-    if (!actions(task).includes(action)) throw new Error('Это действие недоступно для задачи в её состоянии');
+    if (action === 'handoff' ? !pendingQuestion(task) : !actions(task).includes(action)) throw new Error('Это действие недоступно для задачи в её состоянии');
     const need = <T>(value: T | undefined, what: string) => { if (!value) throw new Error(`Укажите ${what}`); return value; };
     if (action === 'start' || action === 'stop' || action === 'close' && task.state === 'in_flight') {
       const kind = action === 'start' ? 'start' : action === 'stop' ? 'stop' : 'close';
@@ -319,8 +342,9 @@ export class Store {
       return { note, ready: this.firstmate.ready() };
     }
     if (data.attempt !== undefined) throw new Error('Повторная просьба недоступна для этого действия в текущем состоянии задачи');
+    if (action === 'handoff') return { output: this.firstmate.handoff(task.id, need(data.questionVersion, 'версию вопроса')) };
     if (action === 'close' && task.hold_kind === 'captain') {
-      const output = this.firstmate.answer(task.id, 'Закрыть как неактуальную', 'Закрыть как неактуальную', 'done');
+      const output = this.firstmate.answer(task.id, 'Закрыть как неактуальную', 'Закрыть как неактуальную', 'done', data.questionVersion);
       if (/^skipped:/m.test(output)) throw new Error(output);
       return { output };
     }
@@ -328,7 +352,7 @@ export class Store {
       const answer = action === 'answer' ? need(data.answer?.trim(), 'ответ') : data.answer || 'Разрешаю работу';
       // Only a question row closes on its answer; answered work, including work in flight, keeps running.
       const mode = action === 'answer' && task.kind === 'captain' && task.state !== 'in_flight' ? 'done' : 'release';
-      const output = this.firstmate.answer(task.id, answer, action === 'answer' ? 'Ответить' : 'Разрешить работу', mode);
+      const output = this.firstmate.answer(task.id, answer, action === 'answer' ? 'Ответить' : 'Разрешить работу', mode, data.questionVersion);
       if (/^skipped:/m.test(output)) throw new Error(output);
       return { output };
     }

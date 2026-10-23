@@ -22,8 +22,10 @@
 # Usage:
 #   fm-captain-hold.sh hold <task-id> --reason <reason> \
 #     [--title <title>] [--repo <repo>] [--origin <origin-id>] [--until YYYY-MM-DD]
-#   fm-captain-hold.sh answer <task-id> --decision-file <path> [--release]
-#   fm-captain-hold.sh answers [<legacy-origin> | --any-origin] --source <provenance> [--wake]   (keyed answers on stdin)
+#   fm-captain-hold.sh question <task-id>
+#   fm-captain-hold.sh handoff <task-id> --expected-version <sha256>
+#   fm-captain-hold.sh answer <task-id> --decision-file <path> [--release] [--actor captain|firstmate] [--expected-version <sha256>]
+#   fm-captain-hold.sh answers [<legacy-origin> | --any-origin] --source <provenance> [--wake] [--actor captain|firstmate] [--expected-version <sha256>]   (keyed answers on stdin)
 #   fm-captain-hold.sh reconcile-requests --source-id <source-id> --source <provenance>   (task ids on stdin)
 #   fm-captain-hold.sh bind <source-id> [<legacy-origin> | --any-origin]
 #   fm-captain-hold.sh unbind <source-id>
@@ -59,6 +61,23 @@
 # `--until` records the captain's own deferral date through `tasks-axi hold
 # --until`, so a "revisit later" answer is stored as a date instead of a live
 # card.
+#
+# `question` reads the full task with decoded hold reasons, a `question_version`
+# SHA-256 of its native full show, and `question_owner` (user or firstmate).
+# `--expected-version` checks that snapshot under the answer's task-control
+# lock, before any resolution or replay, so an old form cannot answer a new call.
+# `answers` forwards this optional guard to `answer`; use it for one keyed row.
+# `handoff` uses the same lock and guard, saves an idempotent fm-inbox note first,
+# then records `Captain question handoff: <expected-version>` in the task body.
+# That machine field makes Firstmate the next-action owner, without answering,
+# closing, releasing or approving anything. The note requires ask-user-authority
+# classification and grants no independent merge, discard or security authority.
+# `--actor firstmate` records Firstmate as the actual author of its own answer
+# (`Firstmate decision:` and `Resolution actor: firstmate`); the default actor
+# captain preserves existing human-answer records and their exact retry digests.
+# A successful `hold` removes the handoff field and records
+# `Captain question returned: <handoff-version>` to return a genuine captain
+# call without reusing an earlier form version or inbox request id. No separate question or answer record is created.
 #
 # `answer` records the captain's exact words and resolves the call in the same
 # act. It requires a non-empty captain decision file of at most 8192 bytes and
@@ -367,6 +386,7 @@ BINDING_ANY='(any)'
 
 DECISION_TEXT=''
 DECISION_DIGEST=''
+DECISION_ACTOR=captain
 
 load_decision() {  # <path>; sets DECISION_TEXT and DECISION_DIGEST
   local path=$1 decision
@@ -499,10 +519,11 @@ meta_value() {  # <meta> <key>
 }
 
 # A resolution record written by this script or by the retired
-# fm-decision-hold.sh. Both carry the same leader-then-captain-decision shape.
+# fm-decision-hold.sh. The explicit label retains the actual decision actor.
 body_has_resolution_record() {  # <task-body>
   case "$1" in
     *"Resolution recorded by fm-captain-hold."*"Captain decision:"*) return 0 ;;
+    *"Resolution recorded by fm-captain-hold."*"Firstmate decision:"*) return 0 ;;
     *"Resolution recorded by fm-decision-hold."*"Captain decision:"*) return 0 ;;
     *"Resolution recorded by fm-captain-hold."*"Reconciliation evidence:"*) return 0 ;;
   esac
@@ -543,6 +564,16 @@ recorded_resolution_mode() {  # <task-body>
   printf '%s' "$rest"
 }
 
+recorded_resolution_actor() {  # <shown-task-body>; legacy records are human answers
+  local body
+  body=$(decode_shown_value "$1") || return 1
+  printf '%s\n' "$body" | awk '
+    /^Resolution recorded by fm-(captain|decision)-hold\.$/ { records++; if (records > 1) exit }
+    records == 1 && /^Resolution actor: / { print substr($0, 19); found=1; exit }
+    END { if (!found) print "captain" }
+  '
+}
+
 closed_answer_replay_mode_compatible() {  # <mode> <task-body>
   case "$1" in
     answered|repaired|routed) return 0 ;;
@@ -552,10 +583,15 @@ closed_answer_replay_mode_compatible() {  # <mode> <task-body>
 
 # The record's label is what keeps an evidence-backed reconciliation from
 # reading as the captain's own words. `reconciled` closes a call that went moot
-# and carries verified evidence; every other mode carries what the captain said.
+# and carries verified evidence; the actor distinguishes human and Firstmate answers.
 resolution_block() {  # <mode>
   local label='Captain decision:'
+  [ "$DECISION_ACTOR" != firstmate ] || label='Firstmate decision:'
   [ "$1" != reconciled ] || label='Reconciliation evidence:'
+  if [ "$DECISION_ACTOR" = firstmate ]; then
+    printf 'Resolution recorded by fm-captain-hold.\nDecision digest: %s\nResolution mode: %s\nResolution actor: firstmate\n\n%s\n%s\n' "$DECISION_DIGEST" "$1" "$label" "$DECISION_TEXT"
+    return
+  fi
   printf 'Resolution recorded by fm-captain-hold.\nDecision digest: %s\nResolution mode: %s\n\n%s\n%s\n' \
     "$DECISION_DIGEST" "$1" "$label" "$DECISION_TEXT"
 }
@@ -810,6 +846,76 @@ body_hold_set_timestamp() {  # <decoded-task-body>
     | head -1
 }
 
+question_handoff_version() {  # <decoded-task-body>
+  printf '%s\n' "$1" | sed -n 's/^Captain question handoff: \([a-f0-9]\{64\}\)$/\1/p' | head -1
+}
+
+question_version_guard() {  # <expected-version> <native-show>
+  [ -z "$1" ] && return 0
+  case "$1" in *[!a-f0-9]*) fail "invalid question version" ;; esac
+  [ "${#1}" -eq 64 ] || fail "invalid question version"
+  [ "$1" = "$(sha256_text "$2")" ] || fail "question changed; refresh its current state before answering"
+}
+
+write_question_handoff() {  # <task-id> <decoded-body> <version-or-empty>
+  local id=$1 body=$2 version=$3 tmp returned
+  returned=$(question_handoff_version "$body")
+  body=$(printf '%s\n' "$body" | sed '/^Captain question handoff: [a-f0-9]\{64\}$/d')
+  if [ -n "$version" ]; then
+    body=$(printf '%s\nCaptain question handoff: %s' "$body" "$version")
+  elif [ -n "$returned" ]; then
+    body=$(printf '%s\n' "$body" | sed '/^Captain question returned: [a-f0-9]\{64\}$/d')
+    body=$(printf '%s\nCaptain question returned: %s' "$body" "$returned")
+  fi
+  tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-question-owner.XXXXXX") || fail "cannot stage question ownership"
+  printf '%s\n' "$body" > "$tmp"
+  if ! tasks_axi update "$id" --body-file "$tmp" >/dev/null; then
+    rm -f -- "$tmp"
+    fail "cannot record question ownership for $id"
+  fi
+  rm -f -- "$tmp"
+}
+
+command_question() {  # <task-id>
+  [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+  validate_slug task-id "$1"
+  require_tasks_axi
+  task_show "$1" || fail "question task $1 is absent"
+  printf 'question_version: %s\n' "$(sha256_text "$TASK_SHOW_OUTPUT")"
+  if [ -n "$(question_handoff_version "$(show_field_value "$TASK_SHOW_OUTPUT" body)")" ]; then
+    printf 'question_owner: firstmate\n'
+  else
+    printf 'question_owner: user\n'
+  fi
+  printf '%s\n' "$TASK_SHOW_OUTPUT" | fm_hold_reason_decode_stream
+}
+
+command_handoff() {  # <task-id> --expected-version <sha256>
+  local id=${1:-} version=${3:-} show body previous request rc=0
+  [ "$#" -eq 3 ] && [ "$2" = --expected-version ] && [ -n "$version" ] || { usage >&2; exit 2; }
+  validate_slug task-id "$id"
+  acquire_task_control_lock "$id"
+  require_tasks_axi
+  task_show "$id" || fail "question task $id is absent"
+  show=$TASK_SHOW_OUTPUT
+  [ "$(show_field_value "$show" state)" != "done" ] && [ "$(show_field_value "$show" hold_kind)" = captain ] \
+    || fail "question is no longer open"
+  body=$(show_field_value "$show" body)
+  previous=$(question_handoff_version "$body")
+  if [ -n "$previous" ]; then
+    [ "$version" = "$previous" ] || fail "question is already handed to Firstmate"
+  else
+    question_version_guard "$version" "$show"
+  fi
+  request="delo-question-handoff-$version"
+  "$SCRIPT_DIR/fm-inbox.sh" note --request-id "$request" --json -- \
+    "Delo question handoff: $id. Next action owner: Firstmate. Read the authoritative task and classify with ask-user-authority. Answer only within existing authority, using answers --actor firstmate --source firstmate for your own words. Independent merge, discard and security gates remain in force. Delegation is not an answer or approval. If exclusive captain authority is required, return a genuine call with fm-captain-hold.sh hold $id --reason <full-question>." \
+    >/dev/null || rc=$?
+  [ "$rc" -eq 0 ] || fail "question handoff or its Firstmate wake was not confirmed; retry the same handoff"
+  [ -n "$previous" ] || write_question_handoff "$id" "$body" "$version"
+  printf 'handed-off: %s\n' "$id"
+}
+
 write_hold_set_stamp() {  # <task-id> <shown-body> <timestamp> <preserve-existing-0-or-1>
   local id=$1 body=$2 hold_set=$3 preserve=$4 existing new_body tmp
   body=$(decode_shown_value "$body") \
@@ -1043,6 +1149,10 @@ command_hold() {
   show=$TASK_SHOW_OUTPUT
   hold_kind=$(show_field_value "$show" hold_kind)
   [ "$hold_kind" = captain ] || fail "task $id did not retain its captain hold"
+  if [ -n "$(question_handoff_version "$(show_field_value "$show" body)")" ]; then
+    write_question_handoff "$id" "$(show_field_value "$show" body)" ''
+    task_show_or_fail "$id" "task $id disappeared while returning its question"
+  fi
   occurrence=$(( $(resolution_record_count "$(show_field "$show" body)") + 1 ))
   [ -n "$(body_hold_set_timestamp "$(show_field_value "$show" body)")" ] \
     || fail "task $id lost its hold-set stamp while being held"
@@ -1143,13 +1253,15 @@ remove_interrupted_answer_stamp() {  # <task-id>
 }
 
 command_answer() {
-  local id=${1:-} decision_file='' release=0 show state hold_kind body outcome recorded_mode occurrence
+  local id=${1:-} decision_file='' release=0 expected_version='' show state hold_kind body outcome recorded_mode occurrence
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --decision-file) shift; decision_file=${1:-} ;;
       --release) release=1 ;;
+      --actor) shift; DECISION_ACTOR=${1:-}; case "$DECISION_ACTOR" in captain|firstmate) : ;; *) fail "actor must be captain or firstmate" ;; esac ;;
+      --expected-version) shift; expected_version=${1:-}; [ -n "$expected_version" ] || fail "expected version is required" ;;
       *) usage >&2; exit 2 ;;
     esac
     shift
@@ -1160,9 +1272,13 @@ command_answer() {
   require_tasks_axi
   task_show "$id" || fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
   show=$TASK_SHOW_OUTPUT
+  question_version_guard "$expected_version" "$show"
   state=$(show_field "$show" state)
   hold_kind=$(show_field_value "$show" hold_kind)
   body=$(show_field "$show" body)
+  if body_has_resolution_record "$body" && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
+    [ "$(recorded_resolution_actor "$body")" = "$DECISION_ACTOR" ] || fail "resolution actor differs from the recorded answer"
+  fi
   if [ "$release" = 1 ]; then outcome=released; else outcome=answered; fi
   # The occurrence the parent line names: the record about to be written is
   # one past those already in the body, and a retry names the newest one.
@@ -1330,11 +1446,19 @@ command_binding() {
 # The durable captain decision one keyed answer records. Pure function of its
 # inputs, so the same answer delivered twice is idempotent rather than a
 # conflicting decision.
-keyed_decision_text() {  # <source> <task-id> <answer> <label>
-  printf 'Captain answered this call through %s.\n' "$1"
+keyed_decision_text() {  # <source> <task-id> <answer> <label> [actor]
+  if [ "${5:-captain}" = firstmate ]; then
+    printf 'Firstmate answered this call through %s.\n' "$1"
+  else
+    printf 'Captain answered this call through %s.\n' "$1"
+  fi
   printf 'Task: %s\n' "$2"
   printf 'Answer: %s\n' "$3"
-  [ -z "$4" ] || printf 'Answer as shown to the captain: %s\n' "$4"
+  if [ "${5:-captain}" = firstmate ]; then
+    [ -z "$4" ] || printf 'Answer action: %s\n' "$4"
+  else
+    [ -z "$4" ] || printf 'Answer as shown to the captain: %s\n' "$4"
+  fi
 }
 
 legacy_keyed_decision_text() {  # <source> <key> <answer> <label>
@@ -1355,12 +1479,15 @@ sanitize_reconcile_provenance() {
 command_answers() {
   local origin='' source='' row rest key answer label mode id show state hold_kind body digest legacy_digest legacy_key
   local recorded_digest recorded_mode occurrence tmp err closed=0 skipped=0 reason release_flag tab=$'\t'
-  local resolve_rc wake=0 closed_ids='' wake_rc=0
+  local resolve_rc wake=0 closed_ids='' wake_rc=0 expected_version='' actor=captain
+  local version_args=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --source) shift; source=${1:-} ;;
       --any-origin) origin=$BINDING_ANY ;;
       --wake) wake=1 ;;
+      --actor) shift; actor=${1:-}; case "$actor" in captain|firstmate) : ;; *) fail "actor must be captain or firstmate" ;; esac ;;
+      --expected-version) shift; expected_version=${1:-}; [ -n "$expected_version" ] || fail "expected version is required" ;;
       --*) usage >&2; exit 2 ;;
       *)
         [ -z "$origin" ] || { usage >&2; exit 2; }
@@ -1374,6 +1501,7 @@ command_answers() {
   fi
   [ -n "$source" ] || fail "--source provenance is required so the durable decision records where the answer came from"
   source=$(sanitize_field "$source")
+  [ -z "$expected_version" ] || version_args=(--expected-version "$expected_version")
   require_tasks_axi
   tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-keyed-decision.XXXXXX") || fail "cannot stage the captain decision"
   err=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-keyed-decision-err.XXXXXX") \
@@ -1427,7 +1555,7 @@ command_answers() {
       skipped=$((skipped + 1))
       continue
     fi
-    keyed_decision_text "$source" "$id" "$answer" "$label" > "$tmp" \
+    keyed_decision_text "$source" "$id" "$answer" "$label" "$actor" > "$tmp" \
       || fail "cannot stage the captain decision for $id"
     digest=$(sha256_text "$(cat "$tmp")")
     legacy_digest=''
@@ -1449,7 +1577,7 @@ command_answers() {
     body=$(show_field "$show" body)
     recorded_digest=$(recorded_decision_digest "$body" || true)
     recorded_mode=$(recorded_resolution_mode "$body" || true)
-    if body_has_resolution_record "$body" \
+    if [ -z "$expected_version" ] && body_has_resolution_record "$body" \
       && { [ "$recorded_digest" = "$digest" ] \
         || { case "$body" in *"Resolution recorded by fm-decision-hold."*) true ;; *) false ;; esac \
           && [ -n "$legacy_digest" ] && [ "$recorded_digest" = "$legacy_digest" ]; }; }; then
@@ -1480,7 +1608,7 @@ command_answers() {
       continue
     fi
     # shellcheck disable=SC2086  # release_flag is empty or a single literal flag.
-    if "$0" answer "$id" --decision-file "$tmp" $release_flag </dev/null >/dev/null 2>"$err"; then
+    if "$0" answer "$id" --decision-file "$tmp" --actor "$actor" $release_flag ${version_args[@]+"${version_args[@]}"} </dev/null >/dev/null 2>"$err"; then
       # A parent-channel delivery problem is reported on stderr by the answer
       # path even when the close succeeded; keep it visible.
       [ ! -s "$err" ] || cat "$err" >&2
@@ -1498,7 +1626,7 @@ command_answers() {
   if [ "$wake" = 1 ] && [ "$closed" -gt 0 ]; then
     # The key carries the ids because a drain shows one row per kind and key.
     fm_wake_append check "captain-answers:$(printf '%s' "${closed_ids# }" | tr ' ' ',')" \
-      "check: captain answered through $source:$closed_ids" || wake_rc=$?
+      "check: $actor answered through $source:$closed_ids" || wake_rc=$?
     [ "$wake_rc" -eq 0 ] \
       || printf 'fm-captain-hold: answers recorded but firstmate was NOT woken (rc=%s)\n' "$wake_rc" >&2
   fi
@@ -2476,6 +2604,8 @@ case "${1:-}" in
   verify) shift; command_verify "$@" ;;
   completion-task) shift; command_completion_task "$@" ;;
   handoff-completion) shift; command_handoff_completion "$@" ;;
+  question) shift; command_question "$@" ;;
+  handoff) shift; command_handoff "$@" ;;
   open) shift; command_open "$@" ;;
   diverged) shift; command_diverged "$@" ;;
   reconcile) shift; command_reconcile "$@" ;;
