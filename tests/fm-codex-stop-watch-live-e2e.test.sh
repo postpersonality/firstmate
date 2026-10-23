@@ -43,7 +43,7 @@ fm_codex_stop_native_cleanup() {
     source="$LAB/after"
     if [ -d "$source" ] && [ ! -L "$source" ]; then
       : > "$RECEIPT_DIR/manifest.txt" || failed=1
-      for name in api.jsonl native-stops.jsonl native-results.jsonl native-starts.jsonl native-env server.stderr; do
+      for name in api.jsonl native-stops.jsonl native-results.jsonl native-starts.jsonl native-initial-wake.json native-env server.stderr; do
         if [ -f "$source/$name" ] && [ ! -L "$source/$name" ]; then
           if cp -- "$source/$name" "$RECEIPT_DIR/$name" && chmod 600 "$RECEIPT_DIR/$name"; then
             printf 'captured %s\n' "$name" >> "$RECEIPT_DIR/manifest.txt" || failed=1
@@ -53,7 +53,7 @@ fm_codex_stop_native_cleanup() {
           fi
         else
           printf 'absent %s\n' "$name" >> "$RECEIPT_DIR/manifest.txt" || failed=1
-          case "$name" in api.jsonl|native-stops.jsonl|native-results.jsonl|native-starts.jsonl) failed=1 ;; esac
+          case "$name" in api.jsonl|native-stops.jsonl|native-results.jsonl|native-starts.jsonl|native-initial-wake.json) failed=1 ;; esac
         fi
       done
       chmod 600 "$RECEIPT_DIR/manifest.txt" || failed=1

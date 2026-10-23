@@ -136,8 +136,6 @@ else:
             check = self.home / "state/lab.check.sh"
             check.write_text("#!/usr/bin/env bash\nexit 1\n")
             check.chmod(0o700)
-            subprocess.run(["bash", self.home / "bin/fm-check-register.sh", "lab"],
-                           env=self.env, check=True, stdout=subprocess.DEVNULL)
         # One other synchronous hook compels the first continuation. This is
         # the disconfirming path the old unconditional loop flag suppresses.
         (self.home / "primer.sh").write_text(
@@ -211,6 +209,44 @@ else:
             "config": {"bypass_hook_trust": True, "project_doc_max_bytes": 0},
         })
         self.thread = result["thread"]["id"]
+        if self.standalone:
+            # Handle only the initial working signal through public owners before the first reply.
+            checkpoint = subprocess.run(
+                ["bash", self.home / "bin/fm-watch-checkpoint.sh", "--seconds", "20"],
+                cwd=self.home, env=self.env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            drain = subprocess.run(["bash", self.home / "bin/fm-wake-drain.sh"],
+                                   cwd=self.home, env=self.env, text=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ack_line = next((line for line in drain.stderr.splitlines()
+                             if line.startswith("WAKE_ACK_REQUIRED:")), "")
+            ack_command = ack_line.split(" run ", 1)[1] if " run " in ack_line else ""
+            rows = [line for line in drain.stdout.splitlines() if len(line.split("\t")) == 5]
+            ack = None
+            if drain.returncode == 0 and len(rows) == 1 and "worker.status" in rows[0] \
+                    and ack_command.startswith("bin/fm-wake-drain.sh --ack-through "):
+                ack = subprocess.run(ack_command.split(), cwd=self.home, env=self.env, text=True,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (self.home / "native-initial-wake.json").write_text(json.dumps({
+                "checkpoint": {"status": checkpoint.returncode, "stdout": checkpoint.stdout,
+                               "stderr": checkpoint.stderr},
+                "drain": {"status": drain.returncode, "stdout": drain.stdout,
+                          "stderr": drain.stderr},
+                "ack_command": ack_command,
+                "ack": None if ack is None else {"status": ack.returncode, "stdout": ack.stdout,
+                                                  "stderr": ack.stderr},
+            }, indent=2) + "\n")
+            assert checkpoint.returncode == 0 and "signal:" in checkpoint.stdout, \
+                "the initial working status did not surface through the public checkpoint"
+            assert "check:" not in checkpoint.stdout, "the initial checkpoint produced an unrelated check"
+            assert drain.returncode == 0 and len(rows) == 1 and "worker.status" in rows[0], \
+                "the public wake drain did not present only the initial working status"
+            assert ack_command.startswith("bin/fm-wake-drain.sh --ack-through ") and ack and ack.returncode == 0, \
+                "the initial working status was not acknowledged through its printed public command"
+            queue = self.home / "state/.wake-queue"
+            assert not queue.exists() or not queue.read_text(), "the initial status acknowledgement left wakes queued"
+        if (self.home / "state/lab.check.sh").exists():
+            subprocess.run(["bash", self.home / "bin/fm-check-register.sh", "lab"],
+                           env=self.env, check=True, stdout=subprocess.DEVNULL)
         no_event = (
             "If there is no event, run bash bin/fm-watch-checkpoint.sh --seconds \"${FM_CODEX_WATCH_CHECKPOINT:-180}\". "
             "When that bounded checkpoint is quiet, drain again and start another normal checkpoint; "
