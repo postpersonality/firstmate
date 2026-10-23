@@ -84,6 +84,10 @@
 #              recorded one, and a different effort, or a replacement runtime
 #              that cannot carry the pin natively, refuses before the old agent
 #              stops.
+#              A replacement profile outside this home's allowed worker
+#              profiles (bin/fm-worker-profile-lib.sh, configured in
+#              config/crew-dispatch.json) refuses here too, before the old agent
+#              stops, and the launch owner re-checks the same profile.
 #              --note is required for a ship or scout, whose replacement
 #              inherits the local copy but none of the conversation; a
 #              secondmate reconciles its own home's records at startup, so its
@@ -190,6 +194,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-exclude-tools-lib.sh"
 # shellcheck source=bin/fm-worker-effort-lib.sh
 . "$SCRIPT_DIR/fm-worker-effort-lib.sh"
+# shellcheck source=bin/fm-worker-profile-lib.sh
+. "$SCRIPT_DIR/fm-worker-profile-lib.sh"
 
 POLL=${FM_CONTROL_POLL:-0.5}
 SETTLE_WAIT=${FM_CONTROL_SETTLE_WAIT:-5}
@@ -1009,8 +1015,23 @@ resolve_relaunch_profile() {
   else
     TARGET_EFFORT=default
   fi
+  # The worker profile guard runs here too, on the same pre-stop side of the
+  # transaction as the pins below: a replacement profile outside this home's
+  # allowed worker profiles must leave the running agent, its work, and its
+  # endpoint untouched. bin/fm-spawn.sh --relaunch re-checks the same profile,
+  # so neither path alone is the authority. A secondmate agent keeps its own
+  # config/secondmate-harness scope.
+  local profile_pin_override='' profile_guard_line
+  if [ "$KIND" != secondmate ]; then
+    profile_guard_line=$(fm_worker_profile_guard_resolve "$config" "$TARGET_HARNESS" "$TARGET_MODEL" "$TARGET_EFFORT" 0) || return 1
+    IFS=$'\t' read -r TARGET_HARNESS TARGET_MODEL TARGET_EFFORT profile_pin_override <<EOF
+$profile_guard_line
+EOF
+  fi
   # The launch owner applies the same pin, but only after the old agent stops.
-  TARGET_EFFORT=$(fm_worker_effort_apply "$config" "$TARGET_EFFORT" "$TARGET_HARNESS" "$TARGET_MODEL" 0) || return 1
+  # profile_pin_override carries an allowed profile's declared standing
+  # exception, which is evaluated here before the pin can reject the level.
+  TARGET_EFFORT=$(fm_worker_effort_apply "$config" "$TARGET_EFFORT" "$TARGET_HARNESS" "$TARGET_MODEL" 0 "$profile_pin_override") || return 1
   if [ "$TARGET_EFFORT" = ultra ]; then
     "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$TARGET_HARNESS" "$TARGET_MODEL" "$TARGET_EFFORT" || return 1
   fi
@@ -1053,7 +1074,8 @@ resolve_relaunch_profile() {
       fi
     fi
     fm_worker_effort_validate_pi_capability "$config" "$TARGET_HARNESS" "$pi_executable" \
-      "$TARGET_MODEL" "$WT" "$account_root" "$account_provider" "$pi_session_ref" "$pi_approve" || return 1
+      "$TARGET_MODEL" "$WT" "$account_root" "$account_provider" "$pi_session_ref" "$pi_approve" \
+      "$profile_pin_override" || return 1
   fi
   # Likewise config/crew-exclude-tools: a malformed file, or a replacement
   # runtime that cannot hide the listed tools, refuses here, before the old

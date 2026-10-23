@@ -188,23 +188,33 @@ fm_worker_effort_effective_pin() {
   printf '%s' "$pin"
 }
 
-# fm_worker_effort_apply <config-dir> <requested> <harness> <model> <raw 0|1>:
+# fm_worker_effort_apply <config-dir> <requested> <harness> <model> <raw 0|1>
+#   [<allowed-profile-level>]:
 # print the effort this launch must use. Without a pin that is <requested>
 # unchanged. With a pin, an omitted request ('', '-', default) resolves to the
 # pin, and a different request, a raw launch, or a runtime that cannot carry the
-# pinned level natively is refused.
+# pinned level natively is refused. <allowed-profile-level> is the one exception
+# the worker profile guard may supply: an allowed profile that declares it as
+# its own standing override may run at that exact level while the pin stays in
+# force for every other launch. The native-setting check still applies to it.
 fm_worker_effort_apply() {
-  local config=$1 requested=$2 harness=$3 model=$4 raw=$5 pin native
+  local config=$1 requested=$2 harness=$3 model=$4 raw=$5 allow_level=${6:-} pin native effective
   pin=$(fm_worker_effort_effective_pin "$config") || return 1
   if [ -z "$pin" ]; then
     printf '%s' "$requested"
     return 0
   fi
+  effective=$pin
   case "$requested" in
-  '' | - | default | "$pin") ;;
+  '' | - | default) ;;
+  "$pin") ;;
   *)
-    echo "error: config/crew-effort pins worker effort to $pin, but this launch requests $requested; omit the effort or request $pin" >&2
-    return 1
+    if [ -n "$allow_level" ] && [ "$allow_level" = "$requested" ]; then
+      effective=$requested
+    else
+      echo "error: config/crew-effort pins worker effort to $pin, but this launch requests $requested; omit the effort or request $pin" >&2
+      return 1
+    fi
     ;;
   esac
   if [ "$raw" = 1 ]; then
@@ -216,26 +226,41 @@ fm_worker_effort_apply() {
     return 1
   fi
   case "$model" in - | default) model= ;; esac
-  native=$(fm_effort_flag_for_harness "$harness" "$pin" "$model")
+  native=$(fm_effort_flag_for_harness "$harness" "$effective" "$model")
   if [ -z "$native" ]; then
-    echo "error: config/crew-effort pins worker effort to $pin, but the $harness runtime${model:+ with model $model} has no verified native setting for it, so this launch is refused rather than running without it; choose a runtime that supports $pin or remove the pin" >&2
+    if [ "$effective" = "$pin" ]; then
+      echo "error: config/crew-effort pins worker effort to $pin, but the $harness runtime${model:+ with model $model} has no verified native setting for it, so this launch is refused rather than running without it; choose a runtime that supports $pin or remove the pin" >&2
+    else
+      echo "error: the allowed worker profile at $effective has no verified native setting on the $harness runtime${model:+ with model $model}, so this launch is refused rather than running at the runtime default" >&2
+    fi
     return 1
   fi
-  printf '%s' "$pin"
+  printf '%s' "$effective"
 }
 
 # fm_worker_effort_validate_pi_capability <config-dir> <harness> <executable>
 #   <model|default> <cwd> <agent-dir|empty> <provider|empty> <session-ref|empty>
-#   <approved-project 0|1>
+#   <approved-project 0|1> [<level>]
 # A configured/forwarded pin must exist in Pi's native supported-level list for
 # the model Pi will actually select. The checker uses the selected account root,
 # reads any resumed session without changing it, and runs offline with in-memory
-# model/auth stores. Unpinned launches never invoke it.
+# model/auth stores. Unpinned launches never invoke it. <level> replaces the pin
+# for an allowed worker profile that declares its own standing effort override,
+# so the exception is verified against Pi instead of being taken on trust.
 fm_worker_effort_validate_pi_capability() {
-  local config=$1 harness=$2 executable=$3 model=$4 cwd=$5 agent_dir=$6 provider=$7 session_ref=$8 approve=$9
+  local config=$1 harness=$2 executable=$3 model=$4 cwd=$5 agent_dir=$6 provider=$7 session_ref=$8 approve=$9 level=${10:-}
   local pin fallback out rc
   pin=$(fm_worker_effort_effective_pin "$config") || return 1
   [ -n "$pin" ] || return 0
+  # The checker owns only the levels a config/crew-effort pin may carry. A lower
+  # allowed-profile exception is applied through the runtime's own verified
+  # effort flag, which the worker profile guard has already required, and it is
+  # never the pinned level itself, so there is no clamp here to verify.
+  case "$level" in
+  '' ) ;;
+  xhigh | max) pin=$level ;;
+  *) return 0 ;;
+  esac
   case "$harness" in pi | pi-signed) ;; *) return 0 ;; esac
   [ -x "$executable" ] || {
     echo "error: cannot verify the pinned Pi effort because the selected $harness executable is unavailable" >&2

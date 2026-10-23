@@ -8,7 +8,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | What you want to configure | Start here |
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
-| Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
+| Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend), [harness support](#harness-support), and [worker profile guard](#worker-profile-guard-worker_profilesallowed) |
 | Worker permissions, accounts, or environment | [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker effort pin](#worker-effort-pin-configcrew-effort), and [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), and [Calm preference](#calm-preference-configcalm) |
@@ -993,6 +993,7 @@ The pin covers ship, scout, and batch spawns, local and remote secondmate agents
 A launch that names no effort, or `default` where that command accepts it, runs at the pinned level, and the task record shows that level.
 A relaunch with no explicit effort also takes the pin rather than the effort recorded for the previous run.
 A launch that names a different effort, through `--effort`, a dispatch profile, or a `config/secondmate-harness` effort token, refuses; the pin never raises or lowers a requested level for it.
+The one exception is an allowed worker profile that declares its own `effort_pin_override`, which is owned by [the worker profile guard](#worker-profile-guard-worker_profilesallowed).
 Align those profiles and tokens with the pin, or omit their effort.
 
 Every refusal happens before a new worker's endpoint, local copy, or task record exists, and before a relaunch stops the running worker. A pinned `pi` or `pi-signed` launch also resolves the model Pi will actually select with that account's native model runtime and refuses if Pi would clamp the pinned level; this preflight is offline and read-only.
@@ -1158,6 +1159,7 @@ Firstmate resolves the rule's profile object or array under `AGENTS.md` section 
 **Spawn requirements**
 
 - When the file exists, `fm-spawn.sh` enforces that contract by refusing crewmate and scout spawns that lack an explicit harness (`--harness`, a positional adapter, or a raw launch command).
+- When the file also declares `worker_profiles.allowed`, that allowlist further restricts which profiles may launch, including raw launch commands ([worker profile guard](#worker-profile-guard-worker_profilesallowed)).
 - Batch spawns satisfy the same requirement with a shared `--harness`.
 - Secondmate spawns are exempt and still resolve through `config/secondmate-harness` and its optional model and effort tokens.
 
@@ -1258,6 +1260,38 @@ See [`docs/examples/crew-dispatch.json`](examples/crew-dispatch.json) for a star
 **Inheritance**
 
 Secondmate homes inherit this file from the primary, so a secondmate's own crewmates apply the same dispatch profile behavior.
+
+## Worker profile guard (worker_profiles.allowed)
+
+The optional top-level `worker_profiles.allowed` list in `config/crew-dispatch.json` turns that file into an enforced allowlist of worker profiles for this home, so the tool itself refuses a profile instead of relying on firstmate to remember the rule.
+This section is the single owner of the block's format and its operator contract; `bin/fm-worker-profile-lib.sh` owns the decision and states the exact refusal messages.
+
+```json
+{
+  "worker_profiles": {
+    "allowed": [
+      { "harness": "pi", "model": "<provider>/<model-id>", "effort": "high", "effort_pin_override": "high" }
+    ]
+  },
+  "default": { "harness": "pi", "model": "<provider>/<model-id>", "effort": "high" }
+}
+```
+
+- The block's presence is the opt-in, and an absent block leaves every launch exactly as it was.
+- Every allowed profile needs a non-empty `harness`, `model`, and `effort`, and `harness` must be a verified adapter from [harness support](#harness-support).
+- `effort` must be a level that runtime applies natively, through the mapping owned by `bin/fm-worker-effort-lib.sh`; a declared level the runtime cannot carry refuses the launch rather than silently running at the runtime default.
+- `effort_pin_override` is optional and must equal that profile's `effort`; it is the standing exception that lets one approved profile run at its own level while [`config/crew-effort`](#worker-effort-pin-configcrew-effort) pins something else.
+- While the block is present, every crewmate and scout launch must resolve a harness, model, and effort that equal one allowed profile exactly.
+- An omitted model or effort never matches, because a runtime's own default is exactly the inheritance this guard removes; a launch that names no harness keeps the existing dispatch consultation refusal rather than resolving the primary's runtime.
+- The model string carries the provider identity, so a Codex-backed model behind the `pi` harness is a different model string and is refused: the harness name alone is never the boundary.
+- Every configured rule `use` profile and the top-level `default` profile must be a member of `allowed`, and startup diagnostics report a malformed, empty, duplicate, non-member, or unreadable block.
+- A malformed block refuses launches; it is never read as the absence of a policy.
+- A raw launch command is refused while the block is present, because Firstmate cannot verify which profile it would run.
+- A refused launch happens before any task record, isolated copy, endpoint, or launcher invocation exists.
+- Ship, scout, and batch launches are covered by the same check, because each batch pair re-enters the same launch path.
+- A relaunch is refused before the running agent stops, and the launch path re-checks the same replacement profile; under this block a relaunch names its allowed profile explicitly rather than relying on a recorded default.
+- A secondmate agent is a separate scope: it resolves through [`config/secondmate-harness`](#choose-the-secondmate-harness), which is already an explicit pin, while a secondmate home's own crewmates inherit this block like the rest of the file.
+- Removing the block restores the previous behavior with no state to migrate.
 
 ## Typed dispatch resolution (.env TYPESAFE_API_KEY)
 

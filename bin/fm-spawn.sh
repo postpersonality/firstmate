@@ -358,6 +358,14 @@
 #   docs/configuration.md "Worker effort pin" owns config/crew-effort and its
 #   operator contract. bin/fm-worker-effort-lib.sh owns the pin check and the
 #   native effort flags; it runs before provisioning.
+# Worker profile guard (config/crew-dispatch.json worker_profiles.allowed):
+#   docs/configuration.md "Worker profile guard" owns the block and its operator
+#   contract. bin/fm-worker-profile-lib.sh owns the decision: it runs on every
+#   crewmate and scout launch - ship, scout, batch (each pair re-enters this
+#   path), and --relaunch - once harness, model, and effort are resolved and
+#   before any task record, isolated copy, endpoint, or launcher exists, and it
+#   supplies the one allowed per-profile effort exception to the pin above. A
+#   secondmate agent keeps its own config/secondmate-harness scope.
 # Worker account pin (config/claude-account, config/pi-account):
 #   Opt-in. With no file, a Claude or Pi launch is unchanged: Claude still
 #   receives this process's own CLAUDE_CONFIG_DIR when it is set, and Pi the
@@ -688,6 +696,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-worker-account-lib.sh"
 # shellcheck source=bin/fm-worker-effort-lib.sh
 . "$SCRIPT_DIR/fm-worker-effort-lib.sh"
+# shellcheck source=bin/fm-worker-profile-lib.sh
+. "$SCRIPT_DIR/fm-worker-profile-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -2596,7 +2606,22 @@ if [ "$KIND" = secondmate ] && [ -z "$ARG3" ]; then
     fi
   fi
 fi
-EFFORT=$(fm_worker_effort_apply "$CONFIG" "$EFFORT" "$HARNESS" "$MODEL" "$RAW_LAUNCH") || exit 1
+# Worker profile guard (docs/configuration.md "Worker profile guard"): when the
+# home's config/crew-dispatch.json declares worker_profiles.allowed, the fully
+# resolved harness, model, and effort must equal one declared profile. This runs
+# before the effort pin so a declared standing exception is applied first, and it
+# runs before every provisioning step, so a refused profile leaves no task
+# record, isolated copy, endpoint, or launcher invocation behind. Ship, scout,
+# batch (each pair re-execs this path), and --relaunch all pass through here; a
+# secondmate agent keeps its own config/secondmate-harness scope.
+PROFILE_PIN_OVERRIDE=
+if [ "$KIND" != secondmate ]; then
+  PROFILE_GUARD_LINE=$(fm_worker_profile_guard_resolve "$CONFIG" "$HARNESS" "$MODEL" "$EFFORT" "$RAW_LAUNCH") || exit 1
+  IFS=$'\t' read -r HARNESS MODEL EFFORT PROFILE_PIN_OVERRIDE <<EOF
+$PROFILE_GUARD_LINE
+EOF
+fi
+EFFORT=$(fm_worker_effort_apply "$CONFIG" "$EFFORT" "$HARNESS" "$MODEL" "$RAW_LAUNCH" "$PROFILE_PIN_OVERRIDE") || exit 1
 # Ultra is an explicit native capability, never a Pi thinking-level alias.
 # Validate the fully resolved profile before worktree or endpoint provisioning.
 if [ "$EFFORT" = ultra ]; then
@@ -3133,7 +3158,8 @@ else
     # the selected project's files while matching Pi's untrusted-project model
     # selection, before slot, endpoint, or worktree side effects.
     fm_worker_effort_validate_pi_capability "$CONFIG" "$HARNESS" "${PI_BIN:-}" \
-      "$MODEL" "$PROJ_ABS" "$WORKER_ACCOUNT_ROOT" "$WORKER_ACCOUNT_PROVIDER" "" 2 || exit 1
+      "$MODEL" "$PROJ_ABS" "$WORKER_ACCOUNT_ROOT" "$WORKER_ACCOUNT_PROVIDER" "" 2 \
+      "$PROFILE_PIN_OVERRIDE" || exit 1
   fi
 fi
 # Project capacity admission (bin/fm-project-capacity-lib.sh owns the

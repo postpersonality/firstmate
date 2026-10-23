@@ -726,6 +726,47 @@ test_prefixed_recorded_harness_requires_explicit_replacement() {
   pass "fm-control relaunch: a prefixed command requires an explicit replacement harness"
 }
 
+# The worker profile guard must refuse on the PRE-STOP side of the transaction:
+# a replacement profile outside this home's allowed set may not stop the agent
+# that already holds the task, its work, and its endpoint, and the permitted
+# replacement still has to carry the declared profile level.
+test_worker_profile_guard_refuses_a_forbidden_relaunch_before_stop() {
+  local dir out rc id=rl-guard meta launch
+  dir=$(new_case guard-relaunch "$id")
+  add_ship_task "$dir" "$id" pi
+  meta="$dir/home/state/$id.meta"
+  sed 's|^model=default$|model=litellm/deepseek/deepseek-v4-flash|; s/^effort=default$/effort=high/' \
+    "$meta" > "$meta.tmp"
+  mv "$meta.tmp" "$meta"
+  printf pi > "$dir/fake/command"
+  printf pi > "$dir/fake/becomes"
+  printf '#!/usr/bin/env bash\nprintf "Options: --tui-mode\\n"\n' > "$dir/fakebin/pi"
+  chmod +x "$dir/fakebin/pi"
+  mkdir -p "$dir/home/config"
+  printf 'xhigh\n' > "$dir/home/config/crew-effort"
+  printf '%s\n' '{"worker_profiles":{"allowed":[{"harness":"pi","model":"litellm/deepseek/deepseek-v4-flash","effort":"high","effort_pin_override":"high"}]}}' \
+    > "$dir/home/config/crew-dispatch.json"
+  cp "$meta" "$dir/meta.before"
+
+  out=$(run_control "$dir" "$id" relaunch --harness codex --model gpt-5.6-sol --effort xhigh --note "forbidden profile"); rc=$?
+  expect_code 1 "$rc" "a relaunch onto a forbidden profile must refuse"
+  assert_contains "$out" "is not an allowed worker profile" "the refusal should name the allowed-profile policy"
+  [ "$(cat "$dir/fake/command")" = pi ] || fail "a forbidden relaunch stopped the running agent"
+  [ ! -s "$dir/fake/literal" ] && [ ! -s "$dir/fake/keys" ] \
+    || fail "a forbidden relaunch delivered lifecycle input"
+  cmp -s "$dir/meta.before" "$meta" || fail "a forbidden relaunch changed the task record"
+  [ ! -e "$dir/home/state/$id.control-relaunch" ] || fail "a forbidden relaunch created a durable journal"
+
+  # The same worker may still be replaced by the profile it is allowed to run,
+  # and the declared exception survives the retained global pin.
+  out=$(run_control "$dir" "$id" relaunch --effort high --note "approved profile"); rc=$?
+  expect_code 0 "$rc" "the approved profile relaunch failed: $out"
+  launch=$(cat "$dir/fake/literal")
+  assert_contains "$launch" "--thinking 'high'" "the replacement did not carry the declared profile effort"
+  [ "$(meta_field "$dir" "$id" effort)" = high ] || fail "the replacement lost the declared effort"
+  pass "fm-control relaunch: the worker profile guard refuses before stopping and the approved profile still relaunches"
+}
+
 test_same_harness_relaunch_keeps_the_profile_axes() {
   local dir out rc
   dir=$(new_case keepprofile rl6)
@@ -2668,6 +2709,7 @@ test_harness_switch_moves_the_record_and_clears_prior_wiring
 test_harness_switch_does_not_carry_the_old_profile_axes
 test_harness_switch_resolves_a_prefixed_recorded_harness
 test_prefixed_recorded_harness_requires_explicit_replacement
+test_worker_profile_guard_refuses_a_forbidden_relaunch_before_stop
 test_same_harness_relaunch_keeps_the_profile_axes
 test_native_ultra_relaunch_preserves_profile_and_rejects_before_stop
 test_signed_out_worker_account_pin_refuses_before_stop

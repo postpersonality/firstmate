@@ -1088,9 +1088,33 @@ crew_dispatch_validate() {
       elif ($value | type) == "object" then [$value]
       else []
       end;
+    def allowed_objects:
+      [(.worker_profiles.allowed // [])[]? | select(type == "object")];
+    def profile_tuple: {h: .harness, m: .model, e: .effort};
     def configured_profiles:
       ([(.rules // [])[]? | profiles(.use?)[]?]
-        + (if has("default") then [profiles(.default)[]?] else [] end));
+        + (if has("default") then [profiles(.default)[]?] else [] end)
+        + (if (.worker_profiles.allowed? | type) == "array" then [.worker_profiles.allowed[]?] else [] end));
+    # docs/configuration.md "Worker profile guard" owns the block and
+    # bin/fm-worker-profile-lib.sh enforces it at launch; this is the same policy
+    # stated as one startup diagnostic, so a mistaken entry is reported once at
+    # session start instead of only at the next refused launch.
+    def worker_profiles_error:
+      if (.worker_profiles | type) != "object" then "worker_profiles must be an object"
+      elif (.worker_profiles | has("allowed") | not) then "worker_profiles needs an allowed list"
+      elif (.worker_profiles.allowed | type) != "array" then "worker_profiles.allowed must be an array"
+      elif (.worker_profiles.allowed | length) == 0 then "worker_profiles.allowed needs at least one profile"
+      elif ([.worker_profiles.allowed[]? | select(type != "object")] | length) > 0 then "each allowed profile must be an object"
+      elif ([allowed_objects[] | select(((.harness? | type) != "string") or (.harness | length) == 0 or ((.model? | type) != "string") or (.model | length) == 0 or ((.effort? | type) != "string") or (.effort | length) == 0)] | length) > 0 then "each allowed profile needs a non-empty harness, model, and effort"
+      elif ([allowed_objects[] | select(has("effort_pin_override") and (((.effort_pin_override | type) != "string") or (.effort_pin_override != .effort)))] | length) > 0 then "an allowed effort_pin_override must equal the profile effort"
+      elif ([allowed_objects[] | profile_tuple] | length) != ([allowed_objects[] | profile_tuple] | unique | length) then "worker_profiles.allowed repeats a profile"
+      else
+        ([allowed_objects[] | profile_tuple]) as $allowed
+        | ([(.rules // [])[]? | profiles(.use?)[]?] + (if has("default") then [profiles(.default)[]?] else [] end)
+           | map(select(type == "object") | profile_tuple)
+           | map(select(. as $t | ($allowed | index($t)) == null)))
+        | if length > 0 then "a configured rule or default profile is not in worker_profiles.allowed" else "" end
+      end;
     def malformed_optional_fields($items):
       ($items | any(has("model") and (((.model | type) != "string") or (.model | length) == 0)))
       or ($items | any(has("effort") and (((.effort | type) != "string") or (.effort | length) == 0)))
@@ -1144,6 +1168,7 @@ crew_dispatch_validate() {
       else "default profile model and effort must be non-empty strings when present"
       end
     elif $typed and has("default") and malformed_profile_floors([profiles(.default)[]?]) then "default profile floor needs scope and min_percent 0..100"
+    elif has("worker_profiles") and (worker_profiles_error | length) > 0 then worker_profiles_error
     else
       (configured_profiles
         | map(.harness)
