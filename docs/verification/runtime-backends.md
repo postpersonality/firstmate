@@ -2527,3 +2527,37 @@ Without Firstmate's hooks, Herdr reported the question panel as `blocked`, which
 This live proof covers the watcher and queue boundary; it does not establish live daemon-consumer delivery.
 `bin/fm-test-run.sh tests/fm-daemon.test.sh` exercises that consumer routing separately with portable regressions for busy escalation and busy-bookkeeping failures in away and quiet mode.
 Repeat the hooked-worker check above before publication if watcher or task-inbox busy code changes; `bin/fm-test-run.sh tests/fm-task-inbox.test.sh` refreshes the portable ladder regressions.
+
+## External session binding
+
+2026-10-23: Linux, Pi 1.3.0, Herdr 0.8.2 client.
+Collector использует общий process sampler и существующих владельцев native family/process; внешние привязки не выдают себя за spawned metadata.
+Контракт команд хранится в [`bin/fm-attach.sh`](../../bin/fm-attach.sh); [`tests/fm-external-session.test.sh`](../../tests/fm-external-session.test.sh) проверяет идентичность, отказ после смены сессии, сохранение внешней папки, идемпотентность и DoD gate.
+
+Штатный token-free запуск Pi в отдельной named Herdr lab подтвердил точную привязку, локальный builtin `/name`, отдельный receipt по ответу `Session name set: …`, реальный durable watcher wake и graceful exit после подтверждения DoD и человеческой приёмки.
+Панель и пользовательский файл сохранились; модельный prompt не отправлялся.
+Native session report появился после прохождения project trust через штатный флаг `--no-approve`, который действует только для текущего запуска.
+До прохождения trust Pi ещё не вызвал TUI `session_start`, и отсутствие session reference корректно запрещало attachment.
+Новая session file в Pi создаётся на диске только после user/assistant message; её отсутствие до первого сообщения не отменяет reference, полученную из native session manager через штатный Herdr hook.
+
+Повторить проверку установленного Pi без затрат модели:
+
+```sh
+FM_EXTERNAL_SESSION_LIVE=1 FM_EXTERNAL_SESSION_EVIDENCE=/tmp/fm-external-evidence bin/fm-test-run.sh tests/fm-external-session-live-e2e.test.sh
+```
+
+Ожидаемые подтверждения:
+
+```text
+ok: native Pi session and lab routing proven without a model prompt
+ok: actual native builtin send/receipt/watcher/DoD/graceful exit; no model prompt
+```
+
+AGY parent binding требует явно известный parent id и точный launcher-record из `AR_RUN_DIR` того же native PID.
+В portable regression сохранена форма с несколькими `child=false` записями, включая противоречивую запись ребёнка; поиск первой записи запрещён.
+Это не live доказательство остальных vendor harnesses или текущих production researches.
+Они требуют повторной проверки собственных native источников; недоказанная идентичность остаётся unknown и не допускает ввод.
+Native idle/done ребёнка AGY не определяет состояние родительского исследования.
+
+Новые portable-serial timing hints до первого CI refresh взяты из локальных Linux-прогонов `bin/fm-test-run.sh`: `fm-external-session.test.sh` 46206 ms, `fm-workers-status.test.sh` 32536 ms, `fm-session-lock-zombie.test.sh` 433 ms.
+Они заменяют общий fallback только для этих новых subjects; семантическая полнота shard inventory проверяется `bin/fm-test-run.sh --check-coverage`.

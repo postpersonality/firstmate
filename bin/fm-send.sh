@@ -211,6 +211,8 @@
 # pane. The pause is typed-plane-only; the inbox plane, the shared submit core
 # (used by the away-mode daemon, which only needs "submitted"), and the --key
 # path do not pay it.
+# External task selectors resolve state/<id>.external.json through fm-attach.sh's
+# exact-process guard; the existing inbox and submit/receipt distinction apply.
 set -eu
 
 FM_SEND_ORIGINAL_ARGS=("$@")
@@ -262,6 +264,7 @@ FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested messag
 fm_send_id_from_meta() { # <meta-file>
   local base
   base=${1##*/}
+  base=${base%.external.json}
   printf '%s' "${base%.meta}"
 }
 
@@ -347,6 +350,21 @@ fm_send_resolve_target() { # <raw-target>
   TARGET_REMOTE_HOST=""
   RESOLUTION_TRIED=""
 
+  # External processes are separate runtime records, never fabricated metadata.
+  # shellcheck source=bin/fm-external-session-lib.sh
+  . "$SCRIPT_DIR/fm-external-session-lib.sh"
+  if meta=$(fm_external_find "$raw"); then
+    fm_external_verify "$meta" >/dev/null || return 1
+    FM_EXTERNAL_BINDING=$meta
+    export FM_EXTERNAL_BINDING
+    EXTERNAL_REVISION=$(jq -er '.revision' "$meta") || return 1
+    RESOLVED_TARGET=$(jq -er '.identity | .session + ":" + .pane_id' "$meta") || return 1
+    TARGET_HARNESS=$(jq -er '.identity.family' "$meta") || return 1
+    TARGET_BACKEND=herdr TARGET_META=$meta TARGET_SELECTOR=1
+    case "$raw" in *:*) TARGET_SELECTOR= ;; esac
+    RESOLUTION_TRIED="external binding=$meta"
+    return 0
+  fi
   meta=$(fm_backend_meta_for_selector "$raw" "$STATE" 2>/dev/null || true)
   if [ -n "$meta" ]; then
     if [ -n "$(fm_meta_get "$meta" remote_host)" ]; then
@@ -1004,7 +1022,11 @@ else
   fi
   if [ "$INBOX_PLANE" = 1 ]; then
     INBOX_TASK_ID=$(fm_send_id_from_meta "$TARGET_META")
-    INBOX_META_LOCK=$(fm_meta_lock_path "$TARGET_META") || exit 1
+    if [ -n "${FM_EXTERNAL_BINDING:-}" ]; then
+      INBOX_META_LOCK="$STATE/.external-delivery-$INBOX_TASK_ID.lock"
+    else
+      INBOX_META_LOCK=$(fm_meta_lock_path "$TARGET_META") || exit 1
+    fi
     if ! fm_task_inbox_lock_acquire "$INBOX_META_LOCK"; then
       if [ "$PENDING_REPLY_CREATED" = 1 ] && [ -n "$PENDING_REPLY_CORR" ]; then
         fm_pending_reply_discard_undelivered "$STATE" "$PENDING_REPLY_CORR" || true
@@ -1015,7 +1037,16 @@ else
     CURRENT_INBOX_TARGET=
     CURRENT_INBOX_BACKEND=
     CURRENT_INBOX_SPAWN_GEN=
-    if [ -f "$TARGET_META" ]; then
+    if [ -n "${FM_EXTERNAL_BINDING:-}" ]; then
+      if ! fm_external_verify "$TARGET_META" >/dev/null ||
+        [ "$(jq -er '.revision' "$TARGET_META")" != "$EXTERNAL_REVISION" ]; then
+        fm_lock_release "$INBOX_META_LOCK"
+        echo "error: external process changed; no delivery or reattachment authorized" >&2
+        exit 1
+      fi
+      CURRENT_INBOX_TARGET=$T
+      CURRENT_INBOX_BACKEND=herdr
+    elif [ -f "$TARGET_META" ]; then
       CURRENT_INBOX_TARGET=$(fm_backend_target_of_meta "$TARGET_META")
       CURRENT_INBOX_BACKEND=$(fm_backend_of_meta "$TARGET_META")
       CURRENT_INBOX_SPAWN_GEN=$(fm_meta_get "$TARGET_META" spawn_gen)

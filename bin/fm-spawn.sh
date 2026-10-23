@@ -1670,6 +1670,10 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   exit "$rc"
 fi
 ID=${POS[0]}
+if [ -e "$STATE/$ID.external.json" ]; then
+  echo "error: task $ID binds an external process; fm-spawn cannot replace or relaunch it" >&2
+  exit 1
+fi
 fm_task_id_creation_valid "$ID" || {
   echo "error: invalid task id" >&2
   exit 2

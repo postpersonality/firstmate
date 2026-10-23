@@ -427,6 +427,10 @@ if [ "$FORCE" = --force ] && [ "$(fm_lease_actor)" = branch ]; then
 fi
 fm_lease_guard "$ID" "teardown (fm-teardown)"
 
+if [ -e "$STATE/$ID.external.json" ]; then
+  echo "REFUSED: external session has no teardown authority; retain its case, terminal and user files" >&2
+  exit 1
+fi
 META="$STATE/$ID.meta"
 TREEHOUSE_PROJECT_LOCK=
 TREEHOUSE_PROJECT_LOCK_HELD=0

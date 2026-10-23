@@ -144,6 +144,14 @@ Unreadable, stale, contradictory, and cross-session parent bindings still refuse
 The verified parent does not determine the project Space.
 A detached caller with no pane claim uses the same project resolver without borrowing another agent's pane.
 
+### Подключение существующего процесса
+
+[`bin/fm-attach.sh --help`](../bin/fm-attach.sh) описывает discovery без чтения диалогов, внешнюю привязку к делу и задаче, точную проверку процесса и подтверждения DoD.
+Это отдельный runtime-record, который используют send/control/current-state/snapshot; права на пользовательскую папку и teardown не возникают.
+Существующий collector перенесён в [`bin/fm-workers-status.py`](../bin/fm-workers-status.py); параметр `--herdr-session` включает отдельный раздел «Можно подключить».
+Проверка точного PID сейчас использует Linux `/proc`; недоступная native session запрещает управление, сохраняя запись дела.
+Актуальное лабораторное доказательство и ограничения семейства: [runtime-backends.md](verification/runtime-backends.md#external-session-binding).
+
 ### Recovery and existing tasks
 
 Existing task operations use their recorded endpoint IDs and do not move live workers into project Spaces.

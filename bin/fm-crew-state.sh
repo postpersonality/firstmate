@@ -158,7 +158,9 @@
 #      classified by step 4. Backends with no classifier keep reading a failed
 #      capture as gone. The fallback's own comment owns the per-verdict rules.
 #
-# Read-only and side-effect free. Always exits 0 on a successful read regardless
+# Spawned-worker reads are side-effect free; external identity evidence follows
+# bin/fm-attach.sh, including a durable native-session-loss receipt.
+# Always exits 0 on a successful read regardless
 # of state; exit 2 only on a usage error (no id).
 set -u
 
@@ -210,6 +212,14 @@ emit() {  # <state> <source> [detail]
   printf '%s\n' "$line"
   exit 0
 }
+
+# External-origin observations never use spawn/worktree or delivery heuristics.
+if [ -f "$STATE/$ID.external.json" ]; then
+  if external=$("$SCRIPT_DIR/fm-attach.sh" state "$ID"); then
+    emit "$(jq -r '.state' <<<"$external")" external-session "$(jq -r '.detail' <<<"$external")"
+  fi
+  emit unknown external-session "external binding unreadable; task retained"
+fi
 
 # --- meta resolution --------------------------------------------------------
 

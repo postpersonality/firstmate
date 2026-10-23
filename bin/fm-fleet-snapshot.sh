@@ -1999,6 +1999,10 @@ if [ "$OUTPUT_MODE" = contribution-input ]; then
 fi
 prefetch_task_current_states || { echo "fm-fleet-snapshot: task observation failed" >&2; exit 1; }
 TASKS_JSON=$(task_json_lines) || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
+if compgen -G "$STATE/*.external.json" >/dev/null; then
+  EXTERNAL_TASKS_JSON=$(FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-attach.sh" snapshot) || { echo "fm-fleet-snapshot: external snapshot failed" >&2; exit 1; }
+  TASKS_JSON=$(jq -n --argjson spawned "$TASKS_JSON" --argjson external "$EXTERNAL_TASKS_JSON" '$spawned + $external | sort_by(.id)') || exit 1
+fi
 
 JSON_TRANSPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") \
   || { echo "fm-fleet-snapshot: temporary transport directory creation failed" >&2; exit 1; }

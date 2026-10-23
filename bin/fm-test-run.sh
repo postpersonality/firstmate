@@ -308,7 +308,7 @@ family_for_basename() {
       printf '%s\n' pure-contract-unit
       ;;
     fm-daemon.test.sh|fm-guard-stale-banner.test.sh|fm-pi-watch-extension.test.sh|\
-    fm-session-lock-ancestry.test.sh|fm-cursor-primary.test.sh|fm-codex-stop-watch.test.sh|\
+    fm-session-lock-ancestry.test.sh|fm-session-lock-zombie.test.sh|fm-external-session.test.sh|fm-workers-status.test.sh|fm-cursor-primary.test.sh|fm-codex-stop-watch.test.sh|\
     fm-parent-channel-scan-exclusion.test.sh|\
     fm-supervision-events.test.sh|fm-turnend-guard.test.sh|fm-wake-daemon-lifecycle-e2e.test.sh|\
     fm-wake-drain-unread-status.test.sh|\
@@ -327,7 +327,7 @@ family_for_basename() {
     fm-backend-herdr-focus-flash-e2e.test.sh|\
     fm-backend-herdr-stale-active-tab-e2e.test.sh|\
     fm-backend-herdr-agent-exit-shell-e2e.test.sh|\
-    fm-herdr-attached-viewer-live-e2e.test.sh|fm-herdr-session-cleanup-e2e.test.sh|\
+    fm-herdr-attached-viewer-live-e2e.test.sh|fm-herdr-session-cleanup-e2e.test.sh|fm-external-session-live-e2e.test.sh|\
     fm-backend-herdr-smoke.test.sh|fm-backend-herdr-workspace-per-home-e2e.test.sh|\
     fm-control-herdr-smoke.test.sh|fm-dsh-herdr-terminal.test.sh|fm-dsh-spawn-lifecycle.test.sh)
       printf '%s\n' real-herdr-gated
@@ -683,6 +683,8 @@ list_portable_serial() {
 # artifacts recorded in docs/fm-test-portable-shards.md. Each value is the
 # slowest successful sample in the referenced complete/partial CI runs, with
 # the version-specific host and native-Windows exceptions documented there.
+# New external-session/collector/zombie hints use the Linux measurements in
+# docs/verification/runtime-backends.md until their first CI refresh.
 # These are balance hints only: the shard
 # partition stays complete and disjoint whatever they say, so a stale hint costs
 # balance rather than coverage. That doc owns the refresh procedure.
@@ -744,6 +746,7 @@ tests/fm-dispatch-resolve.test.sh 10051
 tests/fm-documentation-audiences.test.sh 1301
 tests/fm-dod-lib.test.sh 2035
 tests/fm-extension-binding.test.sh 11105
+tests/fm-external-session.test.sh 46206
 tests/fm-fleet-ledger.test.sh 19980
 tests/fm-fleet-snapshot-view.test.sh 23334
 tests/fm-fleet-sync.test.sh 40541
@@ -837,6 +840,7 @@ tests/fm-send-resolve-key.test.sh 47317
 tests/fm-send-secondmate-marker-herdr-e2e.test.sh 80
 tests/fm-send-secondmate-marker.test.sh 7574
 tests/fm-session-lock-ancestry.test.sh 18918
+tests/fm-session-lock-zombie.test.sh 433
 tests/fm-session-start.test.sh 363574
 tests/fm-sessionstart-hook-live-e2e.test.sh 50
 tests/fm-sessionstart-instruction-refresh-live-e2e.test.sh 49
@@ -890,6 +894,7 @@ tests/fm-watch-triage.test.sh 1074843
 tests/fm-watcher-lock.test.sh 72022
 tests/fm-worker-account-live-e2e.test.sh 3179
 tests/fm-worker-account.test.sh 37445
+tests/fm-workers-status.test.sh 32536
 EOF
 }
 
@@ -1617,6 +1622,18 @@ families_for_changed_path() {
       # pre-teardown run abort (pr-forge).
       printf '%s\n' pure-contract-unit
       printf '%s\n' pr-forge
+      ;;
+    bin/fm-external-session.py|bin/fm-external-session-lib.sh|bin/fm-attach.sh|bin/fm-agent-process-probe.sh|bin/fm_agent_process.py)
+      printf '%s\n' '__script__:fm-external-session.test.sh'
+      printf '%s\n' '__script__:fm-workers-status.test.sh'
+      printf '%s\n' '__script__:fm-external-session-live-e2e.test.sh'
+      ;;
+    bin/fm-workers-status.py|tests/fm-workers-status.test.py)
+      printf '%s\n' '__script__:fm-workers-status.test.sh'
+      printf '%s\n' '__script__:fm-external-session.test.sh'
+      ;;
+    tests/fm-external-session.test.py)
+      printf '%s\n' '__script__:fm-external-session.test.sh'
       ;;
     bin/fm-control-lib.sh)
       printf '%s\n' backend-dispatch

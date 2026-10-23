@@ -502,6 +502,9 @@ window_key() {  # <window>
 inbox_steer_escalate_unavailable() {  # <window> <task> <record>
   local w=$1 task=$2 rec=$3 reason
   reason="stale: $w (unread firstmate instruction: $rec is unhandled and the worker's agent has exited or its endpoint is missing, so the doorbell was not typed; recover the worker)"
+  if [ -f "$STATE/$task.external.json" ]; then
+    reason="stale: $w (external instruction $rec retained: exact process identity is unverified or lost; do not re-ring or relaunch; a replacement needs a new explicit instruction)"
+  fi
   if [ ! -d "${rec%/*}" ] || [ ! -f "$rec" ]; then
     fm_task_inbox_due_action "$STATE" "$task" >/dev/null || true
     return 0
@@ -537,7 +540,19 @@ inbox_steer_check() {  # <window> <task>
       rec=${rec% *}
       ;;
   esac
-  backend=$(window_backend "$w")
+  local external_binding="$STATE/$task.external.json" external_observation='' external_activity='' label
+  label=$(window_label "$w")
+  if [ -f "$external_binding" ]; then
+    external_observation=$("$SCRIPT_DIR/fm-attach.sh" state "$task") || external_observation='{}'
+    if [ "$(jq -r '.identity' <<<"$external_observation")" != verified ]; then
+      inbox_steer_escalate_unavailable "$w" "$task" "$rec"
+      return 0
+    fi
+    backend=herdr label=
+    external_activity=$(jq -r '.activity' <<<"$external_observation")
+  else
+    backend=$(window_backend "$w")
+  fi
   agent_state=$(fm_backend_agent_state "$backend" "$w" 2>/dev/null || true)
   case "$agent_state" in
     dead|missing)
@@ -549,9 +564,14 @@ inbox_steer_check() {  # <window> <task>
       return 0
       ;;
   esac
-  watcher_capture "$backend" "$w" 40 "$(window_label "$w")" || WATCHER_CAPTURE=
-  tail40=$WATCHER_CAPTURE
-  if window_is_busy "$w" "$tail40"; then
+  if [ -f "$external_binding" ]; then
+    tail40=
+  else
+    watcher_capture "$backend" "$w" 40 "$label" || WATCHER_CAPTURE=
+    tail40=$WATCHER_CAPTURE
+  fi
+  if { [ -f "$external_binding" ] && [ "$external_activity" != idle ] && [ "$external_activity" != "done" ]; } ||
+    { [ ! -f "$external_binding" ] && window_is_busy "$w" "$tail40"; }; then
     [ "$verb" != retry ] || return 0
     if ! count=$(fm_task_inbox_record_busy "$STATE" "$task" "$rec"); then
       [ -f "$rec" ] || return 0
@@ -569,7 +589,7 @@ inbox_steer_check() {  # <window> <task>
   case "$verb" in
     ring)
       ring_rc=0
-      fm_task_inbox_ring "$backend" "$w" "$rec" "$(window_label "$w")" || ring_rc=$?
+      fm_task_inbox_ring "$backend" "$w" "$rec" "$label" || ring_rc=$?
       if [ "$ring_rc" -eq 3 ]; then
         inbox_steer_escalate_unavailable "$w" "$task" "$rec"
         return 0
@@ -589,7 +609,7 @@ inbox_steer_check() {  # <window> <task>
       ;;
     retry)
       ring_rc=0
-      fm_task_inbox_ring "$backend" "$w" "$rec" "$(window_label "$w")" || ring_rc=$?
+      fm_task_inbox_ring "$backend" "$w" "$rec" "$label" || ring_rc=$?
       if ! fm_task_inbox_clear_retry "$STATE" "$task" "$rec" && [ -f "$rec" ]; then
         reason="stale: $w (steering-inbox retry mark unremovable: ${rec%/*}/.retry-ring cannot be removed, so $rec would ring on every poll - inspect the inbox directory)"
         fm_wake_append stale "$w" "$reason" || exit 1
@@ -2781,6 +2801,15 @@ while :; do
   else
     triage_log "inactive-outcome reconciliation unavailable"
   fi
+
+  # External sessions have no owned-window .meta and never enter pane cleanup.
+  for external_binding in "$STATE"/*.external.json; do
+    [ -f "$external_binding" ] && [ ! -L "$external_binding" ] || continue
+    external_task=${external_binding##*/}
+    external_task=${external_task%.external.json}
+    external_target=$(jq -er '.identity | .session + ":" + .pane_id' "$external_binding") || continue
+    inbox_steer_check "$external_target" "$external_task"
+  done
 
   # Slow per-task checks (firstmate writes these, e.g. a merged-PR poll).
   # Time-based via .last-check mtime so the cadence survives watcher restarts.

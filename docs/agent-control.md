@@ -156,7 +156,8 @@ The worktree and the task's records are unaffected either way.
 ## Fail-closed boundaries
 
 - Targeting is exact.
-  Only a bare task id with a `state/<id>.meta` record in this home is accepted, and that record must pass the shared endpoint-identity validation.
+  Для обычного работника нужен точный task id и `state/<id>.meta`, прошедший общий endpoint validator.
+  Внешняя привязка обслуживается по отдельному контракту [`bin/fm-attach.sh`](../bin/fm-attach.sh); она допускает interrupt и DoD-gated exit без relaunch или teardown.
   A legacy `fm-<id>` window label, an explicit `session:window` endpoint, and a record whose `endpoint_task_id` names another task are all refused.
 - A remotely placed secondmate is refused by name.
   Its agent runs on another host, so none of the postconditions this plane verifies could be read for it here; local endpoint validation would refuse the record regardless, because `window=remote:<id>` can never match a local backend's required shape.

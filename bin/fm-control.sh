@@ -105,9 +105,9 @@
 # same need for every adapter because the brief on disk, not a harness-private
 # session, is the durable instruction.
 #
-# Targeting is EXACT: only a bare task id with a state/<id>.meta record in
-# THIS home is accepted, and the record must pass the shared endpoint-identity
-# validation (bin/fm-backend.sh's fm_backend_validate_task_endpoint). A legacy
+# Targeting is EXACT: only a bare task id recorded in THIS home is accepted.
+# Spawned metadata passes bin/fm-backend.sh's endpoint-identity validator;
+# external records follow bin/fm-attach.sh's separate binding contract. A legacy
 # fm-<id> label, an explicit session:window endpoint, and a bare window name
 # are all refused - a lifecycle command delivered to the wrong endpoint is far
 # worse than a loud refusal.
@@ -137,6 +137,8 @@
 #   FM_CONTROL_EXIT_WAIT         alive->dead wait after the exit command (30)
 #   FM_CONTROL_LAUNCH_WAIT       dead->alive wait after a relaunch (90)
 #   FM_CONTROL_EXIT_RETRIES      Enter retries for the exit command (3)
+# External bindings accept interrupt and DoD-gated graceful exit only; no
+# relaunch, wiring retirement, endpoint destruction or worktree authority.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -336,6 +338,30 @@ CONTROL_LOCK_HELD=1
 # trap, and would remove the file the lock holder is reading.
 FM_COMPOSER_DIALOG_SINK=$STATE/$ID.composer-dialog
 META="$STATE/$ID.meta"
+EXTERNAL_BINDING="$STATE/$ID.external.json"
+if [ -f "$EXTERNAL_BINDING" ]; then
+  [ ! -e "$META" ] || die "task has both spawned and external runtime records"
+  [ "$VERB" != relaunch ] || die "external process relaunch requires a fresh explicit instruction and binding"
+  # shellcheck source=bin/fm-external-session-lib.sh
+  . "$SCRIPT_DIR/fm-external-session-lib.sh"
+  FM_EXTERNAL_BINDING=$EXTERNAL_BINDING
+  if [ "$VERB" = exit ]; then export FM_EXTERNAL_CONTROL_EXIT=1; fi
+  export FM_EXTERNAL_BINDING
+  if [ "$VERB" = exit ]; then
+    "$SCRIPT_DIR/fm-attach.sh" exit-gate "$ID" >/dev/null || exit 1
+    external_state=$("$SCRIPT_DIR/fm-attach.sh" state "$ID") || exit 1
+    if [ "$(jq -r '.presence' <<<"$external_state")" = stopped ]; then
+      printf 'exit %s already-stopped; external files and endpoint preserved\n' "$ID"
+      exit 0
+    fi
+  fi
+  fm_external_verify "$EXTERNAL_BINDING" >/dev/null || exit 1
+  BACKEND=herdr
+  T=$(jq -er '.identity | .session + ":" + .pane_id' "$EXTERNAL_BINDING")
+  RECORDED_HARNESS=$(jq -er '.identity.family' "$EXTERNAL_BINDING")
+  KIND=external WT='' LABEL=''
+  META=$EXTERNAL_BINDING
+else
 if [ ! -f "$META" ]; then
   case "$RAW_ID" in
     fm-*)
@@ -368,6 +394,7 @@ RECORDED_HARNESS=$(fm_meta_get "$META" harness)
 KIND=$(fm_meta_get "$META" kind)
 WT=$(fm_meta_get "$META" worktree)
 [ -n "$KIND" ] || KIND=ship
+fi
 
 HARNESS=$(fm_control_harness_family "$RECORDED_HARNESS") \
   || die "task $ID records harness '${RECORDED_HARNESS:-none}', which has no verified control mechanics; fm-control refuses to guess an interrupt key or exit command"
@@ -379,10 +406,30 @@ fm_backend_validate "$BACKEND" || exit 1
 # --- shared helpers ---------------------------------------------------------
 
 agent_state() {
+  if [ "$KIND" = external ]; then
+    local observation
+    observation=$("$SCRIPT_DIR/fm-attach.sh" state "$ID") || { printf unknown; return; }
+    case "$(jq -r '.identity + ":" + .presence' <<<"$observation")" in
+      verified:alive) printf alive ;;
+      lost:stopped) printf dead ;;
+      *) printf unknown ;;
+    esac
+    return
+  fi
   fm_backend_agent_state "$BACKEND" "$T"
 }
 
 busy_verdict() {
+  if [ "$KIND" = external ]; then
+    local observation
+    observation=$("$SCRIPT_DIR/fm-attach.sh" state "$ID") || { printf unknown; return; }
+    case "$(jq -r '.activity' <<<"$observation")" in
+      working) printf busy ;;
+      idle|done) printf idle ;;
+      *) printf unknown ;;
+    esac
+    return
+  fi
   fm_busy_classify_meta "$META" "$ID" "$STATE"
 }
 
@@ -629,6 +676,7 @@ clear_retired_meta_busy_gen() {  # <gen>
 }
 
 retire_busy_incarnation() {
+  [ "$KIND" != external ] || return 0
   local gen=
   if [ -f "$STATE/$ID.busy-gen" ]; then
     gen=$(fm_busy_current_gen "$STATE" "$ID" 2>/dev/null || true)

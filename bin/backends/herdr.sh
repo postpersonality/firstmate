@@ -143,9 +143,25 @@ fm_backend_herdr_workspace_label() {
 # compatible if a future herdr build honors it. Never used by
 # fm_backend_herdr_version_check, which is intentionally session-independent
 # (reads only .client.* fields).
+fm_backend_herdr_guard_input() {  # <session> <herdr-subcommand-and-args...>
+  local session=$1
+  shift
+  case "${1:-} ${2:-}" in
+    'pane send-text'|'pane send-keys'|'pane run')
+      if [ -n "${FM_EXTERNAL_BINDING:-}" ] || compgen -G "${FM_STATE_OVERRIDE:-$FM_HOME/state}/*.external.json" >/dev/null; then
+        # Guard every input, including submit retries, against process replacement.
+        # shellcheck source=bin/fm-external-session-lib.sh
+        . "$FM_BACKEND_HERDR_ROOT/bin/fm-external-session-lib.sh"
+        fm_external_guard_target "$session:${3:-}" || return 1
+      fi
+      ;;
+  esac
+}
+
 fm_backend_herdr_cli() {  # <session> <herdr-subcommand-and-args...>
   local session=$1 rc=0 err failed_bin selected_bin client_bin=herdr
   shift
+  fm_backend_herdr_guard_input "$session" "$@" || return 1
   if [ "${FM_BACKEND_HERDR_CLIENT_SESSION:-}" = "$session" ]; then
     client_bin=$(fm_backend_herdr_bin)
   fi
@@ -158,6 +174,12 @@ fm_backend_herdr_cli() {  # <session> <herdr-subcommand-and-args...>
     HERDR_SESSION="$session" "$client_bin" "$@" --session "$session"
     return $?
   fi
+  case "$session" in
+    fm-lab-*)
+      "${FM_HERDR_LAB_HELPER:-$FM_BACKEND_HERDR_ROOT/bin/fm-herdr-lab.sh}" run "$session" "$@"
+      return $?
+      ;;
+  esac
   failed_bin=$client_bin
   { err=$(HERDR_SESSION="$session" "$failed_bin" "$@" --session "$session" 2>&1 1>&3 3>&-) || rc=$?; } 3>&1
   if [ "$rc" -ne 0 ]; then
@@ -166,6 +188,7 @@ fm_backend_herdr_cli() {  # <session> <herdr-subcommand-and-args...>
         fm_backend_herdr_client_select "$session" force
         selected_bin=$(fm_backend_herdr_bin)
         if [ "$selected_bin" != "$failed_bin" ]; then
+          fm_backend_herdr_guard_input "$session" "$@" || return 1
           HERDR_SESSION="$session" "$selected_bin" "$@" --session "$session"
           return $?
         fi
