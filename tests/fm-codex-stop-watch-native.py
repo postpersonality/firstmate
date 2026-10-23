@@ -133,9 +133,6 @@ else:
             (self.home / "state/worker.meta").write_text(
                 "backend=orca\nterminal=native-lab-worker\nwindow=fm-worker\nkind=ship\nharness=codex\n")
             (self.home / "state/worker.status").write_text("working: owned validation fixture is in flight\n")
-            check = self.home / "state/lab.check.sh"
-            check.write_text("#!/usr/bin/env bash\nexit 1\n")
-            check.chmod(0o700)
         # One other synchronous hook compels the first continuation. This is
         # the disconfirming path the old unconditional loop flag suppresses.
         (self.home / "primer.sh").write_text(
@@ -211,6 +208,8 @@ else:
         self.thread = result["thread"]["id"]
         if self.standalone:
             # Handle only the initial working signal through public owners before the first reply.
+            assert not (self.home / "state/lab.check.sh").exists(), \
+                "the deliberate check must not preempt initial status handling"
             checkpoint = subprocess.run(
                 ["bash", self.home / "bin/fm-watch-checkpoint.sh", "--seconds", "20"],
                 cwd=self.home, env=self.env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -244,7 +243,10 @@ else:
                 "the initial working status was not acknowledged through its printed public command"
             queue = self.home / "state/.wake-queue"
             assert not queue.exists() or not queue.read_text(), "the initial status acknowledgement left wakes queued"
-        if (self.home / "state/lab.check.sh").exists():
+        if (self.home / "state/worker.status").exists():
+            check = self.home / "state/lab.check.sh"
+            check.write_text("#!/usr/bin/env bash\nexit 1\n")
+            check.chmod(0o700)
             subprocess.run(["bash", self.home / "bin/fm-check-register.sh", "lab"],
                            env=self.env, check=True, stdout=subprocess.DEVNULL)
         no_event = (

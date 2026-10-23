@@ -51,6 +51,47 @@ test_signal_passes_through_and_exits_zero() {
   pass "checkpoint passes through a real watcher wake and leaves the queue for drain"
 }
 
+test_initial_working_status_is_acked_before_check_registration() {
+  local home out err status drain_status ack_line ack_command ack_status row_count
+  local -a ack_args
+  home=$(make_home initial-working)
+  printf 'backend=orca\nterminal=native-lab-worker\nwindow=fm-worker\nkind=ship\nharness=codex\n' > "$home/state/worker.meta"
+  printf 'working: owned validation fixture is in flight\n' > "$home/state/worker.status"
+  mkdir -p "$home/fakebin"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$home/fakebin/orca"
+  chmod 0700 "$home/fakebin/orca"
+  out="$home/out.txt"
+  err="$home/err.txt"
+  status=0
+  FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    PATH="$home/fakebin:$PATH" "$CHECKPOINT" --seconds 20 >"$out" 2>"$err" || status=$?
+  expect_code 0 "$status" "initial working checkpoint: $(cat "$out" "$err")"
+  assert_contains "$(cat "$out")" "signal:" "initial working status was not surfaced"
+  assert_absent "$home/state/lab.check.sh" "the deliberate check preempted initial status handling"
+
+  drain_status=0
+  FM_HOME="$home" "$ROOT/bin/fm-wake-drain.sh" >"$home/drain.out" 2>"$home/drain.err" || drain_status=$?
+  expect_code 0 "$drain_status" "initial working wake drain"
+  assert_contains "$(cat "$home/drain.out")" $'\tsignal\tworker.status\t' "the drain did not present only the worker status wake"
+  assert_contains "$(cat "$home/state/.wake-queue")" $'\tsignal\tworker.status\t' "the wake drain did not leave the initial row pending for ACK"
+  row_count=$(awk -F '\t' 'NF == 5 { count++ } END { print count+0 }' "$home/drain.out")
+  [ "$row_count" -eq 1 ] || fail "the initial drain presented $row_count wake rows"
+  ack_line=$(grep '^WAKE_ACK_REQUIRED:' "$home/drain.err" | head -n 1)
+  ack_command=${ack_line#* run }
+  [ "$ack_command" != "$ack_line" ] || fail "the drain omitted its exact ACK command"
+  read -r -a ack_args <<< "$ack_command"
+  ack_status=0
+  (cd "$ROOT" && FM_HOME="$home" "${ack_args[@]}" >"$home/ack.out" 2>"$home/ack.err") || ack_status=$?
+  expect_code 0 "$ack_status" "printed initial wake ACK"
+  [ ! -s "$home/state/.wake-queue" ] || fail "the exact ACK did not empty the initial queue"
+
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$home/state/lab.check.sh"
+  chmod 0700 "$home/state/lab.check.sh"
+  FM_HOME="$home" "$ROOT/bin/fm-check-register.sh" lab >/dev/null \
+    || fail "could not register the deliberate check after the initial ACK"
+  pass "checkpoint handles and ACKs only initial working status before check registration"
+}
+
 test_registered_check_uses_preserved_watcher_environment() {
   local home out err status
   home=$(make_home check-env)
@@ -249,6 +290,7 @@ test_real_host_checkpoint_ends_quietly_at_its_bound() {
 
 test_quiet_checkpoint_exits_124_cleanly
 test_signal_passes_through_and_exits_zero
+test_initial_working_status_is_acked_before_check_registration
 test_registered_check_uses_preserved_watcher_environment
 test_existing_singleton_watcher_is_not_success
 test_host_checkpoint_bounds_the_park_by_posture
