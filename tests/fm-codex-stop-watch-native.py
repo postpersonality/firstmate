@@ -14,7 +14,7 @@ if os.environ.get("FM_CODEX_STOP_LIVE_HOOKS_REVIEWED") != "1":
     raise RuntimeError("review the isolated native hook scope before enabling its invocation-local bypass")
 BINARY = Path(os.environ.get("FM_CODEX_STOP_LIVE_BIN", shutil.which("codex")))
 VERSION = subprocess.check_output([BINARY, "--version"], text=True).strip()
-if VERSION != "codex-cli 0.163.0":
+if VERSION != "codex-cli 0.164.0":
     raise RuntimeError(f"refresh native Stop evidence before using {VERSION}")
 MODEL = "gpt-6.1-sol"
 CASE = os.environ.get("FM_CODEX_STOP_NATIVE_CASE", "all")

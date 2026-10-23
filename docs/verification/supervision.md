@@ -44,6 +44,16 @@ One client recovery turn asked that thread only to reply and, on its next contin
 The native `resume` SessionStart rebound the thread's stale lock to the new host PID, sandboxed tools only confirmed it, and one native exit-2 continuation sent and acknowledged one instruction for the worker completion recorded before the restart.
 An interrupted primary produced no further Stops or leftover watcher; an empty primary completed with guard exit 0 and no watcher beacon.
 
+### Codex 0.164.0 compatibility refresh
+
+On 2026-10-23, the installed Linux binary reported `codex-cli 0.164.0` with SHA-256 `b93f6811d3f653f0fb83be4050d857fb9abbb111dfa2ce160563327daff7f306`.
+The local schema command was `codex app-server generate-json-schema --experimental --out "$schema_dir"`.
+The generated `InitializeParams`, `ThreadStartParams`, and `TurnInterruptParams` schemas match the preserved 0.163.0 schemas exactly.
+The `TurnStartParams` schema keeps the fixture's `threadId`, `effort`, and `input` fields unchanged; 0.164.0 adds one optional `responsesapiClientMetadataPatch` field that the fixture does not send.
+`ThreadStartParams.config` remains an arbitrary JSON object, as before.
+This offline comparison verifies request-shape compatibility only and does not show runtime execution of the hooks or a late-event handoff.
+The 0.163.0 native evidence above remains historical and does not establish 0.164.0 behavior.
+
 [`runtime-backends.md`](runtime-backends.md#native-codex-api-primary-identity) records the measured hook/tool identity distinction.
 The portable regression covers an existing healthy watcher, pending delivery across the boundary, idempotent acknowledgement, fail-closed repeated watcher failure, unhandled duplicate wakes and checkpoint-lock contention, foreign ownership, a read-only Stop of the recorded thread attached to another app-server (duplicate attachment), free, stale, PID-1 and legacy PID-only locks that Stop never adopts with its one-block guard and an empty fleet keeps silent, a live legacy PID-only lock that no thread adopts, host-side SessionStart resume binding after an app-server restart, a sandboxed lock writer in a real PID namespace that confirms a host-bound lock by thread id alone and never publishes PID 1 or replaces a PID-only, stale or PID-1 lock, a timeout fallback whose kill escalation returns 137, and held-only backlog.
 The recorded native run covers pending delivery with one acknowledged instruction per completion, initial native SessionStart binding and resume after an app-server restart, a second actual thread's refused SessionStart, sandboxed confirmation and refusal of live legacy and free locks, and an empty fleet. It does not exercise the legacy Stop guard (including its free, stale and PID-1 variants), live legacy-lock adoption refusal, duplicate-attachment Stop refusal or 137 handling; those Stop-path cases are covered by the portable regression.
