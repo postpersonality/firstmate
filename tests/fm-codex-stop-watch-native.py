@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+from fm_codex_stop_watch_native_fixture import install_fixture, preflight_environment
+
 ROOT, LAB = map(Path, sys.argv[1:])
 if os.environ.get("FM_CODEX_STOP_LIVE_HOOKS_REVIEWED") != "1":
     raise RuntimeError("review the isolated native hook scope before enabling its invocation-local bypass")
@@ -111,28 +113,8 @@ exit "$rc"
                         FM_POLL="1", FM_CHECK_INTERVAL="999999", FM_HEARTBEAT="999999")
         # Only this synthetic terminal's read/send boundary is mocked. The
         # real fm-send command, guards, identity, queue and inbox run natively.
-        fakebin = self.home / "fakebin"
-        fakebin.mkdir()
-        orca = fakebin / "orca"
-        orca.write_text('''#!/usr/bin/env python3
-import json, os, sys
-from pathlib import Path
-args = sys.argv[1:]
-if args[:2] == ["terminal", "read"] and "native-lab-worker" in args:
-    print(json.dumps({"ok": True, "result": {"text": "╭────╮\\n│    │\\n╰────╯"}}))
-elif args[:2] == ["terminal", "send"] and "native-lab-worker" in args:
-    with Path(os.environ["FM_HOME"], "terminal-calls.jsonl").open("a") as stream:
-        stream.write(json.dumps(args) + "\\n")
-    print('{"ok":true}')
-else:
-    raise SystemExit("unreviewed synthetic terminal operation: " + repr(args))
-''')
-        orca.chmod(0o700)
-        self.env["PATH"] = str(fakebin) + os.pathsep + self.env["PATH"]
-        if not empty:
-            (self.home / "state/worker.meta").write_text(
-                "backend=orca\nterminal=native-lab-worker\nwindow=fm-worker\nkind=ship\nharness=codex\n")
-            (self.home / "state/worker.status").write_text("working: owned validation fixture is in flight\n")
+        fakebin = install_fixture(self.home, worker=not empty, active=True)
+        self.env["PATH"] = fakebin + os.pathsep + self.env["PATH"]
         # One other synchronous hook compels the first continuation. This is
         # the disconfirming path the old unconditional loop flag suppresses.
         (self.home / "primer.sh").write_text(
@@ -212,7 +194,8 @@ else:
                 "the deliberate check must not preempt initial status handling"
             checkpoint = subprocess.run(
                 ["bash", self.home / "bin/fm-watch-checkpoint.sh", "--seconds", "20"],
-                cwd=self.home, env=self.env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                cwd=self.home, env=preflight_environment(self.env), text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             drain = subprocess.run(["bash", self.home / "bin/fm-wake-drain.sh"],
                                    cwd=self.home, env=self.env, text=True,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)

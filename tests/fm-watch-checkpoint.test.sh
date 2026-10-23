@@ -15,6 +15,16 @@ make_home() {
   printf '%s\n' "$home"
 }
 
+fixture_lab_primary() {  # <home>
+  python3 - "$ROOT/tests" "$1" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from fm_codex_stop_watch_native_fixture import ensure_lab_primary
+print(ensure_lab_primary(Path(sys.argv[2])))
+PY
+}
+
 test_quiet_checkpoint_exits_124_cleanly() {
   local home out err status
   home=$(make_home quiet)
@@ -34,8 +44,9 @@ test_quiet_checkpoint_exits_124_cleanly() {
 }
 
 test_signal_passes_through_and_exits_zero() {
-  local home out err status drained
+  local home fixture_root out err status drained
   home=$(make_home signal)
+  fixture_root=$(fixture_lab_primary "$home") || fail "could not create the fixture lab primary"
   out="$home/out.txt"
   err="$home/err.txt"
   (
@@ -43,18 +54,20 @@ test_signal_passes_through_and_exits_zero() {
     printf 'done: synthetic wake\n' > "$home/state/demo.status"
   ) &
   status=0
-  FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 "$CHECKPOINT" --seconds 8 >"$out" 2>"$err" || status=$?
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 \
+    "$CHECKPOINT" --seconds 8 >"$out" 2>"$err" || status=$?
   expect_code 0 "$status" "signal checkpoint exit"
   assert_contains "$(cat "$out")" "signal:" "signal wake was not passed through"
-  drained=$(FM_HOME="$home" "$ROOT/bin/fm-wake-drain.sh")
+  drained=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" $'\tsignal\tdemo.status\t' "signal wake was not queued durably"
   pass "checkpoint passes through a real watcher wake and leaves the queue for drain"
 }
 
 test_initial_working_status_is_acked_before_check_registration() {
-  local home out err status drain_status ack_line ack_command ack_status row_count row_sequence ack_count
+  local home fixture_root out err status drain_status ack_line ack_command ack_status row_count row_sequence ack_count
   local -a ack_args
   home=$(make_home initial-working)
+  fixture_root=$(fixture_lab_primary "$home") || fail "could not create the fixture lab primary"
   printf 'backend=orca\nterminal=native-lab-worker\nwindow=fm-worker\nkind=ship\nharness=codex\n' > "$home/state/worker.meta"
   printf 'working: owned validation fixture is in flight\n' > "$home/state/worker.status"
   mkdir -p "$home/fakebin"
@@ -63,15 +76,16 @@ test_initial_working_status_is_acked_before_check_registration() {
   out="$home/out.txt"
   err="$home/err.txt"
   status=0
-  FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    PATH="$home/fakebin:$PATH" "$CHECKPOINT" --seconds 20 >"$out" 2>"$err" || status=$?
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 PATH="$home/fakebin:$PATH" \
+    "$CHECKPOINT" --seconds 20 >"$out" 2>"$err" || status=$?
   expect_code 0 "$status" "initial working checkpoint: $(cat "$out" "$err")"
   [ ! -s "$err" ] || fail "initial working checkpoint wrote an error: $(cat "$err")"
   assert_contains "$(cat "$out")" "signal:" "initial working status was not surfaced"
   assert_absent "$home/state/lab.check.sh" "the deliberate check preempted initial status handling"
 
   drain_status=0
-  FM_HOME="$home" "$ROOT/bin/fm-wake-drain.sh" >"$home/drain.out" 2>"$home/drain.err" || drain_status=$?
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" "$ROOT/bin/fm-wake-drain.sh" >"$home/drain.out" 2>"$home/drain.err" || drain_status=$?
   expect_code 0 "$drain_status" "initial working wake drain"
   assert_contains "$(cat "$home/drain.out")" $'\tsignal\tworker.status\t' "the drain did not present only the worker status wake"
   assert_contains "$(cat "$home/state/.wake-queue")" $'\tsignal\tworker.status\t' "the wake drain did not leave the initial row pending for ACK"
@@ -89,7 +103,7 @@ test_initial_working_status_is_acked_before_check_registration() {
     && [ "${ack_args[3]}" = "--recovery-generation" ] && [ -n "${ack_args[4]}" ] \
     || fail "the initial status ACK was not bound to its only row and recovery generation"
   ack_status=0
-  (cd "$ROOT" && FM_HOME="$home" "${ack_args[@]}" >"$home/ack.out" 2>"$home/ack.err") || ack_status=$?
+  (cd "$ROOT" && FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" "${ack_args[@]}" >"$home/ack.out" 2>"$home/ack.err") || ack_status=$?
   expect_code 0 "$ack_status" "printed initial wake ACK"
   [ ! -s "$home/state/.wake-queue" ] || fail "the exact ACK did not empty the initial queue"
 
@@ -101,14 +115,15 @@ test_initial_working_status_is_acked_before_check_registration() {
 }
 
 test_quiet_preflight_acks_empty_generation_before_check_registration() {
-  local home out err status drain_status ack_line ack_command ack_status ack_count
+  local home fixture_root out err status drain_status ack_line ack_command ack_status ack_count
   local -a ack_args
   home=$(make_home quiet-preflight)
+  fixture_root=$(fixture_lab_primary "$home") || fail "could not create the fixture lab primary"
   out="$home/out.txt"
   err="$home/err.txt"
   status=0
-  FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    "$CHECKPOINT" --seconds 1 >"$out" 2>"$err" || status=$?
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$CHECKPOINT" --seconds 1 >"$out" 2>"$err" || status=$?
   expect_code 124 "$status" "quiet initial checkpoint: $(cat "$out" "$err")"
   [ ! -s "$err" ] || fail "quiet initial checkpoint wrote an error: $(cat "$err")"
   [ "$(cat "$out")" = "checkpoint: no actionable wake within 1s" ] \
@@ -116,7 +131,7 @@ test_quiet_preflight_acks_empty_generation_before_check_registration() {
   assert_absent "$home/state/lab.check.sh" "the deliberate check preempted quiet preflight handling"
 
   drain_status=0
-  FM_HOME="$home" "$ROOT/bin/fm-wake-drain.sh" >"$home/drain.out" 2>"$home/drain.err" || drain_status=$?
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" "$ROOT/bin/fm-wake-drain.sh" >"$home/drain.out" 2>"$home/drain.err" || drain_status=$?
   expect_code 0 "$drain_status" "quiet initial wake drain"
   [ ! -s "$home/drain.out" ] || fail "quiet preflight presented unrelated wake rows: $(cat "$home/drain.out")"
   ack_count=$(grep -c '^WAKE_ACK_REQUIRED:' "$home/drain.err" || true)
@@ -130,7 +145,7 @@ test_quiet_preflight_acks_empty_generation_before_check_registration() {
     && [ "${ack_args[3]}" = "--recovery-generation" ] && [ -n "${ack_args[4]}" ] \
     || fail "the quiet preflight ACK was not generation-bound through zero"
   ack_status=0
-  (cd "$ROOT" && FM_HOME="$home" "${ack_args[@]}" >"$home/ack.out" 2>"$home/ack.err") || ack_status=$?
+  (cd "$ROOT" && FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" "${ack_args[@]}" >"$home/ack.out" 2>"$home/ack.err") || ack_status=$?
   expect_code 0 "$ack_status" "printed empty-generation ACK"
   [ ! -s "$home/state/.wake-queue" ] || fail "the through-zero ACK left a wake queued"
 
@@ -139,6 +154,145 @@ test_quiet_preflight_acks_empty_generation_before_check_registration() {
   FM_HOME="$home" "$ROOT/bin/fm-check-register.sh" lab >/dev/null \
     || fail "could not register the deliberate check after the quiet ACK"
   pass "quiet checkpoint executes its printed generation-bound ACK through zero before check registration"
+}
+
+ack_fixture_wakes() {
+  local home=$1 fixture_root drain_status=0 ack_line ack_command ack_status=0
+  local -a ack_args
+  fixture_root=$(fixture_lab_primary "$home") || fail "could not create the fixture lab primary"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" "$ROOT/bin/fm-wake-drain.sh" >"$home/drain.out" 2>"$home/drain.err" || drain_status=$?
+  expect_code 0 "$drain_status" "fixture wake drain"
+  ack_line=$(grep '^WAKE_ACK_REQUIRED:' "$home/drain.err" | head -n 1)
+  ack_command=${ack_line#* run }
+  [ "$ack_command" != "$ack_line" ] || fail "fixture drain omitted its exact ACK command"
+  read -r -a ack_args <<< "$ack_command"
+  (cd "$ROOT" && FM_HOME="$home" FM_ROOT_OVERRIDE="$fixture_root" "${ack_args[@]}" >"$home/ack.out" 2>"$home/ack.err") || ack_status=$?
+  expect_code 0 "$ack_status" "fixture's printed wake ACK"
+  [ ! -s "$home/state/.wake-queue" ] || fail "fixture's exact ACK left a wake queued"
+}
+
+install_native_checkpoint_fixture() {
+  python3 - "$ROOT/tests" "$1" "$2" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from fm_codex_stop_watch_native_fixture import install_fixture
+print(install_fixture(Path(sys.argv[2]), worker=True, active=sys.argv[3] == "active"))
+PY
+}
+
+assert_worker_fixture_isolated() {  # <home>
+  local home=$1 primary="${1}-project-primary" expected="${1}-task-worktree" recorded
+  local home_root primary_root task_root home_git primary_git task_git task_common task_branch
+  recorded=$(awk -F= '$1 == "worktree" { sub(/^[^=]*=/, ""); print; exit }' "$home/state/worker.meta")
+  [ "$recorded" = "$expected" ] || fail "worker.meta does not name its test-owned task worktree"
+  [ "$recorded" != "$home" ] && [ "$recorded" != "$primary" ] \
+    || fail "task worktree aliases the lab or project primary"
+  home_root=$(git -C "$home" rev-parse --show-toplevel) || fail "lab primary is not a Git root"
+  primary_root=$(git -C "$primary" rev-parse --show-toplevel) || fail "project primary is not a Git root"
+  task_root=$(git -C "$recorded" rev-parse --show-toplevel) || fail "task worktree is not a Git root"
+  [ "$home_root" = "$home" ] && [ "$primary_root" = "$primary" ] \
+    && [ "$task_root" = "$recorded" ] || fail "fixture roots do not match their recorded paths"
+  [ "$(git -C "$home" branch --show-current)" = main ] \
+    && [ "$(git -C "$primary" branch --show-current)" = main ] \
+    || fail "fixture primaries are not on main"
+  home_git=$(git -C "$home" rev-parse --absolute-git-dir)
+  primary_git=$(git -C "$primary" rev-parse --absolute-git-dir)
+  task_git=$(git -C "$recorded" rev-parse --absolute-git-dir)
+  task_common=$(git -C "$recorded" rev-parse --path-format=absolute --git-common-dir)
+  task_branch=$(git -C "$recorded" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+  [ "$task_common" = "$primary_git" ] && [ "$task_git" != "$primary_git" ] \
+    && [ "$home_git" != "$primary_git" ] && [ -z "$task_branch" ] \
+    || fail "task metadata does not resolve to a detached linked worktree"
+  git -C "$primary" worktree list --porcelain | grep -Fxq "worktree $recorded" \
+    || fail "project primary does not register the recorded task worktree"
+  [ -f "$recorded/fixture.txt" ] || fail "linked task worktree lacks its committed fixture file"
+}
+
+test_native_preflight_wait_fits_its_checkpoint_bound() {
+  local home aligned_home fakebin out err status grace
+  home=$(make_home native-preflight-long-grace)
+  fakebin=$(install_native_checkpoint_fixture "$home" blank)
+  assert_worker_fixture_isolated "$home"
+  out="$home/out.txt"
+  err="$home/err.txt"
+  status=0
+  (
+    unset FM_SIGNAL_GRACE
+    FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_POLL=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+      PATH="$fakebin:$PATH" "$CHECKPOINT" --seconds 4
+  ) >"$out" 2>"$err" || status=$?
+  expect_code 124 "$status" "default event coalescing exceeds the 4s preflight bound"
+  assert_contains "$(cat "$out")" "checkpoint: no actionable wake within 4s" "long coalescing wait did not reproduce the misleading quiet checkpoint"
+  [ ! -s "$home/state/.wake-queue" ] || fail "a timed-out preflight unexpectedly queued its unreported worker status"
+
+  grace=$(PYTHONPATH="$ROOT/tests" python3 -c 'import fm_codex_stop_watch_native_fixture as f; print(f.preflight_environment({}).get("FM_SIGNAL_GRACE", ""))')
+  [ "$grace" = 1 ] || fail "the native driver preflight did not select the 1s coalescing wait"
+  aligned_home=$(make_home native-preflight-aligned)
+  fakebin=$(install_native_checkpoint_fixture "$aligned_home" blank)
+  assert_worker_fixture_isolated "$aligned_home"
+  out="$aligned_home/out.txt"
+  err="$aligned_home/err.txt"
+  status=0
+  FM_HOME="$aligned_home" FM_ROOT_OVERRIDE="$aligned_home" FM_POLL=1 FM_SIGNAL_GRACE="$grace" \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 PATH="$fakebin:$PATH" \
+    "$CHECKPOINT" --seconds 5 >"$out" 2>"$err" || status=$?
+  expect_code 0 "$status" "aligned preflight event: $(cat "$out" "$err")"
+  assert_contains "$(cat "$out")" "signal:" "aligned preflight did not surface the initial worker status"
+  assert_contains "$(cat "$aligned_home/state/.wake-queue")" $'\tsignal\tworker.status\t' \
+    "aligned preflight queued no exact worker status event"
+  ack_fixture_wakes "$aligned_home"
+  pass "native preflight uses a coalescing wait inside its bound and cannot mistake an unreported worker status for quiet"
+}
+
+test_native_terminal_fixture_proves_activity_before_stale_triage() {
+  local home fakebin out err status state_output
+  home=$(make_home native-terminal-active)
+  fakebin=$(install_native_checkpoint_fixture "$home" blank)
+  assert_worker_fixture_isolated "$home"
+  out="$home/out.txt"
+  err="$home/err.txt"
+  status=0
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 PATH="$fakebin:$PATH" \
+    "$CHECKPOINT" --seconds 5 >"$home/first.out" 2>"$home/first.err" || status=$?
+  expect_code 0 "$status" "the initial worker status should be surfaced before proving terminal activity"
+  assert_contains "$(cat "$home/first.out")" "signal:" "the initial worker status was not surfaced"
+  assert_contains "$(cat "$home/state/.wake-queue")" $'\tsignal\tworker.status\t' \
+    "the initial worker status was not queued exactly"
+  ack_fixture_wakes "$home"
+
+  touch "$home/state/.native-terminal-active"
+  state_output=$(FM_HOME="$home" PATH="$fakebin:$PATH" bash "$ROOT/bin/fm-crew-state.sh" worker)
+  assert_contains "$state_output" "state: working · source: pane" \
+    "the synthetic terminal did not prove the worker's current activity"
+  status=0
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 PATH="$fakebin:$PATH" \
+    "$CHECKPOINT" --seconds 5 >"$out" 2>"$err" || status=$?
+  expect_code 124 "$status" "the handled status and active synthetic worker should remain quiet: $(cat "$out" "$err")"
+  assert_contains "$(cat "$out")" "checkpoint: no actionable wake within 5s" \
+    "the active terminal signature did not keep the synthetic worker active"
+  [ ! -s "$home/state/.wake-queue" ] || fail "the active synthetic worker produced an unrelated wake"
+
+  home=$(make_home native-terminal-blank)
+  fakebin=$(install_native_checkpoint_fixture "$home" blank)
+  assert_worker_fixture_isolated "$home"
+  status=0
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 PATH="$fakebin:$PATH" \
+    "$CHECKPOINT" --seconds 5 >"$home/first.out" 2>"$home/first.err" || status=$?
+  expect_code 0 "$status" "a blank synthetic terminal has no positive activity evidence"
+  assert_contains "$(cat "$home/first.out")" "signal:" "the unproven initial working declaration was not surfaced"
+  ack_fixture_wakes "$home"
+
+  status=0
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 PATH="$fakebin:$PATH" \
+    "$CHECKPOINT" --seconds 5 >"$home/stale.out" 2>"$home/stale.err" || status=$?
+  expect_code 0 "$status" "blank synthetic terminal stale outcome: $(cat "$home/stale.out" "$home/stale.err")"
+  assert_contains "$(cat "$home/stale.out")" "stale:" "a static blank terminal was not classified inactive before the checkpoint bound"
+  pass "the native fixture distinguishes a live terminal signature from a blank screen that correctly becomes stale"
 }
 
 test_registered_check_uses_preserved_watcher_environment() {
@@ -341,6 +495,8 @@ test_quiet_checkpoint_exits_124_cleanly
 test_signal_passes_through_and_exits_zero
 test_initial_working_status_is_acked_before_check_registration
 test_quiet_preflight_acks_empty_generation_before_check_registration
+test_native_preflight_wait_fits_its_checkpoint_bound
+test_native_terminal_fixture_proves_activity_before_stale_triage
 test_registered_check_uses_preserved_watcher_environment
 test_existing_singleton_watcher_is_not_success
 test_host_checkpoint_bounds_the_park_by_posture
