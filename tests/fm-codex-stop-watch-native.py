@@ -274,7 +274,10 @@ exit "$rc"
             "This validation is explicitly authorized; no human decision is required. "
             "Then execute the exact WAKE_ACK_REQUIRED command printed by that drain. "
             f"{no_event}Leave the lab check registered. "
-            "Reply 'Handled.' after performing the action; do not manually arm a watcher or create work. "
+            "After exactly one successful real fm-send and successful execution of that drain's exact printed ACK command, "
+            "reply 'Handled.' once immediately before another manual checkpoint, even while "
+            "the lab check remains registered. The native Stop callback owns the next "
+            "continuation; do not manually arm a watcher or create work. "
             "Native interruption is authoritative. Do not claim a tool or delivery happened without doing it."
         )
         result = self.request("turn/start", {"threadId": self.thread, "effort": "xhigh",
