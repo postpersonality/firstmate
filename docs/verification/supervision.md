@@ -94,9 +94,9 @@ ok - codex-cli 0.164.0: the only registered Stop hook survived a quiet 20-second
 ```
 
 The runner exited 0.
-This supports the native Codex API primary path exercised by the isolated standalone fixture: an initial final response and Stop continuation, the quiet 20-second boundary, the same thread's quiet 180-second successor checkpoint, one controlled worker event with one real send and exact generation acknowledgement, a final `Handled.` response and active Stop continuation, and interruption without another Stop.
-It does not establish behavior for the current interactive UI, every current client or configuration, a live fleet or real worker, other CLI versions or platforms, or the separate `CASE=all` controls.
-It makes no 100-percent current-UI claim.
+This supports only the isolated Linux standalone run against the real Codex API primary (`codex-cli 0.164.0`, `gpt-6.1-sol`), with one registered Stop hook and a controlled synthetic worker.
+It exercised the initial and successor Stop continuations, quiet 20- and 180-second checkpoints, one send and its exact generation acknowledgement, the terminal `Handled.` response, and interruption.
+The attended Codex Desktop and remote-control UI, a real worker or live fleet, other client configurations, CLI versions or platforms, and the separate `CASE=all` controls were not exercised.
 
 ## Native session-start delivery
 
