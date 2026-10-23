@@ -11,6 +11,68 @@ import { firstmateHome } from './firstmate-home.ts';
 const record = (id: string, fields: Record<string, unknown> = {}): Record<string, unknown> => ({ id, title: id, state: 'queued', kind: 'ship', repo: null, priority: null, ...fields });
 const ids = (groups: { rows: { id: string }[] }[]) => groups.flatMap(g => g.rows.map(r => r.id));
 
+test('HTTP overview projects linked external executors without confusing parent presence, activity or DoD', async t => {
+  const { router } = await import('../src/server.ts');
+  const root = mkdtempSync(join(tmpdir(), 'delo-external-overview-'));
+  const store = new Store({ firstmateHome: root });
+  const names = ['pi', 'agy', 'unverified', 'lost', 'stopped', 'absent', 'spawned'];
+  const records = names.flatMap(id => [
+    { id: `case-${id}`, title: id, kind: 'program', state: 'in_flight' as const, repo: '/user/research', body: '' },
+    { id, title: id, kind: id === 'spawned' ? 'ship' : 'external', state: 'in_flight' as const, repo: '/user/research', body: `Дело: case-${id}\nExternal DoD: {"version":"v1","criteria":"Проверенный результат","human_required":true,"confirmation":null,"achievement":null,"human_acceptance":null}` },
+  ]);
+  const external = (id: string, observation: Record<string, unknown>) => ({
+    id, kind: 'external', origin: 'existing-external-process', harness: id === 'agy' ? 'agy' : 'pi',
+    external: { binding: `/home/state/${id}.external.json`, revision: id, case: `case-${id}`,
+      identity: { native: { kind: id === 'agy' ? 'agy-parent' : 'path', value: id === 'agy' ? 'parent' : '/user/session.jsonl' } },
+      observation: { receipt: true, completion: { confirmed: false, achieved: false, human_required: true }, ...observation } },
+    current_state: { state: id === 'pi' ? 'working' : 'unknown', source: 'external-session' },
+  });
+  const workers = [
+    external('pi', { identity: 'verified', presence: 'alive', activity: 'working', state: 'working' }),
+    external('agy', { identity: 'verified', presence: 'alive', activity: 'unknown', native_status: 'done', reported_session: { kind: 'id', value: 'child' }, state: 'unknown' }),
+    external('unverified', { identity: 'unknown', presence: 'unknown', activity: 'unknown', state: 'unknown' }),
+    external('lost', { identity: 'lost', presence: 'unknown', state: 'unknown' }),
+    external('stopped', { identity: 'lost', presence: 'stopped', state: 'stopped' }),
+    { id: 'spawned', kind: 'ship', spawn_gen: 'g1', current_state: { state: 'working', source: 'run-step' } },
+  ];
+  t.mock.method(store.firstmate, 'list', () => records);
+  t.mock.method(store.firstmate, 'archive', () => []);
+  t.mock.method(store.firstmate, 'receipts', () => ({}));
+  t.mock.method(store.firstmate, 'snapshot', async (script: string) => script === 'fm-fleet-snapshot.sh'
+    ? { schema: 'fm-fleet-snapshot.v1', backlog: { records: records.map(r => ({ ...r, body_lines: r.body.split('\n') })) }, tasks: workers }
+    : { generated: 'now', in_flight: records.map(r => ({ id: r.id })) });
+  try {
+    const response = await router(store)(new Request('http://localhost:4317/api/overview'));
+    assert.equal(response.status, 200);
+    const view = await response.json();
+    const cases = new Map<string, any>(view.cases.map((r: any) => [r.id, r]));
+    const tasks = new Map<string, any>(['working', 'waiting', 'next', 'done'].flatMap(p => view[p].flatMap((g: any) => g.rows.map((r: any) => [r.id, r]))));
+    for (const [id, current] of [['pi', 'Работает'], ['agy', 'Исполнитель на связи · активность неизвестна'], ['spawned', 'Идёт проверка']]) {
+      const c = cases.get(`case-${id}`), task = tasks.get(id);
+      assert.equal(c.noWorker, false, id);
+      assert.equal(c.current, current, id);
+      assert.equal(task.current, current, id);
+      assert.deepEqual(c.counts, { working: 1, waiting: 0, next: 0, done: 0 });
+      assert.equal(task.waitKind, undefined, 'unconfirmed DoD and a child done hook are not a user decision or task completion');
+      assert.equal(task.owner, undefined);
+      assert.notEqual(c.nextStep, 'Текущее состояние исполнителя не подтверждено');
+    }
+    assert.equal(cases.get('case-absent').current, 'Нет исполнителя');
+    assert.equal(cases.get('case-absent').noWorker, true);
+    assert.equal(cases.get('case-unverified').current, 'Состояние неизвестно');
+    assert.equal(cases.get('case-unverified').noWorker, false, 'unknown identity retains the recorded executor without claiming it is alive');
+    assert.equal(cases.get('case-lost').current, 'Идентичность исполнителя потеряна');
+    assert.equal(cases.get('case-stopped').current, 'Исполнитель остановлен');
+    for (const id of ['lost', 'stopped']) {
+      assert.equal(tasks.get(id).waitKind, 'attention');
+      assert.equal(tasks.get(id).owner, 'Firstmate');
+      assert.deepEqual(cases.get(`case-${id}`).counts, { working: 0, waiting: 1, next: 0, done: 0 });
+    }
+    assert.equal((await store.worker('agy')).current, cases.get('case-agy').current, 'the task card and its case share the same runtime projection');
+    assert.deepEqual(store.reviewQueue(), [], 'unconfirmed DoD does not create a native question');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('business work survives unknown runtime while actual waits and completion take precedence', () => {
   const records = [
     record('human', { hold_kind: 'captain', hold_reason: 'Выбрать вариант' }),

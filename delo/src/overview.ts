@@ -50,6 +50,13 @@ export function taskBlockers(task: any, records: Map<string, any>) {
 // Uses reconciled current state, never historical status events or unknown-state hints.
 export function workerState(worker: any): string {
   if (!worker) return 'Нет исполнителя';
+  if (worker.kind === 'external') {
+    const observed = worker.external?.observation;
+    if (observed?.presence === 'stopped') return observed.completion?.achieved ? 'Работа исполнителя завершена' : 'Исполнитель остановлен';
+    if (observed?.identity === 'lost') return 'Идентичность исполнителя потеряна';
+    if (observed?.identity !== 'verified' || observed.presence !== 'alive') return 'Состояние неизвестно';
+    return ({ working: 'Работает', idle: 'Исполнитель на связи · не занят', waiting: 'Исполнитель на связи · ожидает', done: 'Исполнитель на связи · активность завершена' } as Record<string, string>)[observed.activity] ?? 'Исполнитель на связи · активность неизвестна';
+  }
   const state = worker.current_state;
   if (!state || state.state === 'unknown') return 'Состояние неизвестно';
   if (state.state === 'needs-decision' || (['parked', 'paused', 'blocked'].includes(state.state) && (worker.hints?.pending_decision === true || /^needs-decision\b/.test(state.detail ?? '')))) return 'Вопрос исполнителя';
@@ -68,6 +75,11 @@ export function position(task: any, worker: any, records: Map<string, any>): Pos
   const blockers = taskBlockers(task ?? {}, records);
   if (blockers.length) return { phase: 'waiting', waitKind: 'environment', reason: reason ?? 'Ожидает завершения задач', nextStep: 'Продолжение зависит от связанных задач' };
   if (held) return { phase: 'waiting', waitKind: 'environment', reason: reason ?? 'Задача отложена', until, nextStep: 'Ожидает снятия ограничения' };
+  if (worker?.kind === 'external') {
+    const observed = worker.external?.observation;
+    if (observed?.identity === 'verified' && observed.presence === 'alive') return { phase: task?.state === 'in_flight' || observed.activity === 'working' ? 'working' : 'next', nextStep: observed.activity === 'unknown' ? 'Активность исполнителя не подтверждена' : undefined };
+    if (!observed?.completion?.achieved && (observed?.identity === 'lost' || observed?.presence === 'stopped')) return { phase: 'waiting', waitKind: 'attention', owner: 'Firstmate', reason: workerState(worker), nextStep: 'Firstmate должен проверить привязку перед продолжением' };
+  }
   const current = worker?.current_state?.state === 'unknown' && worker?.declaredWait ? worker.declaredWait : worker?.current_state;
   const state = current?.state;
   const rawDetail = value(current?.detail);
@@ -112,7 +124,7 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
     const task = r;
     const worker = workers.get(id);
     const place = position(task, worker, records);
-    return {
+    const result: Row = {
       ...extra, id, title: value(r?.title) ?? value(title) ?? id, kind: value(r?.kind) ?? extra.kind, repo: value(r?.repo) ?? extra.repo,
       pinned: pinned(r), open: !!r && r.state !== 'done', task: !!r, personal: (r?.body_lines ?? []).some((l: unknown) => typeof l === 'string' && l.trim() === 'Личное'), prUrl: value(worker?.pr?.url) ?? value(r?.pr_url), reportPath: value(r?.report_path),
       requests: (requests.get(id) ?? []).filter(request => task && actions(task).includes(request.action) && (request.action !== 'close' || task.state === 'in_flight')),
@@ -122,6 +134,15 @@ export function overview(bearings: any, fleet: any, archive: any[] = [], tasks: 
       current: worker || task?.state === 'in_flight' ? `${task?.state === 'done' && worker ? 'Сохранённый исполнитель · ' : ''}${workerState(worker)}` : extra.current,
       holdKind: value(task?.hold_kind), inFlight: task?.state === 'in_flight',
       noWorker: task?.state === 'in_flight' && !worker || extra.noWorker,
+    };
+    if (task?.kind !== 'program') return result;
+    // A case has no runtime of its own; its current executors belong to linked tasks.
+    const members = [...records.values()].filter(t => t.kind !== 'program' && t.state === 'in_flight' && caseOf(t.body_lines) === id).map(t => row(t.id, t.title));
+    return {
+      ...result,
+      current: [...new Set(members.map(t => t.current).filter(Boolean))].join('; ') || undefined,
+      noWorker: members.length ? members.every(t => t.noWorker === true) : undefined,
+      nextStep: place.waitKind ? result.nextStep : [...new Set(members.map(t => t.nextStep).filter(Boolean))].join('; ') || undefined,
     };
   };
   const decisions = new Set<string>((bearings.decisions_open ?? []).map((d: any) => d.id));
