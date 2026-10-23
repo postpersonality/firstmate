@@ -207,7 +207,7 @@ else:
         })
         self.thread = result["thread"]["id"]
         if self.standalone:
-            # Handle only the initial working signal through public owners before the first reply.
+            # Resolve only an initial status wake or quiet checkpoint through public owners before the first reply.
             assert not (self.home / "state/lab.check.sh").exists(), \
                 "the deliberate check must not preempt initial status handling"
             checkpoint = subprocess.run(
@@ -216,16 +216,41 @@ else:
             drain = subprocess.run(["bash", self.home / "bin/fm-wake-drain.sh"],
                                    cwd=self.home, env=self.env, text=True,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            ack_line = next((line for line in drain.stderr.splitlines()
-                             if line.startswith("WAKE_ACK_REQUIRED:")), "")
+            ack_lines = [line for line in drain.stderr.splitlines()
+                         if line.startswith("WAKE_ACK_REQUIRED:")]
+            ack_line = ack_lines[0] if len(ack_lines) == 1 else ""
             ack_command = ack_line.split(" run ", 1)[1] if " run " in ack_line else ""
-            rows = [line for line in drain.stdout.splitlines() if len(line.split("\t")) == 5]
+            ack_parts = ack_command.split()
+            checkpoint_lines = [line for line in checkpoint.stdout.splitlines() if line]
+            drain_lines = [line for line in drain.stdout.splitlines() if line]
+            rows = [line for line in drain_lines if len(line.split("\t")) == 5]
+            signal_outcome = (
+                checkpoint.returncode == 0 and not checkpoint.stderr and len(checkpoint_lines) == 1
+                and checkpoint_lines[0].startswith("signal:") and drain.returncode == 0
+                and len(drain_lines) == 1 and len(rows) == 1 and "worker.status" in rows[0]
+            )
+            quiet_outcome = (
+                checkpoint.returncode == 124 and not checkpoint.stderr
+                and checkpoint_lines == ["checkpoint: no actionable wake within 20s"]
+                and drain.returncode == 0 and not drain_lines and not rows
+            )
+            ack_shape = (
+                len(ack_parts) == 5 and ack_parts[0] == "bin/fm-wake-drain.sh"
+                and ack_parts[1] == "--ack-through" and ack_parts[3] == "--recovery-generation"
+                and bool(ack_parts[4])
+            )
+            if signal_outcome and ack_shape and ack_parts[2] == rows[0].split("\t")[1]:
+                preflight_outcome = "signal"
+            elif quiet_outcome and ack_shape and ack_parts[2] == "0":
+                preflight_outcome = "quiet"
+            else:
+                preflight_outcome = "invalid"
             ack = None
-            if drain.returncode == 0 and len(rows) == 1 and "worker.status" in rows[0] \
-                    and ack_command.startswith("bin/fm-wake-drain.sh --ack-through "):
-                ack = subprocess.run(ack_command.split(), cwd=self.home, env=self.env, text=True,
+            if preflight_outcome != "invalid":
+                ack = subprocess.run(ack_parts, cwd=self.home, env=self.env, text=True,
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (self.home / "native-initial-wake.json").write_text(json.dumps({
+                "outcome": preflight_outcome,
                 "checkpoint": {"status": checkpoint.returncode, "stdout": checkpoint.stdout,
                                "stderr": checkpoint.stderr},
                 "drain": {"status": drain.returncode, "stdout": drain.stdout,
@@ -234,15 +259,11 @@ else:
                 "ack": None if ack is None else {"status": ack.returncode, "stdout": ack.stdout,
                                                   "stderr": ack.stderr},
             }, indent=2) + "\n")
-            assert checkpoint.returncode == 0 and "signal:" in checkpoint.stdout, \
-                "the initial working status did not surface through the public checkpoint"
-            assert "check:" not in checkpoint.stdout, "the initial checkpoint produced an unrelated check"
-            assert drain.returncode == 0 and len(rows) == 1 and "worker.status" in rows[0], \
-                "the public wake drain did not present only the initial working status"
-            assert ack_command.startswith("bin/fm-wake-drain.sh --ack-through ") and ack and ack.returncode == 0, \
-                "the initial working status was not acknowledged through its printed public command"
+            assert preflight_outcome != "invalid", \
+                "the initial checkpoint/drain produced an unrelated event or no valid generation-bound ACK"
+            assert ack and ack.returncode == 0, "the printed initial ACK command did not succeed"
             queue = self.home / "state/.wake-queue"
-            assert not queue.exists() or not queue.read_text(), "the initial status acknowledgement left wakes queued"
+            assert not queue.exists() or not queue.read_text(), "the initial preflight acknowledgement left wakes queued"
         if (self.home / "state/worker.status").exists():
             check = self.home / "state/lab.check.sh"
             check.write_text("#!/usr/bin/env bash\nexit 1\n")
