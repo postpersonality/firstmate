@@ -122,13 +122,22 @@ print(json.dumps(out))
         source = temp / 'authorization.txt'; source.write_text('explicit user instruction for this process')
         output = cwd / 'handoff.md'; output.write_text('initial result')
         proposed = temp / 'criteria.txt'; proposed.write_text('Verified research results with human acceptance')
+        observer = home / 'state/existing-research.check.sh'
+        observer.write_text('#!/usr/bin/env bash\nexit 0\n'); observer.chmod(0o700)
+        call(['bash', ROOT / 'bin/fm-check-register.sh', 'existing-research'])
+        observer_files = [observer, home / 'state/existing-research.check-trust']
+        observer_before = [(p.read_bytes(), p.stat().st_ino, p.stat().st_mtime_ns) for p in observer_files]
         args = ['attach', 'research', '--selection', selection, '--source-file', source, '--dod-file', proposed,
-                '--title', 'Исследование', '--human-required', '--observe-file', output]
+                '--title', 'Исследование', '--human-required', '--observe-file', output,
+                '--existing-check', 'existing-research']
         first = json.loads(attach(*args).stdout)
         second = json.loads(attach(*args).stdout)
         assert first == second and first['receipt'] is False and first['dod_confirmed'] is False
         b = json.loads((home / 'state/research.external.json').read_text())
         assert b['origin'] == 'existing-external-process' and not {'spawn_gen', 'worktree'} & b.keys()
+        assert b['existing_check'] == 'existing-research'
+        assert not (home / 'state/external-research.check.sh').exists()
+        assert [(p.read_bytes(), p.stat().st_ino, p.stat().st_mtime_ns) for p in observer_files] == observer_before
         unchanged()
         assert json.loads(attach('discover', '--session', 'test-external').stdout) == []
         assert state()['identity'] == 'verified' and state()['activity'] == 'unknown'  # child status

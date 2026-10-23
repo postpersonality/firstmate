@@ -333,7 +333,8 @@ class Home:
                          ({identity['native']['value']} if identity['native']['kind'] == 'path' else set()))
         if args.existing_check:
             self.path(args.existing_check)
-            run(['bash', '-c', '. "$1/bin/fm-check-lib.sh"; fm_custom_check_registered "$2" "$3"',
+            run(['bash', '-c', '. "$1/bin/fm-pr-lib.sh" && . "$1/bin/fm-check-lib.sh" && '
+                 'fm_custom_check_registered "$2" "$3"',
                  'external-check', ROOT, self.state, args.existing_check])
         operation = digest({'identity': identity, 'source': {k: source[k] for k in ('path', 'sha256')},
                             'case': case, 'watched': watched, 'existing_check': args.existing_check})
