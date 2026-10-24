@@ -19,8 +19,8 @@
 #      agent exited.
 set -u
 
-# shellcheck source=tests/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-control-lib.sh"
 # shellcheck source=/dev/null
@@ -1338,6 +1338,7 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
     sed "s/{TASK}/PRIVATE_RELAUNCH_SENTINEL: fix that promotion issue./; s/{FIRSTMATE_SPEC}/Preserve the current delivery mode./; s/{PUBLIC_INTENT}/$p0/" \
       "$brief" > "$brief.filled"
     mv "$brief.filled" "$brief"
+    fm_test_spawn_ask_complete "$home" "$id" >/dev/null 2>&1 || true
     {
       echo "window=fmses:fm-$id"
       echo "endpoint_task_id=$id"

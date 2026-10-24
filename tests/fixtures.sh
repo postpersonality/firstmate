@@ -312,6 +312,34 @@ make_spawn_fakebin() {
   fm_test_make_spawn_fakebin "$@"
 }
 
+# fm_test_spawn_ask_complete <home> <id> [authority-line]
+# A ship or scout scaffold now creates the task's captain-ask record, and
+# bin/fm-spawn.sh refuses to launch while that record holds no words or the
+# brief disagrees with it. A suite that only cares about some other spawn
+# behavior records a synthetic ask here so the gate passes for a valid launch.
+# Call it from fixture setup, never from a spawn runner: a launch attempt must
+# meet the real gate, so a test that expects the gate to refuse keeps refusing.
+# It is append-only and idempotent: it never fills a {TASK} placeholder, so a
+# fixture that deliberately tests a placeholder refusal keeps failing for that
+# reason, and it does nothing for a task with no record.
+fm_test_spawn_ask_complete() {
+  local home=$1 id=$2 authority=${3:-'Authority: none'} ask_file brief ids tmp
+  ask_file="$home/data/$id/.captain-ask.txt"
+  brief="$home/data/$id/brief.md"
+  [ -f "$home/data/$id/ask.md" ] || return 0
+  [ -f "$brief" ] || return 0
+  grep -q '^## Ask ' "$home/data/$id/ask.md" && return 0
+  printf 'Fixture captain ask for %s.\n' "$id" > "$ask_file"
+  FM_HOME="$home" "$ROOT/bin/fm-ask.sh" record "$id" --file "$ask_file" >/dev/null || return 1
+  ids=$(FM_HOME="$home" "$ROOT/bin/fm-ask.sh" clauses "$id" | awk -F'\t' '{ printf "%s ", $1 }')
+  tmp="$brief.tmp.$$"
+  awk -v ask="$(cat "$ask_file")" -v ids="clauses: $ids" -v authority="$authority" '
+    { print }
+    /^## Captain.s intent/ { print ask }
+    /^## Firstmate spec/ { print ids; print authority }
+  ' "$brief" > "$tmp" && mv "$tmp" "$brief"
+}
+
 # fm_test_run_spawn <home> <pane-path> <fakebin> [fm-spawn args...]
 # Common spawn env. Extra variables in the caller (GROK_HOME, FM_FAKE_LAUNCH_LOG,
 # CLAUDE_CONFIG_DIR, ...) are inherited. Does not add --mode/--yolo; ship tests

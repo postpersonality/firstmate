@@ -21,6 +21,7 @@
 #
 # Usage:
 #   fm-captain-hold.sh hold <task-id> --reason <reason> \
+#     [--basis captain:<file>|dependency:<task-id>|question] \
 #     [--title <title>] [--repo <repo>] [--origin <origin-id>] [--until YYYY-MM-DD]
 #   fm-captain-hold.sh question <task-id>
 #   fm-captain-hold.sh handoff <task-id> --expected-version <sha256>
@@ -62,6 +63,19 @@
 # `--until` records the captain's own deferral date through `tasks-axi hold
 # --until`, so a "revisit later" answer is stored as a date instead of a live
 # card.
+# `--basis` is required once the held task has a recorded captain ask
+# (bin/fm-ask.sh) and names what grounds the wait: `captain:<file>` for words
+# that task actually recorded from the captain (checked offline),
+# `dependency:<task-id>` for a dependency the backlog records as that task's
+# `blocked_by` (also checked offline), or `question` for a fresh human input that
+# this task genuinely leaves open. `question` stays a normal hold - a real choice
+# may block the current task, and no separate row is needed - but it is judged
+# once by bin/fm-ask.sh's bounded basis check against this task's recorded ask and
+# authority, so the hold is refused when its reason carries a restriction the
+# record does not contain, such as another workstream's push ban. A quote proves
+# provenance, not permission, so the interpretation stays a supervision
+# judgment; the gate removes the mechanical path that made the bad hold look
+# legitimate, and its refusal names the correction.
 #
 # `question` reads the full task with decoded hold reasons, a `question_version`
 # SHA-256 of its native full show, and `question_owner` (user or firstmate).
@@ -179,7 +193,11 @@
 # backlog transitions. Their `complete` requires --fulfilled (the requested
 # outcome is achieved) OR one or more --remaining <id> / --firstmate-action <id>
 # references. The supervisor judges outcome and authority from the original ask;
-# no prose classifier can prove either. References are unioned into
+# no prose classifier can prove either. When the origin task has a recorded
+# captain ask (bin/fm-ask.sh), `complete` also refuses unless the brief still
+# carries every recorded clause verbatim, cites every clause id in its spec, and
+# records authority only from those words: acceptance is bound to the source
+# firstmate compared, never to its own summary. References are unioned into
 # completion_work= as worker:<id>, firstmate:<id>, or, after the existing
 # secondmate handoff, secondmate:<mate-id>:<id>. A refused handoff preserves its
 # source reference for retry. Self references and conflicting owners are refused.
@@ -1050,8 +1068,8 @@ verify_entry_durable() {  # <origin-or-empty> <entry>; prints "<id> <how> <origi
 }
 
 command_hold() {
-  local id=${1:-} title='' reason='' repo='' origin='' until='' show state existing_title body='' hold_kind hold_set occurrence
-  local existing_hold_kind='' existing_held='' preserve_hold_set=0 stored_reason previous_origin='' hold_status=0
+  local id=${1:-} title='' reason='' repo='' origin='' until='' basis='' show state existing_title body='' hold_kind hold_set occurrence
+  local existing_hold_kind='' existing_held='' preserve_hold_set=0 stored_reason previous_origin='' hold_status=0 basis_file basis_dep basis_verdict=
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
@@ -1061,6 +1079,7 @@ command_hold() {
       --repo) shift; repo=${1:-} ;;
       --origin) shift; origin=${1:-} ;;
       --until) shift; until=${1:-} ;;
+      --basis) shift; basis=${1:-} ;;
       *) usage >&2; exit 2 ;;
     esac
     shift
@@ -1098,6 +1117,44 @@ command_hold() {
     if [ -n "$title" ]; then
       existing_title=$(show_field_value "$show" title)
       [ "$existing_title" = "$title" ] || fail "existing task $id has a different title"
+    fi
+    # A hold on a task with a recorded captain ask must say what grounds it: the
+    # captain's own words for THIS task, or a dependency the backlog already
+    # records. Another task's plan, audit restriction or program rule is neither,
+    # so it can never be the reason this task stops. bin/fm-ask.sh owns the
+    # record; a misdeclared `question` basis stays a supervision judgment.
+    if [ -f "$DATA/$id/ask.md" ]; then
+      [ -n "$basis" ] || fail "task $id has a recorded captain ask, so the hold must state its basis: --basis question (a fresh human input this task leaves open), --basis captain:<file> (the captain words recorded for this task), or --basis dependency:<task-id> (a dependency the backlog records)"
+      case "$basis" in
+        captain:*)
+          basis_file=${basis#captain:}
+          [ -f "$basis_file" ] || fail "--basis captain needs a readable file: $basis_file"
+          "$SCRIPT_DIR/fm-ask.sh" contains "$id" --file "$basis_file" >/dev/null \
+            || fail "those words are not recorded for task $id; another task's restriction is not this task's basis (record the captain's own words for $id with bin/fm-ask.sh record, or use --basis dependency/question)"
+          ;;
+        dependency:*)
+          basis_dep=${basis#dependency:}
+          validate_slug dependency-id "$basis_dep"
+          [ "$(show_field_value "$show" blocked_by)" = "$basis_dep" ] \
+            || fail "task $id records no dependency on $basis_dep (blocked_by: $(show_field_value "$show" blocked_by)); record a real dependency with tasks-axi block $id --by $basis_dep, or state the captain's own words instead"
+          ;;
+        question)
+          [ -f "$DATA/$id/brief.md" ] \
+            || fail "task $id declares a question basis but has no brief to judge it against; record the task record first"
+          basis_verdict=$("$SCRIPT_DIR/fm-ask.sh" basis "$id" --brief "$DATA/$id/brief.md" --reason "$reason" 2>&1) || {
+            printf '%s\n' "$basis_verdict" >&2
+            fail "the hold basis was refused: this reason is not this task's own open question or recorded words (the verdict above names the correction)"
+          }
+          ;;
+        *)
+          fail "--basis must be captain:<file>, dependency:<task-id>, or question: $basis"
+          ;;
+      esac
+    elif [ -n "$basis" ]; then
+      case "$basis" in
+        captain:*|dependency:*|question) ;;
+        *) fail "--basis must be captain:<file>, dependency:<task-id>, or question: $basis" ;;
+      esac
     fi
   else
     [ -n "$title" ] || fail "--title is required to create task $id"
@@ -2217,6 +2274,8 @@ command_complete() {
   local origin=${1:-} meta previous='' supplied='' keys='' entry key status_file open has_meta=0 transfer_rc transfers=() resolved
   local resolved_how attested_by_prefix='' origin_state unrecorded_origin=''
   local outcome='' remaining='' refs previous_refs='' ref id seal
+  local ASK_RESULT='' ASK_PREVIOUS='' ASK_DIGEST=''
+  local -a ASK_RESULTS=() ASK_ACCEPT_ARGS=()
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
   validate_slug origin-id "$origin"
   shift
@@ -2229,6 +2288,17 @@ command_complete() {
     [ -f "$meta" ] || fail "task metadata disappeared while recording completion"
   fi
   origin_exists_here "$origin" || fail "origin $origin is not owned by the active home $FM_HOME"
+  # Outcome acceptance is bound to the task's recorded captain ask when one
+  # exists: a brief that dropped a recorded clause, missed a clause id in its
+  # spec, or recorded authority the captain's words do not carry cannot be
+  # accepted as fulfilled. bin/fm-ask.sh owns the check; a task with no record
+  # keeps the pre-existing behavior.
+  if [ -f "$DATA/$origin/brief.md" ]; then
+    ASK_FINDINGS=$("$SCRIPT_DIR/fm-ask.sh" check "$origin" --brief "$DATA/$origin/brief.md" 2>&1) || {
+      printf '%s\n' "$ASK_FINDINGS" >&2
+      fail "outcome acceptance refused for $origin: its brief no longer carries the recorded captain ask (see the findings above); restore every recorded clause, clause id, and recorded authority before accepting"
+    }
+  fi
   local none=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -2268,6 +2338,35 @@ command_complete() {
   if [ "$has_meta" = 1 ]; then
     if [ "$(meta_value "$meta" completion_required)" = 1 ] || [ -n "$outcome" ]; then
       [ -n "$outcome" ] || fail "review the requested outcome: use --fulfilled or name authorized --remaining / --firstmate-action tasks"
+      # The bounded semantic check runs only for an explicit --fulfilled, never
+      # for a partial acceptance that names its remaining work: those references
+      # carry the unfinished scope. Unchanged material that already passed is
+      # recognised by its digest, so a replay pays for no second call.
+      if [ "$outcome" = fulfilled ] && [ -f "$DATA/$origin/brief.md" ] && [ -f "$DATA/$origin/ask.md" ]; then
+        ASK_RESULTS=()
+        [ ! -f "$DATA/$origin/report.md" ] || ASK_RESULTS[${#ASK_RESULTS[@]}]="$DATA/$origin/report.md"
+        [ ! -f "$STATE/$origin.status" ] || ASK_RESULTS[${#ASK_RESULTS[@]}]="$STATE/$origin.status"
+        [ "${#ASK_RESULTS[@]}" -gt 0 ] || fail "outcome acceptance refused for $origin: no result document (report.md or the task status stream) exists to judge the recorded captain clauses against"
+        ASK_ACCEPT_ARGS=(--brief "$DATA/$origin/brief.md")
+        for ASK_RESULT in "${ASK_RESULTS[@]}"; do
+          ASK_ACCEPT_ARGS[${#ASK_ACCEPT_ARGS[@]}]=--result
+          ASK_ACCEPT_ARGS[${#ASK_ACCEPT_ARGS[@]}]=$ASK_RESULT
+        done
+        ASK_PREVIOUS=$(meta_value "$meta" ask_accept)
+        if [ -n "$ASK_PREVIOUS" ]; then
+          ASK_ACCEPT_ARGS[${#ASK_ACCEPT_ARGS[@]}]=--reuse-digest
+          ASK_ACCEPT_ARGS[${#ASK_ACCEPT_ARGS[@]}]=$ASK_PREVIOUS
+        fi
+        ASK_VERDICT=$("$SCRIPT_DIR/fm-ask.sh" accept "$origin" "${ASK_ACCEPT_ARGS[@]}" 2>&1) || {
+          printf '%s\n' "$ASK_VERDICT" >&2
+          fail "outcome acceptance refused for $origin: the bounded acceptance check did not confirm every recorded captain clause on the judged material (see the verdict above); answer the uncovered clauses, or accept partial scope with --remaining instead of --fulfilled"
+        }
+        printf '%s\n' "$ASK_VERDICT"
+        ASK_DIGEST=$(printf '%s\n' "$ASK_VERDICT" | awk '/^  digest: /{ print $2; exit }')
+        if [ -n "$ASK_DIGEST" ] && [ "$ASK_DIGEST" != "$ASK_PREVIOUS" ]; then
+          printf 'ask_accept=%s\n' "$ASK_DIGEST" >> "$meta" || fail "cannot record the acceptance digest"
+        fi
+      fi
       if [ "$(meta_value "$meta" completion_required)" != 1 ]; then
         printf 'completion_required=1\n' >> "$meta" || fail "cannot require the outcome review"
       fi

@@ -109,6 +109,7 @@ A post-teardown visual review can still complete an inventory-only review agains
 
 `complete` accepts `--none` as an explicit semantic inventory result.
 `--none` is refused while the origin still has a lifecycle-open keyed status decision.
+When the origin has a recorded captain ask, `complete` also refuses unless that task's brief still carries every recorded clause verbatim, cites every clause id in its spec, and records authority only from the recorded words ([`fm-ask.sh`](../bin/fm-ask.sh) owns that check and its limits), so acceptance is bound to the source firstmate compared rather than to its own summary; a task with no such record keeps the inventory-only behavior.
 Before recording completion, `complete` verifies every listed task against tasks-axi.
 The origin is never its own inventory entry, so a hold that failed cannot be vouched for by the origin row.
 For a historical inventory that names its own origin, hold a separate captain task with `--origin`, replace only the invalid entry in the final `decision_keys=` line of the origin metadata with that task id while preserving all other entries, and re-run `complete`.

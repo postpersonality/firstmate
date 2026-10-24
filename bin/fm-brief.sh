@@ -98,6 +98,13 @@
 # on that forge. bin/fm-spawn.sh reads that line and refuses to launch a ship task
 # whose explicit --mode or registered forge disagrees, so an adjusted brief and the
 # recorded task metadata cannot drift apart.
+# Every ship and scout scaffold also creates the task's captain-ask record
+# (data/<id>/ask.md, bin/fm-ask.sh). Record the captain's own words before
+# composing, keep `## Captain's intent` verbatim from that record, cite every
+# clause id in `## Firstmate spec`, and declare the task's authority from those
+# words; spawn and outcome acceptance refuse a brief that disagrees. The record
+# belongs to the task: a bounded step worker records only the words of the step
+# it was given, never the parent program's whole ask.
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # Both crewmate scaffolds carry one shared rule against administering the
 # infrastructure every lane shares - the no-mistakes daemon and the worktree pool
@@ -449,6 +456,15 @@ append_case_brief() {
 BRIEF="$DATA/$ID/brief.md"
 [ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
 mkdir -p "$DATA/$ID"
+# Every ship and scout scaffold creates the task's captain-ask record, so a new
+# intake cannot dispatch without the words its brief must carry. bin/fm-ask.sh
+# owns the record's format, and bin/fm-spawn.sh refuses an unrecorded one.
+if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
+  "$SCRIPT_DIR/fm-ask.sh" init "$ID" >/dev/null || {
+    echo "error: could not create the captain-ask record at $DATA/$ID/ask.md" >&2
+    exit 1
+  }
+fi
 
 ASK_USER_BLOCK=
 if [ "$KIND" = ship ] && [ "$MODE" = no-mistakes ]; then
@@ -779,7 +795,7 @@ If your findings reveal work that should ship (e.g. you reproduced a bug and the
 EOF
 append_case_brief
 append_brief_include
-echo "scaffolded: $BRIEF (scout; replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
+echo "scaffolded: $BRIEF (scout; record the captain words with bin/fm-ask.sh record $ID, then replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
 exit 0
 fi
 
@@ -861,7 +877,7 @@ EOF
 append_case_brief
 append_brief_include
 if [ "$FORGE" = none ]; then
-  echo "scaffolded: $BRIEF (ship, mode=$MODE; replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
+  echo "scaffolded: $BRIEF (ship, mode=$MODE; record the captain words with bin/fm-ask.sh record $ID, then replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
 else
-  echo "scaffolded: $BRIEF (ship, mode=$MODE forge=$FORGE shape=$SHAPE; replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
+  echo "scaffolded: $BRIEF (ship, mode=$MODE forge=$FORGE shape=$SHAPE; record the captain words with bin/fm-ask.sh record $ID, then replace {TASK}$PUBLIC_INTENT_FILL and {FIRSTMATE_SPEC})"
 fi

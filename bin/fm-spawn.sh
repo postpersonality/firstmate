@@ -22,6 +22,10 @@
 #   ship or scout spawn also refuses leftover `{TASK}` / `{FIRSTMATE_SPEC}`
 #   placeholders, an empty Task, an incomplete pair of Task subsections, or a
 #   `## Captain's intent` line opening with a Captain label or address.
+#   It also runs bin/fm-ask.sh's check when the task has a recorded captain ask,
+#   so a dispatch whose brief dropped a recorded clause, missed a clause id in
+#   its spec, or recorded authority the captain's words do not carry is refused
+#   instead of launched; tasks with no such record dispatch unchanged.
 #   Every ship or scout spawn renders `launch-brief.md`; for a no-mistakes ship
 #   it also carries the current `--intent` contract and prepared public intent.
 #   A missing, blank or placeholder `## Public intent` under `# Task`, or one
@@ -5562,6 +5566,19 @@ if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
     LAUNCH_ENV_PREFIX="$LAUNCH_ENV_PREFIX "'${TRACEPARENT+"TRACEPARENT=$TRACEPARENT"}'
   fi
   LAUNCH="$LAUNCH_ENV_PREFIX /bin/sh -c $(shell_quote "$LAUNCH")"
+fi
+# Compare the brief with the task's recorded captain ask immediately before the
+# launch, after every mode, forge, profile, and flag refusal has had its say
+# (bin/fm-ask.sh owns the check and its limits). Placing it here keeps the
+# existing safety refusals on the message a caller sees first, and a task with no
+# record is untouched, so briefs written before that record existed still
+# dispatch exactly as they did.
+if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
+  if ! SPAWN_ASK_FINDINGS=$("$SCRIPT_DIR/fm-ask.sh" check "$ID" --brief "$DATA/$ID/brief.md" 2>&1); then
+    printf '%s\n' "$SPAWN_ASK_FINDINGS" >&2
+    echo "error: $DATA/$ID/brief.md does not carry this task's recorded captain ask; state every recorded clause in ## Captain's intent verbatim, cite every clause id in ## Firstmate spec, and declare the task authority only from the recorded words before spawn" >&2
+    exit 1
+  fi
 fi
 # Implement the launch-delivery contract in this script's header. The full
 # home-identity hash isolates equal task ids across homes, and the spawn token in

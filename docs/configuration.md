@@ -1163,6 +1163,7 @@ Firstmate resolves the rule's profile object or array under `AGENTS.md` section 
 - When the file also declares `worker_profiles.allowed`, that allowlist further restricts which profiles may launch, including raw launch commands ([worker profile guard](#worker-profile-guard-worker_profilesallowed)).
 - Batch spawns satisfy the same requirement with a shared `--harness`.
 - Secondmate spawns are exempt and still resolve through `config/secondmate-harness` and its optional model and effort tokens.
+- The same `default` profile (or a single declared `worker_profiles.allowed` entry when no default is declared) backs the bounded acceptance critic in `bin/fm-ask.sh`: it must resolve through the worker profile guard and the effort pin to the Pi lane, and an absent or non-Pi profile refuses that check rather than running a model outside the declared policy.
 
 **Contract owners**
 

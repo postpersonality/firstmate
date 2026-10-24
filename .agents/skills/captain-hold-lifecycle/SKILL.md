@@ -17,7 +17,7 @@ Before publishing or holding a proposed question, apply `ask-user-authority`, th
 
 ## Outcome review
 
-Compare the delivered milestone with the original requested outcome in the task and brief before accepting it.
+Compare the delivered milestone with the task's recorded captain ask (`bin/fm-ask.sh`) and with the obligations the brief states from it, never with your own summary of the ask: `complete` refuses a brief that no longer carries the record.
 A saved input, dataset, plan, or prepared command satisfies an archive/plan/preparation-only ask; it does not satisfy an already authorized working result or execution ask.
 Keep authorized work with the current worker when possible, promoting a scout when appropriate, or file the remaining executable work as ordinary backlog tasks carrying the original outcome and authority boundaries.
 Do not turn that work into an optional suggestion or ask for the same authorization again.
@@ -33,12 +33,12 @@ Do not invent an external condition or activate an action just to pass the gate;
 After acceptance, re-evaluate ready work under the existing lifecycle.
 Ordinary status replies and resolved decisions create no work or new completion obligation.
 
-The gate can verify declared references and structured task states, not recover omitted intent, prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition.
+The gate can verify declared references, structured task states, and that a brief still carries its recorded ask; it cannot prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition, and a recorded authority never makes another task's restriction this task's own.
 Reviewing the original outcome and declaring its remaining scope are supervisor judgments; `bin/fm-captain-hold.sh --help` owns the record, retry and compatibility mechanics.
 
 ## Outcome review
 
-Compare the delivered milestone with the original requested outcome in the task and brief before accepting it.
+Compare the delivered milestone with the task's recorded captain ask (`bin/fm-ask.sh`) and with the obligations the brief states from it, never with your own summary of the ask: `complete` refuses a brief that no longer carries the record.
 A saved input, dataset, plan, or prepared command satisfies an archive/plan/preparation-only ask; it does not satisfy an already authorized working result or execution ask.
 Keep authorized work with the current worker when possible, promoting a scout when appropriate, or file the remaining executable work as ordinary backlog tasks carrying the original outcome and authority boundaries.
 Do not turn that work into an optional suggestion or ask for the same authorization again.
@@ -54,7 +54,7 @@ Do not invent an external condition or activate an action just to pass the gate;
 After acceptance, re-evaluate ready work under the existing lifecycle.
 Ordinary status replies and resolved decisions create no work or new completion obligation.
 
-The gate can verify declared references and structured task states, not recover omitted intent, prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition.
+The gate can verify declared references, structured task states, and that a brief still carries its recorded ask; it cannot prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition, and a recorded authority never makes another task's restriction this task's own.
 Reviewing the original outcome and declaring its remaining scope are supervisor judgments; `bin/fm-captain-hold.sh --help` owns the record, retry and compatibility mechanics.
 
 ## Policy
@@ -103,7 +103,7 @@ The absence of a routed work item is not a divergence and the guard never requir
 
 1. Read the complete investigation result and complete the visual review before declaring either complete.
 2. Inventory only genuine unresolved choices that require the captain, and find the task each one gates.
-3. Hold that task - or create one captain-held task for the review's open questions - with a concise reason carrying the question and options.
+3. Hold that task - or create one captain-held task for the review's open questions - with a concise reason carrying the question and options, and, once that task has a recorded ask, with the `--basis` the hold gate requires: a fresh `question` this task leaves open, the captain's own words recorded for that task, or a dependency the backlog records. A genuine choice may block the current task; another task's brief, audit restriction, or program rule never may, and the `question` basis is judged once against this task's recorded ask and authority so a carried-over restriction is refused with the correction it needs.
    For a proposed blocker email, submit the source-backed analysis and attempted self-resolution through `bin/fm-mail.sh alert <request.json>` in that same event-handling turn; its mandatory independent critic, durable correction delivery and request format are owned by `bin/fm-captain-alert.py`.
 4. Run `complete` with the full captain-held inventory for that review pass.
 5. Relay the choices to the captain as decisions from Bearings' Captain's Call section under `AGENTS.md` section 9; do not use the word hold in captain chat.

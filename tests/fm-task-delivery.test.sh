@@ -53,12 +53,18 @@ write_brief() {  # <home> <id> [<recorded-mode>]
 }
 
 fill_brief_subsections() {  # <file> <intent> <spec>
-  local file=$1 intent=$2 spec=$3 content
+  local file=$1 intent=$2 spec=$3 content home id
   content=$(cat "$file")
   content=${content//'{TASK}'/$intent}
   content=${content//'{FIRSTMATE_SPEC}'/$spec}
   content=${content//'{PUBLIC_INTENT}'/Verify the approved delivery behavior and preserve existing safety requirements.}
   printf '%s\n' "$content" > "$file"
+  # A filled brief is the valid-launch fixture, so give its scaffolded task the
+  # captain-ask record the real dispatch gate now requires. Doing this here, and
+  # not in a spawn runner, keeps every launch attempt subject to the real gate.
+  home=$(cd "$(dirname "$file")/../.." && pwd)
+  id=$(basename "$(dirname "$file")")
+  fm_test_spawn_ask_complete "$home" "$id" >/dev/null 2>&1 || true
 }
 
 run_spawn() {  # <home> <fakebin> <spawn-args...>

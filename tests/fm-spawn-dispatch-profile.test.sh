@@ -2054,6 +2054,7 @@ test_worker_launch_delivers_role_scope() {
       content=${content//'{FIRSTMATE_SPEC}'/Exercise the spawn behavior under test.}
       content=${content//'{PUBLIC_INTENT}'/Verify explicit worker delivery with existing safety requirements.}
       printf '%s\n' "$content" > "$brief"
+      fm_test_spawn_ask_complete "$HOME_DIR" "$id" >/dev/null 2>&1 || true
     fi
     cp "$HOME_DIR/data/$id/brief.md" "$CASE_DIR/brief-before"
     cat > "$FAKEBIN_DIR/codex" <<'SH'
