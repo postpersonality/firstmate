@@ -319,13 +319,15 @@ make_spawn_fakebin() {
 # from this home passes CODEX_HOME="<home>/.codex" so the resolver reads it.
 FM_TEST_NATIVE_SESSION=01a1c0de-0000-7000-8000-000000000001
 fm_test_native_message() {
-  local home=$1 mid=$2 file=$3 path text
+  local home=$1 mid=$2 file=$3 path
   path="$home/.codex/sessions/2026/01/01/rollout-2026-01-01T00-00-00-$FM_TEST_NATIVE_SESSION.jsonl"
   mkdir -p "$(dirname "$path")" "$home/state"
   printf '%s\n' "$FM_TEST_NATIVE_SESSION" > "$home/state/.lock-session"
   [ -f "$path" ] || printf '{"session_id":"%s","type":"session"}\n' "$FM_TEST_NATIVE_SESSION" > "$path"
-  text=$(cat "$file")
-  jq -cn --arg id "$mid" --arg text "$text" \
+  # --rawfile, not $(cat): the fixture transcript must keep the file's exact bytes,
+  # trailing newlines included, or a fixture could never reproduce the native
+  # message a real harness stored.
+  jq -cn --arg id "$mid" --rawfile text "$file" \
     '{type:"response_item",payload:{type:"message",role:"user",id:$id,content:[{type:"input_text",text:$text}],internal_chat_message_metadata_passthrough:{content_item_metadata:[{provenance:{type:"user"}}]}}}' \
     >> "$path"
 }

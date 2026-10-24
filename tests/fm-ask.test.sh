@@ -176,6 +176,33 @@ PY2
   pass "promotion carries the recorded obligations and refuses drift in the active ship spec"
 }
 
+test_record_keeps_trailing_newlines_in_the_byte_binding() {
+  local home out rc
+  home=$(make_home binding-newline)
+  # The captain's message ends with two blank lines; the file holds exactly those
+  # bytes. Nothing may be stripped before hashing, or the record is refused.
+  printf 'Check every unknown type.\n\n' > "$home/ask.txt"
+  out=$(record_ask "$home" demo-audit "$home/ask.txt") || fail "trailing-newline message was refused: $out"
+  assert_contains "$out" "source=codex:" "the record did not bind the trailing-newline message"
+  cat > "$home/brief.md" <<'EOF'
+# Task
+## Captain's intent
+Check every unknown type.
+
+## Firstmate spec
+- A1.1: check every unknown type.
+Authority: none
+EOF
+  out=$(run_ask "$home" check demo-audit --brief "$home/brief.md" 2>&1); rc=$?
+  assert_rc 0 "$rc" "the trailing-newline record did not verify: $out"
+  assert_contains "$out" "provenance: verified" "the trailing-newline source was not verified"
+  # ...while the same message minus its trailing blank lines is a different edit.
+  printf 'Check every unknown type.\n' > "$home/trimmed.txt"
+  out=$(run_ask "$home" record demo-audit --file "$home/trimmed.txt" 2>&1); rc=$?
+  assert_rc 2 "$rc" "a byte-different copy of the message was recorded"
+  pass "record hashes the message's raw bytes, trailing newlines included"
+}
+
 test_record_binds_the_words_to_the_primary_transcript() {
   local home out rc
   home=$(make_home binding)
@@ -729,6 +756,7 @@ test_outcome_acceptance_refuses_a_narrowed_result() {
   pass "outcome acceptance refuses a narrowed result before completion"
 }
 
+test_record_keeps_trailing_newlines_in_the_byte_binding
 test_record_binds_the_words_to_the_primary_transcript
 test_record_refuses_when_no_native_source_resolves
 test_record_without_a_native_source_is_refused_not_passed

@@ -38,11 +38,15 @@
 #   Its `recorded:` line also carries `source=<kind>:<session>:<message>`, the
 #   native user-channel message the words were matched to. The binding covers the
 #   complete message text and nothing less: the digest is the sha256 of the exact
-#   UTF-8 bytes of the whole user message as the harness stores it, whose stored
-#   text ends without a trailing LF, and the recorded `--file` content is compared
-#   after stripping only a trailing newline the shell would add. A partial quote,
-#   a re-flowed copy, or a normalized rewording hashes differently and matches
-#   nothing, so it can never be presented as byte-exact captain words. `record` refuses words
+#   UTF-8 bytes of the whole user message as the harness stores it, and the
+#   recorded `--file` is hashed the same way, from its raw bytes. Trailing
+#   newlines are part of that comparison, not a shell artifact: a message the
+#   captain ended with blank lines hashes with them, and a `--file` holding exactly
+#   those bytes matches it. Nothing is stripped, normalized, or truncated before
+#   hashing, on either side. A partial quote, a re-flowed copy, or a rewording
+#   hashes differently and matches nothing, so it can never be presented as
+#   byte-exact captain words. A `--file` written by a tool that appends its own
+#   newline simply holds different bytes and is refused. `record` refuses words
 #   that no user message of this home's primary session carries, so a paraphrase
 #   or a narrowed copy cannot become the record; the source is the transcript the
 #   harness itself wrote, resolved from `state/.lock-session` (or, only when its
@@ -323,12 +327,17 @@ command_record() {  # <task-id> --file <path> [--message <native-id>]
   [ -n "$file" ] || die "record requires --file with the captain's message"
   [ -f "$file" ] || die "captain message file does not exist: $file"
   record=$(record_path "$id")
-  words=$(cat "$file")
+  # Keep the file's bytes exactly as they are, trailing newlines included: the
+  # binding compares raw bytes with the native message, so stripping even one LF
+  # would reject words the captain actually sent. The sentinel survives command
+  # substitution's own trailing-newline stripping.
+  words=$(cat "$file"; printf 'x')
+  words=${words%x}
   [ -n "$(printf '%s' "$words" | tr -d '[:space:]')" ] \
     || die "captain message file is empty: $file"
   [ "$(printf '%s' "$words" | LC_ALL=C wc -c | tr -d ' ')" -le "$MAX_ASK_BYTES" ] \
     || die "captain message exceeds $MAX_ASK_BYTES bytes: $file"
-  digest=$(sha256_text "$words")
+  digest=$(sha256_text_stdin < "$file")
   # Bind the words to the native user message this home's primary session holds:
   # a paraphrase or a narrowed copy matches nothing and cannot be recorded.
   command -v jq >/dev/null 2>&1 || die "jq is required to bind the record to the primary session transcript"
