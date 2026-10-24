@@ -35,6 +35,26 @@
 #   $FM_DATA_OVERRIDE). `record` appends one `## Ask <n>` section per captain
 #   message, holding that message's words verbatim under `### Words` and one
 #   derived `A<n>.<m>` clause per non-blank source line under `### Clauses`.
+#   Its `recorded:` line also carries `source=<kind>:<session>:<message>`, the
+#   native user-channel message the words were matched to. The binding covers the
+#   complete message text and nothing less: the digest is the sha256 of the exact
+#   UTF-8 bytes of the whole user message as the harness stores it, whose stored
+#   text ends without a trailing LF, and the recorded `--file` content is compared
+#   after stripping only a trailing newline the shell would add. A partial quote,
+#   a re-flowed copy, or a normalized rewording hashes differently and matches
+#   nothing, so it can never be presented as byte-exact captain words. `record` refuses words
+#   that no user message of this home's primary session carries, so a paraphrase
+#   or a narrowed copy cannot become the record; the source is the transcript the
+#   harness itself wrote, resolved from `state/.lock-session` (or, only when its
+#   header id matches that identity, this worker's own Pi session file), never
+#   from a Firstmate-authored note. The digest stays the sha256 of the exact UTF-8
+#   text as the harness stores it, with no trailing newline, so byte identity is
+#   not confused with a normalized rewording. A record written before this field
+#   source cannot be resolved, `record` refuses before writing anything: a record
+#   that would open dispatch must carry a verified native message, and there is no
+#   fallback that quietly accepts an unverified source. A present record whose
+#   source line is missing or unverifiable is refused by `check`; only a task with
+#   no record at all (an older task) keeps the pre-record behavior.
 #   Recording the same bytes again is a no-op, so a replay never duplicates a
 #   message. Nothing is ever paraphrased, rewritten, or deleted: later
 #   clarifications append and the earlier words stay.
@@ -147,6 +167,7 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
+STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 # shellcheck source=bin/fm-brief-heading-lib.sh
 # shellcheck disable=SC1091
@@ -284,13 +305,16 @@ command_init() {  # <task-id>
   printf 'ask-record: initialized %s; record the captain words before dispatch\n' "$record"
 }
 
-command_record() {  # <task-id> --file <path>
-  local id=${1:-} file='' record words digest existing ask_no=0 clause_count=0 line
+command_record() {  # <task-id> --file <path> [--message <native-id>]
+  local id=${1:-} file='' message_id='' record words digest existing ask_no=0 clause_count=0 line
+  local sid='' transcript='' kind='' mid='' source='' row
+  local -a hits=()
   [ -n "$id" ] || die "record requires a task id"
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --file) [ "$#" -ge 2 ] || die "--file needs a path"; file=$2; shift 2 ;;
+      --message) [ "$#" -ge 2 ] || die "--message needs a native message id"; message_id=$2; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die "unknown flag $1" ;;
     esac
@@ -305,6 +329,44 @@ command_record() {  # <task-id> --file <path>
   [ "$(printf '%s' "$words" | LC_ALL=C wc -c | tr -d ' ')" -le "$MAX_ASK_BYTES" ] \
     || die "captain message exceeds $MAX_ASK_BYTES bytes: $file"
   digest=$(sha256_text "$words")
+  # Bind the words to the native user message this home's primary session holds:
+  # a paraphrase or a narrowed copy matches nothing and cannot be recorded.
+  command -v jq >/dev/null 2>&1 || die "jq is required to bind the record to the primary session transcript"
+  sid=$(primary_session_id) || sid=''
+  if [ -z "$sid" ]; then
+    die "this home has no primary session identity (state/.lock-session, or a matching Pi session file), so the captain words cannot be bound to a native message; no record was written"
+  elif ! transcript=$(primary_transcript "$sid"); then
+    die "the primary session transcript for $sid cannot be found, so the captain words cannot be bound to a native message; no record was written (restore the transcript or re-record from the session that carries the message)"
+  else
+    kind=${transcript%%$'\t'*}
+    transcript=${transcript#*$'\t'}
+    while IFS=$'\t' read -r mid row; do
+      [ -n "$mid" ] || continue
+      if [ "$(message_digest "$row")" = "$digest" ]; then
+        hits[${#hits[@]}]=$mid
+      fi
+    done <<EOF
+$(native_user_messages "$transcript")
+EOF
+    case "${#hits[@]}" in
+      0)
+        die "the supplied words match no user message in this home's primary session transcript ($kind $sid); record the captain's own message verbatim, never a paraphrase or a copy missing one of its clauses (digest $digest)"
+        ;;
+      1)
+        mid=${hits[0]}
+        ;;
+      *)
+        if [ -z "$message_id" ]; then
+          die "several primary session messages carry these words (${hits[*]}); pass --message <native-id> to choose one"
+        fi
+        case " ${hits[*]} " in
+          *" $message_id "*) mid=$message_id ;;
+          *) die "--message $message_id names no message carrying these words (${hits[*]})" ;;
+        esac
+        ;;
+    esac
+    source="$kind:$sid:$mid"
+  fi
   if [ -f "$record" ]; then
     existing=$(awk -v want="$digest" '
       /^recorded: / && index($0, "digest=" want) { print "found"; exit }
@@ -321,7 +383,7 @@ command_record() {  # <task-id> --file <path>
   ask_no=$((ask_no + 1))
   {
     printf '\n## Ask %s\n' "$ask_no"
-    printf 'recorded: %s digest=%s\n' "$(date +%s)" "$digest"
+    printf 'recorded: %s digest=%s source=%s\n' "$(date +%s)" "$digest" "$source"
     printf '### Clauses\n'
     while IFS= read -r line || [ -n "$line" ]; do
       [ -n "$(printf '%s' "$line" | tr -d '[:space:]')" ] || continue
@@ -333,7 +395,8 @@ EOF
     printf '### Words\n'
     printf '%s\n' "$words"
   } >> "$record"
-  printf 'ask-record: A%s recorded (%s clause(s)) -> %s\n' "$ask_no" "$clause_count" "$record"
+  printf 'ask-record: A%s recorded (%s clause(s), source=%s) -> %s\n' \
+    "$ask_no" "$clause_count" "$source" "$record"
 }
 
 command_show() {  # <task-id>
@@ -356,7 +419,8 @@ command_clauses() {  # <task-id>
 
 command_check() {  # <task-id> --brief <path>
   local id=${1:-} brief='' record intent spec task_body findings=0
-  local clause_norm id_re line spec_norm actions rest quote_norm
+  local clause_norm id_re line spec_norm promoted_spec actions rest quote_norm
+  local prov_verified=0 prov_rows prov_ask prov_digest prov_source prov_rest prov_sid prov_mid prov_state
   local decl_kind decl_actions declared_action i=0
   local have_none=0 have_entry=0
   local -a allow_actions=() deny_actions=()
@@ -389,6 +453,10 @@ command_check() {  # <task-id> --brief <path>
   printf '  asks: %s\n  clauses: %s\n' "$RECORD_ASKS" "${#CLAUSE_IDS[@]}"
   intent=$(normalize "$(fm_brief_task_heading_body "$brief" "## Captain's intent")")
   spec=$(normalize "$(fm_brief_task_heading_body "$brief" "## Firstmate spec")")
+  # A promoted task's active instruction set is its ship-time spec, so the ids
+  # must be there too; keeping them only in the superseded scout spec would let
+  # promotion drop a recorded obligation without the check noticing.
+  promoted_spec=$(normalize "$(fm_brief_heading_body "$brief" "# Current ship Firstmate spec")")
   task_body=$(fm_brief_heading_body "$brief" "# Task")
   while [ "$i" -lt "${#CLAUSE_IDS[@]}" ]; do
     if [ -z "${CLAUSE_IDS[$i]}" ]; then
@@ -406,6 +474,10 @@ command_check() {  # <task-id> --brief <path>
     id_re="(^|[^[:alnum:].])$(printf '%s' "${CLAUSE_IDS[$i]}" | sed 's/\./\\./g')([^[:alnum:]]|$)"
     if ! [[ "$spec" =~ $id_re ]]; then
       printf '  missing-spec: %s: %s\n' "${CLAUSE_IDS[$i]}" "$(excerpt "$clause_norm")"
+      findings=$((findings + 1))
+    fi
+    if [ -n "$promoted_spec" ] && ! [[ "$promoted_spec" =~ $id_re ]]; then
+      printf '  missing-spec: %s (current ship spec): %s\n' "${CLAUSE_IDS[$i]}" "$(excerpt "$clause_norm")"
       findings=$((findings + 1))
     fi
     i=$((i + 1))
@@ -512,12 +584,161 @@ EOF
       printf '  authority: deny:%s\n' "$declared_action"
     done
   fi
+  # Provenance: a record bound to a native user message must still find that
+  # message with the same bytes. An unverifiable record never opens the gate.
+  prov_verified=0
+  prov_rows=$(record_provenance "$record")
+  if [ -n "$prov_rows" ]; then
+    command -v jq >/dev/null 2>&1 || die "jq is required to verify a record's native source"
+    while IFS=$'\t' read -r prov_ask prov_digest prov_source; do
+      [ -n "$prov_ask" ] || continue
+      if [ -z "$prov_source" ]; then
+        printf '  provenance: no native source for ask %s; re-record the captain words so the record carries one\n' "$prov_ask"
+        findings=$((findings + 1))
+        continue
+      fi
+      case "$prov_source" in
+        unavailable:*)
+          printf '  provenance: unverifiable ask %s (%s)\n' "$prov_ask" "${prov_source#unavailable:}"
+          findings=$((findings + 1))
+          continue
+          ;;
+      esac
+      prov_rest=${prov_source#*:}
+      prov_sid=${prov_rest%%:*}
+      prov_mid=${prov_rest#*:}
+      prov_state=$(verify_native_message "$prov_sid" "$prov_mid" "$prov_digest")
+      case "$prov_state" in
+        ok) prov_verified=$((prov_verified + 1)) ;;
+        mismatch)
+          printf '  provenance: changed bytes for ask %s (%s)\n' "$prov_ask" "$prov_source"
+          findings=$((findings + 1))
+          ;;
+        *)
+          printf '  provenance: unverifiable ask %s (%s)\n' "$prov_ask" "${prov_state#unverifiable:}"
+          findings=$((findings + 1))
+          ;;
+      esac
+    done <<EOF
+$prov_rows
+EOF
+    [ "$prov_verified" -eq 0 ] || printf '  provenance: verified %s\n' "$prov_verified"
+  fi
   if [ "$findings" -gt 0 ]; then
     printf '  status: incomplete\n'
     return 1
   fi
   printf '  status: pass\n'
   return 0
+}
+
+# The primary session identity this home's captain chat belongs to. The lock
+# file is written by bin/fm-lock.sh; this worker's own Pi identity is accepted
+# only when its transcript header carries the same id.
+primary_session_id() {
+  local file="$STATE/.lock-session" sid=''
+  if [ -f "$file" ]; then
+    sid=$(tr -d '[:space:]' < "$file" 2>/dev/null || true)
+  fi
+  if [ -n "$sid" ]; then
+    printf '%s' "$sid"
+    return 0
+  fi
+  if [ -n "${PI_SESSION_FILE:-}" ] && [ -n "${PI_SESSION_ID:-}" ] && [ -f "${PI_SESSION_FILE:-}" ]; then
+    if [ "$(head -1 "$PI_SESSION_FILE" 2>/dev/null | jq -r '.id // empty' 2>/dev/null)" = "$PI_SESSION_ID" ]; then
+      printf '%s' "$PI_SESSION_ID"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# Print "<kind>\t<transcript>" for one session id, resolved by file name only:
+# no sweep of every session this user ever had.
+primary_transcript() {  # <session-id>
+  local sid=$1 base=$1 f kind=''
+  base=${CODEX_HOME:-$HOME/.codex}
+  for f in "$base"/sessions/*/*/*/"rollout-"*"$sid.jsonl" "$base"/archived_sessions/*"$sid.jsonl"; do
+    if [ -f "$f" ]; then
+      printf 'codex\t%s' "$f"
+      return 0
+    fi
+  done
+  if [ -n "${PI_SESSION_FILE:-}" ] && [ -f "${PI_SESSION_FILE:-}" ] \
+    && [ "$(head -1 "$PI_SESSION_FILE" 2>/dev/null | jq -r '.id // empty' 2>/dev/null)" = "$sid" ]; then
+    printf 'pi\t%s' "$PI_SESSION_FILE"
+    return 0
+  fi
+  for f in "$HOME"/.pi/agent/sessions/*/*"$sid"*.jsonl; do
+    if [ -f "$f" ]; then
+      printf 'pi\t%s' "$f"
+      return 0
+    fi
+  done
+  : "$kind"
+  return 1
+}
+
+# Print "<native id>\t<base64 text>" for every user-channel message the harness
+# recorded in one transcript, so the caller can compare exact bytes.
+native_user_messages() {  # <transcript>
+  jq -r '
+    if (.type // "") == "response_item" then
+      select((.payload.type // "") == "message" and (.payload.role // "") == "user")
+      | select(((.payload.internal_chat_message_metadata_passthrough.content_item_metadata[0].provenance.type // "user") == "user"))
+      | { id: (.payload.id // ""), text: ([.payload.content[]? | select((.type // "") == "input_text") | (.text // "")] | join("")) }
+    elif (.type // "") == "message" then
+      select((.message.role // "") == "user")
+      | { id: (.id // ""), text: ([.message.content? | if type == "string" then . elif (.type // "") == "text" then (.text // "") else empty end] | join("")) }
+    else empty end
+    | select(((.id | length) > 0) and ((.text | length) > 0))
+    | [.id, (.text | @base64)] | @tsv
+  ' "$1" 2>/dev/null
+}
+
+message_digest() {  # <base64 text>
+  printf '%s' "$1" | base64 -d | sha256_text_stdin
+}
+
+# Print "<ask>\t<digest>\t<source>" for every recorded message, source empty for
+# a record written before the binding existed.
+record_provenance() {  # <record-file>
+  awk '
+    /^## Ask [0-9]+$/ { ask = $3; next }
+    /^recorded: / && ask != "" {
+      digest = ""
+      source = ""
+      n = split($0, fields, " ")
+      for (i = 1; i <= n; i++) {
+        if (fields[i] ~ /^digest=/) digest = substr(fields[i], 8)
+        if (fields[i] ~ /^source=/) source = substr(fields[i], 8)
+      }
+      printf "%s\t%s\t%s\n", ask, digest, source
+    }
+  ' "$1"
+}
+
+# Print ok, mismatch, or unverifiable:<reason> for one recorded native message.
+verify_native_message() {  # <session-id> <native-id> <digest>
+  local sid=$1 want_id=$2 want_digest=$3 line transcript mid row
+  if ! line=$(primary_transcript "$sid"); then
+    printf 'unverifiable:transcript-missing'
+    return 1
+  fi
+  transcript=${line#*$'\t'}
+  while IFS=$'\t' read -r mid row; do
+    [ "$mid" = "$want_id" ] || continue
+    if [ "$(message_digest "$row")" = "$want_digest" ]; then
+      printf 'ok'
+      return 0
+    fi
+    printf 'mismatch'
+    return 1
+  done <<EOF
+$(native_user_messages "$transcript")
+EOF
+  printf 'unverifiable:message-missing'
+  return 1
 }
 
 command_contains() {  # <task-id> --file <path>
@@ -527,6 +748,7 @@ command_contains() {  # <task-id> --file <path>
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --file) [ "$#" -ge 2 ] || die "--file needs a path"; file=$2; shift 2 ;;
+      --message) [ "$#" -ge 2 ] || die "--message needs a native message id"; message_id=$2; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die "unknown flag $1" ;;
     esac

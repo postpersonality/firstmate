@@ -14,7 +14,9 @@
 # escalation rule and --yes ban. The instructions also carry `# Task` with
 # `## Captain's intent` preserved from the scout brief and promotion's ship-time
 # instructions under `## Firstmate spec`; the scout-time spec remains context but
-# is not relabeled as the ship spec. Promotion refuses leftover `{TASK}` /
+# is not relabeled as the ship spec. When the task has a recorded captain ask
+# (bin/fm-ask.sh), the ship-time spec carries the same recorded obligation ids,
+# because promotion changes delivery and never the goal. Promotion refuses leftover `{TASK}` /
 # `{FIRSTMATE_SPEC}` placeholders and a `## Captain's intent` line opening with
 # a Captain label or address (bin/fm-dod-lib.sh). A pre-subsection scout
 # brief contributes only Task lines explicitly marked as captain words to intent,
@@ -248,6 +250,17 @@ PROMOTION_ASK_USER_BLOCK=
 if [ "$MODE" = no-mistakes ]; then
   PROMOTION_ASK_USER_BLOCK=$(fm_ask_user_escalation_block "$DATA" "$ID")
 fi
+# A promotion changes delivery, never the goal: when this task has a recorded
+# captain ask, the ship-time spec must carry the same recorded obligations
+# instead of dropping them (bin/fm-ask.sh owns the record and its ids).
+PROMOTION_OBLIGATIONS=''
+if [ -f "$DATA/$ID/ask.md" ]; then
+  PROMOTION_OBLIGATION_IDS=$("$SCRIPT_DIR/fm-ask.sh" clauses "$ID" 2>/dev/null \
+    | awk -F'\t' '{ printf "%s ", $1 }') || PROMOTION_OBLIGATION_IDS=''
+  if [ -n "$PROMOTION_OBLIGATION_IDS" ]; then
+    PROMOTION_OBLIGATIONS="8. The recorded captain obligations stay in force unchanged: ${PROMOTION_OBLIGATION_IDS}from \`$DATA/$ID/ask.md\`. Promotion changes how this work ships, never the goal or its criteria, so every id above still needs its own disposition."
+  fi
+fi
 IFS= read -r -d '' PROMOTION_SHIP_SPEC <<EOF || true
 If these promotion steps were already completed before a relaunch, preserve the existing \`$BRANCH_Q\` branch and continue from its current state; do not repeat them destructively.
 1. **Verify isolation before anything else.** Run \`pwd -P\` and \`git rev-parse --show-toplevel\`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from. If either does not resolve to the worktree you were launched in, stop and escalate to firstmate.
@@ -257,6 +270,7 @@ If these promotion steps were already completed before a relaunch, preserve the 
 5. If you reproduced a bug, turn that reproduction into a regression test.
 6. Treat the scout-time Firstmate spec and any unmarked legacy \`# Task\` text as investigation context, not captain intent or current ship-time instructions.
 7. Everything else in your original instructions carries over unchanged: the status protocol; the instruction inbox and its acknowledgement; the escalation rules, including ask-user; and every safety rule, except where the current delivery contract below explicitly replaces scout-only delivery rules.
+$PROMOTION_OBLIGATIONS
 EOF
 promote_delivery_contract() {
   cat <<EOF

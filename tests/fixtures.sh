@@ -312,6 +312,24 @@ make_spawn_fakebin() {
   fm_test_make_spawn_fakebin "$@"
 }
 
+# fm_test_native_message <home> <native-id> <file>
+# Append one user-channel message to this fixture home's own primary transcript
+# and point state/.lock-session at it, so a recorded ask can bind to a real
+# native source. The transcript lives under <home>/.codex; a suite that spawns
+# from this home passes CODEX_HOME="<home>/.codex" so the resolver reads it.
+FM_TEST_NATIVE_SESSION=01a1c0de-0000-7000-8000-000000000001
+fm_test_native_message() {
+  local home=$1 mid=$2 file=$3 path text
+  path="$home/.codex/sessions/2026/01/01/rollout-2026-01-01T00-00-00-$FM_TEST_NATIVE_SESSION.jsonl"
+  mkdir -p "$(dirname "$path")" "$home/state"
+  printf '%s\n' "$FM_TEST_NATIVE_SESSION" > "$home/state/.lock-session"
+  [ -f "$path" ] || printf '{"session_id":"%s","type":"session"}\n' "$FM_TEST_NATIVE_SESSION" > "$path"
+  text=$(cat "$file")
+  jq -cn --arg id "$mid" --arg text "$text" \
+    '{type:"response_item",payload:{type:"message",role:"user",id:$id,content:[{type:"input_text",text:$text}],internal_chat_message_metadata_passthrough:{content_item_metadata:[{provenance:{type:"user"}}]}}}' \
+    >> "$path"
+}
+
 # fm_test_spawn_ask_complete <home> <id> [authority-line]
 # A ship or scout scaffold now creates the task's captain-ask record, and
 # bin/fm-spawn.sh refuses to launch while that record holds no words or the
@@ -323,21 +341,30 @@ make_spawn_fakebin() {
 # fixture that deliberately tests a placeholder refusal keeps failing for that
 # reason, and it does nothing for a task with no record.
 fm_test_spawn_ask_complete() {
-  local home=$1 id=$2 authority=${3:-'Authority: none'} ask_file brief ids tmp
+  local home=$1 id=$2 authority=${3:-'Authority: none'} ask_file brief ids tmp texts
   ask_file="$home/data/$id/.captain-ask.txt"
   brief="$home/data/$id/brief.md"
   [ -f "$home/data/$id/ask.md" ] || return 0
   [ -f "$brief" ] || return 0
-  grep -q '^## Ask ' "$home/data/$id/ask.md" && return 0
-  printf 'Fixture captain ask for %s.\n' "$id" > "$ask_file"
-  FM_HOME="$home" "$ROOT/bin/fm-ask.sh" record "$id" --file "$ask_file" >/dev/null || return 1
-  ids=$(FM_HOME="$home" "$ROOT/bin/fm-ask.sh" clauses "$id" | awk -F'\t' '{ printf "%s ", $1 }')
+  if ! grep -q '^## Ask ' "$home/data/$id/ask.md"; then
+    printf 'Fixture captain ask for %s.\n' "$id" > "$ask_file"
+    fm_test_native_message "$home" "msg_fixture_$id" "$ask_file"
+    FM_HOME="$home" CODEX_HOME="$home/.codex" \
+      "$ROOT/bin/fm-ask.sh" record "$id" --file "$ask_file" >/dev/null || return 1
+  fi
+  ids=$(FM_HOME="$home" CODEX_HOME="$home/.codex" \
+    "$ROOT/bin/fm-ask.sh" clauses "$id" | awk -F'\t' '{ printf "%s ", $1 }')
+  [ -n "$ids" ] || return 1
+  grep -qF "clauses: $ids" "$brief" && return 0
   tmp="$brief.tmp.$$"
-  awk -v ask="$(cat "$ask_file")" -v ids="clauses: $ids" -v authority="$authority" '
+  texts="$brief.texts.$$"
+  FM_HOME="$home" "$ROOT/bin/fm-ask.sh" clauses "$id" | awk -F'\t' '{ print $2 }' > "$texts"
+  awk -v ids="clauses: $ids" -v authority="$authority" -v texts_file="$texts" '
     { print }
-    /^## Captain.s intent/ { print ask }
+    /^## Captain.s intent/ { while ((getline line < texts_file) > 0) print line; close(texts_file) }
     /^## Firstmate spec/ { print ids; print authority }
   ' "$brief" > "$tmp" && mv "$tmp" "$brief"
+  rm -f "$texts"
 }
 
 # fm_test_run_spawn <home> <pane-path> <fakebin> [fm-spawn args...]
@@ -360,7 +387,7 @@ fm_test_run_spawn() {
   local spawn_home=$home/user-home
   mkdir -p "$spawn_home"
   FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$spawn_home" \
-    CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
+    CODEX_HOME="$home/.codex" CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$pane" TMUX="${TMUX:-fake,1,0}" \
