@@ -309,6 +309,10 @@
       "audience": "maintainer-architecture"
     },
     {
+      "path": "delo/docs/ux-review-20261020/README.md",
+      "audience": "public-product"
+    },
+    {
       "path": "delo/docs/verification.md",
       "audience": "maintainer-verification"
     },
