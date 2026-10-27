@@ -54,12 +54,12 @@ wait_file "$FM_HOME/data/$ID/sum-proof"
 for _ in $(seq 1 20); do [ "$(fm_backend_composer_state herdr "$TARGET")" != empty ] || break; sleep 0.5; done
 [ "$(fm_backend_composer_state herdr "$TARGET")" = empty ]
 echo 'ok - real DSH canonical supervised launch, cwd, model tool and Herdr liveness/composer'
-DSH_TEST_PHASE=first-durable-steer
+DSH_TEST_PHASE='first-durable-steer'
 "$ROOT/bin/fm-send.sh" "$ID" "Use bash to write STEER_OK to '$FM_HOME/data/$ID/steer-proof'." >/dev/null 2>"$LAB/send.err"
 wait_file "$FM_HOME/data/$ID/steer-proof"
-DSH_TEST_PHASE=first-steer-content
+DSH_TEST_PHASE='first-steer-content'
 [ "$(cat "$FM_HOME/data/$ID/steer-proof")" = STEER_OK ]
-DSH_TEST_PHASE=first-steer-acknowledgement
+DSH_TEST_PHASE='first-steer-acknowledgement'
 wait_file "$FM_HOME/state/$ID.inbox/handled/001.msg"
 echo 'ok - real DSH fm-send durable inbox delivery and acknowledgement'
 # A durable steer must preserve a real draft and remain unread until the
@@ -103,7 +103,7 @@ for _ in $(seq 1 30); do [ "$(fm_backend_agent_state herdr "$TARGET")" = alive ]
 echo 'ok - real DSH session close and EOF leave the pane shell alive'
 printf 'PRESERVE\n' > "$LAB/worktree/relaunch-sentinel.txt"
 rm -f "$FM_HOME/data/$ID/cwd-proof" "$FM_HOME/data/$ID/sum-proof"
-DSH_TEST_PHASE=native-relaunch
+DSH_TEST_PHASE='native-relaunch'
 "$ROOT/bin/fm-control.sh" "$ID" relaunch --note "Runtime verification only: repeat the initial cwd/sum bash proof, preserve relaunch-sentinel.txt, then wait. Do not inspect environment, auth, profiles or other files; do not delegate." >"$LAB/relaunch.out" 2>"$LAB/relaunch.err" || { cat "$LAB/relaunch.err"; exit 1; }
 wait_file "$FM_HOME/data/$ID/sum-proof"
 [ "$(tr -d '[:space:]' < "$FM_HOME/data/$ID/sum-proof")" = 80235 ]
