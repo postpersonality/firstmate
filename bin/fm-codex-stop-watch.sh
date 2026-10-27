@@ -31,6 +31,8 @@
 # synchronous hook and its foreground checkpoint. Empty homes and a verified
 # away daemon with a fresh watcher beacon do not park here.
 # FM_CODEX_STOP_CHECKPOINT may shorten the bound (1..20), never raise it.
+# A state/.codex-stop-checkpoint-paused file containing "stop" records an
+# explicit home-local stop; removing it resumes Codex checkpoints.
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -73,6 +75,11 @@ fi
 # Revalidate through the existing writer. A live foreign owner is never stolen.
 lock_status=0
 owned || (fm_exec_timed 8 1 "$SCRIPT_DIR/fm-lock.sh") >/dev/null 2>&1 || lock_status=$?
+if owned && [ -f "$STATE/.codex-stop-checkpoint-paused" ] \
+  && [ ! -L "$STATE/.codex-stop-checkpoint-paused" ] \
+  && [ "$(cat "$STATE/.codex-stop-checkpoint-paused")" = stop ]; then
+  exit 0
+fi
 
 fm_codex_only_captain_held() {
   local meta id status wait_line count=0

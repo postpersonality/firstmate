@@ -57,6 +57,25 @@ run_stop() {
     "$LAB/codex" app-server > "$home/out" 2> "$home/err")
 }
 
+home=$(make_home captain-stopped-checkpoints)
+printf 'stop\n' > "$home/state/.codex-stop-checkpoint-paused"
+FM_HOME="$home" bash -c '. "$1/bin/fm-wake-lib.sh"; fm_wake_append signal worker.status "done: retained for later"' _ "$ROOT"
+status=0
+run_stop "$home" || status=$?
+expect_code 0 "$status" 'an explicit stop for this home must suppress the automatic checkpoint'
+[ ! -s "$home/err" ] || fail 'stopped checkpoint produced a continuation'
+assert_absent "$home/state/.watch.lock/pid" 'stopped checkpoint started a watcher'
+assert_contains "$(cat "$home/state/.wake-queue")" 'retained for later' 'stopping checkpoints lost a pending wake'
+pass 'Codex API Stop: an explicit home stop preserves pending wakes without starting a checkpoint'
+
+home=$(make_home invalid-stop)
+printf 'invalid\n' > "$home/state/.codex-stop-checkpoint-paused"
+status=0
+run_stop "$home" || status=$?
+expect_code 2 "$status" 'an invalid stop record must not suppress supervision'
+assert_contains "$(cat "$home/err")" 'checkpoint:' 'an invalid stop record suppressed the checkpoint'
+pass 'Codex API Stop: an invalid stop record does not disable supervision'
+
 home=$(make_home quiet)
 status=0
 run_stop "$home" || status=$?

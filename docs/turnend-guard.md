@@ -306,16 +306,18 @@ The hook payload supplies its native thread id; environment variables alone are 
 The checkpoint fits beneath its existing 30-second registration; the script header owns the checkpoint cap, state files and exact mechanics.
 It retains the existing foreground checkpoint's result and returns it through exit-2 Stop feedback, so a short assistant reply cannot discard that return.
 An existing healthy watcher is followed through the durable wake queue, without starting another watcher.
-A pending wake is delivered before another wait, and a quiet checkpoint also compels a primary continuation.
+Unless the captain has stopped this home's checkpoints as described below, a pending wake is delivered before another wait, and a quiet checkpoint also compels a primary continuation.
 That feedback tells the same primary to drain and acknowledge first, then start the next bounded foreground checkpoint (180 seconds by default) while any work, process-event source, registered check or Relay poll still needs supervision; a quiet 20-second Stop checkpoint is not completion, and the return is delivered through this project hook's own exit-2 feedback.
 The script never decides fleet actions or acknowledges wakes; the resumed primary uses the ordinary drain, handler and generation-bound acknowledgement.
+An explicit captain stop of repeated checkpoints can be recorded for the owning home using the state file documented in the script header.
+While that stop applies, the hook leaves pending wakes untouched and starts no checkpoint; it does not keep process-event listener leases fresh or provide automatic wake delivery.
 
 When every in-flight metadata record has a current `captain-held` transfer and there is no pending wake, registered event source, custom check or Relay poll, the hook allows the primary to wait for the captain instead of repeatedly forcing continuations.
 It uses `status_declared_wait_line` and `status_is_captain_held` from `bin/fm-classify-lib.sh`, and rechecks supervision need before returning; unhandled `needs-decision` and `blocked` events remain actionable.
 
 Successful bounded parks may continue even when another Stop hook set `stop_hook_active`.
 That flag describes a previous hook continuation, not a delivered fleet wake or an explicit captain stop.
-Once the lock records this thread and supervision work is pending, Stop fails closed: session-lock verification failure, checkpoint-lock contention, checkpoint failure and an identical wake left unhandled each return another continuation, and unhandled rows remain durable.
+Unless the captain has stopped this home's checkpoints, once the lock records this thread and supervision work is pending, Stop fails closed: session-lock verification failure, checkpoint-lock contention, checkpoint failure and an identical wake left unhandled each return another continuation, and unhandled rows remain durable.
 A Stop from a thread the lock does not record never parks and never claims the lock.
 While another live session holds the lock, that Stop is read-only: it gets a notice and is not blocked.
 Under a free, stale, PID-1 or legacy PID-only lock with supervision work pending, it keeps the one-block guard bounded by `stop_hook_active`, and the block names the upgrade below; an empty fleet stays silent.
