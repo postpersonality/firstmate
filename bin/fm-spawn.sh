@@ -146,7 +146,9 @@
 #   Space, found by fm_backend_herdr_project_container_ensure from PROJ_ABS,
 #   never from the disposable worktree or caller's focused/parent workspace.
 #   The backend owns path identity, ambiguity refusal and serialized creation.
-#   A claimed parent must still pass launcher identity checks. Detached callers
+#   A claimed parent must pass session and server identity checks. If its pane
+#   is confirmed missing, placement can recover only into one existing,
+#   identity-confirmed project Space. Detached callers
 #   use the same project resolver. --secondmate keeps its own home container.
 #   --herdr-project-space <workspace-id> is the optional per-spawn selection of
 #   an already identified project Space (docs/herdr-backend.md "Explicit project

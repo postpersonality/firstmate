@@ -159,7 +159,8 @@ Recovery after the launch is unchanged, because the task record's own endpoint a
 ### Launcher identity and detached callers
 
 Herdr's injected pane and socket identity is validated whenever a caller claims a parent pane.
-Unreadable, stale, contradictory, and cross-session parent bindings still refuse before creating a worker.
+For an ordinary project launch, a confirmed `pane_not_found` can recover only when the session and server match and exactly one existing project Space has confirmed repository identity.
+Other unreadable, contradictory, and cross-session parent bindings still refuse before creating a worker.
 The verified parent does not determine the project Space.
 A detached caller with no pane claim uses the same project resolver without borrowing another agent's pane.
 

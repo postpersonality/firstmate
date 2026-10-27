@@ -50,10 +50,12 @@ set -- "${args[@]+"${args[@]}"}"
 case "${1:-} ${2:-}" in
 'status --json') printf '{"client":{"version":"0.7.1","protocol":14},"server":{"running":true,"protocol":14}}\n' ;;
 'session list') printf '{"sessions":[{"name":"%s","running":true,"socket_path":"%s/herdr.sock"}]}\n' "${HERDR_SESSION:-default}" "$D" ;;
-'workspace list') printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"},{"workspace_id":"w2","label":"project"}]}}\n' ;;
-'pane list') jq -n --arg p "$FM_FAKE_HERDR_PROJECT" '{result:{panes:[{workspace_id:"w1",tab_id:"w1:t1",pane_id:"w1:p1",cwd:$p},{workspace_id:"w2",tab_id:"w2:t1",pane_id:"w2:p1",cwd:$p}]}}' ;;
+'workspace list')
+  if [ "${FM_FAKE_HERDR_EMPTY:-0}" = 1 ]; then printf '{"result":{"workspaces":[]}}\n'; elif [ "${FM_FAKE_HERDR_SINGLE:-0}" = 1 ]; then printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"}]}}\n'; else printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"project"},{"workspace_id":"w2","label":"project"}]}}\n'; fi ;;
+'pane list')
+  if [ "${FM_FAKE_HERDR_SINGLE:-0}" = 1 ]; then jq -n --arg p "$FM_FAKE_HERDR_PROJECT" '{result:{panes:[{workspace_id:"w1",tab_id:"w1:t1",pane_id:"w1:p1",cwd:$p}]}}'; else jq -n --arg p "$FM_FAKE_HERDR_PROJECT" '{result:{panes:[{workspace_id:"w1",tab_id:"w1:t1",pane_id:"w1:p1",cwd:$p},{workspace_id:"w2",tab_id:"w2:t1",pane_id:"w2:p1",cwd:$p}]}}'; fi ;;
 'tab list') printf '{"result":{"tabs":[]}}\n' ;;
-'pane get') printf '{"error":{"code":"pane_not_found"}}\n' >&2; exit 1 ;;
+'pane get') printf '{"error":{"code":"%s"}}\n' "${FM_FAKE_HERDR_PANE_ERROR:-pane_not_found}" >&2; exit 1 ;;
 'tab create') : ;;
 'workspace create') printf '{"result":{"workspace":{"workspace_id":"wnew"},"tab":{"tab_id":"seed"}}}\n' ;;
 *) : ;;
@@ -219,8 +221,8 @@ test_option_is_refused_outside_its_scope() {
 
 # A restarted server or a closed parent leaves a stale HERDR_PANE_ID in the
 # caller's environment. The selection, never the parent, decides placement, so
-# the launch must still reach the selected Space; without a selection the
-# unreadable parent claim keeps refusing exactly as before.
+# the launch must still reach the selected Space; ambiguity without a selection
+# continues to refuse.
 test_stale_inherited_launcher_pane_does_not_block_the_selection() {
   local home out rc log
   home=$(setup_home stale-parent)
@@ -230,7 +232,7 @@ test_stale_inherited_launcher_pane_does_not_block_the_selection() {
     run_spawn "$home" space-stale "$PROJECT" --mode no-mistakes --yolo off)
   rc=$?
   [ "$rc" -ne 0 ] || fail 'a default-path spawn ignored an unreadable inherited launcher pane'
-  assert_contains "$out" "herdr launcher pane 'w3R:p1' could not be read" 'default-path stale-parent refusal missing'
+  assert_contains "$out" 'ambiguous herdr project Space' 'default-path ambiguity refusal missing'
   assert_not_contains "$(herdr_log)" $'\x1ftab\x1fcreate' 'default-path refusal opened a tab'
   reset_herdr_log
   out=$(HERDR_PANE_ID=w3R:p1 HERDR_SOCKET_PATH="$FAKE_HERDR_DIR/herdr.sock" \
@@ -243,7 +245,44 @@ test_stale_inherited_launcher_pane_does_not_block_the_selection() {
   assert_contains "$log" $'\x1ftab\x1fcreate\x1f--workspace\x1fw2' 'the worker tab was not created in the selected Space'
   assert_not_contains "$log" $'\x1f''pane'$'\x1f''get' 'the selected placement read the stale parent pane at all'
   assert_not_contains "$log" $'\x1fworkspace\x1fcreate' 'a selected placement created a Space'
-  pass 'an explicit valid selection still places its tab when the inherited launcher pane is stale, while the default path keeps refusing'
+  pass 'an explicit valid selection places its tab when the inherited pane is stale, while ambiguity still refuses'
+}
+
+test_stale_parent_recovers_only_for_one_matching_space() {
+  local home out rc log
+  home=$(setup_home stale-unique)
+  fm_test_spawn_brief "$home" space-unique
+  reset_herdr_log
+  out=$(FM_FAKE_HERDR_SINGLE=1 HERDR_PANE_ID=w999:p1 HERDR_SOCKET_PATH="$FAKE_HERDR_DIR/herdr.sock" \
+    run_spawn "$home" space-unique "$PROJECT" --mode no-mistakes --yolo off)
+  rc=$?
+  [ "$rc" -ne 0 ] || fail 'the fake tab-create response should stop the spawn'
+  assert_contains "$out" 'could not parse tab/pane id from herdr tab create output' 'stale-pane recovery did not reach tab creation'
+  log=$(herdr_log)
+  assert_contains "$log" $'\x1ftab\x1fcreate\x1f--workspace\x1fw1' 'stale-pane recovery did not select the unique project Space'
+  assert_not_contains "$log" $'\x1fworkspace\x1fcreate' 'stale-pane recovery created a Space'
+
+  reset_herdr_log
+  out=$(FM_FAKE_HERDR_SINGLE=1 FM_FAKE_HERDR_PANE_ERROR=permission_denied HERDR_PANE_ID=w999:p1 HERDR_SOCKET_PATH="$FAKE_HERDR_DIR/herdr.sock" \
+    run_spawn "$home" space-unique "$PROJECT" --mode no-mistakes --yolo off)
+  rc=$?
+  [ "$rc" -ne 0 ] || fail 'an unrelated pane error was accepted'
+  assert_not_contains "$(herdr_log)" $'\x1ftab\x1fcreate' 'an unrelated pane error opened a tab'
+  reset_herdr_log
+  out=$(FM_FAKE_HERDR_EMPTY=1 HERDR_PANE_ID=w999:p1 HERDR_SOCKET_PATH="$FAKE_HERDR_DIR/herdr.sock" \
+    run_spawn "$home" space-unique "$PROJECT" --mode no-mistakes --yolo off)
+  rc=$?
+  [ "$rc" -ne 0 ] || fail 'a stale pane with no confirmed Space was accepted'
+  assert_contains "$out" 'no identity-confirmed project Space' 'missing project Space refusal missing'
+  assert_not_contains "$(herdr_log)" $'\x1fworkspace\x1fcreate' 'stale-pane recovery created a new project Space'
+  reset_herdr_log
+  out=$(FM_FAKE_HERDR_SINGLE=1 HERDR_PANE_ID=w999:p1 HERDR_SOCKET_PATH="$TMP_ROOT/other-server/herdr.sock" \
+    run_spawn "$home" space-unique "$PROJECT" --mode no-mistakes --yolo off)
+  rc=$?
+  [ "$rc" -ne 0 ] || fail 'a stale pane from another server was accepted'
+  assert_contains "$out" 'cross-session parent identity' 'cross-server refusal missing'
+  assert_not_contains "$(herdr_log)" $'\x1ftab\x1fcreate' 'a cross-server claim opened a tab'
+  pass 'a missing stale pane recovers only with one matching project Space and unrelated errors refuse'
 }
 
 # The stale-parent tolerance is scoped to the claim's session and server
@@ -269,5 +308,6 @@ test_ship_launch_uses_the_selected_space
 test_scout_launch_uses_the_selected_space
 test_unverified_selection_refuses
 test_stale_inherited_launcher_pane_does_not_block_the_selection
+test_stale_parent_recovers_only_for_one_matching_space
 test_cross_session_parent_still_refuses_with_a_selection
 test_option_is_refused_outside_its_scope
