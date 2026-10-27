@@ -2508,6 +2508,13 @@ done
 if [ -n "$EVICTED_PID" ]; then
   echo "watcher: replaced stalled pid $EVICTED_PID (beacon ${EVICTED_BEAT_AGE}s past hard bound ${WATCHER_STALL_BOUND}s)"
 fi
+handling_successor_has_queued_row() {
+  local queued=1
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
+  [ ! -s "$FM_WAKE_QUEUE" ] || queued=0
+  fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+  return "$queued"
+}
 WATCHER_RECOVERY_PENDING=0
 if [ -n "${FM_LOCK_RECOVERED_PID:-}" ]; then
   WATCHER_RECOVERY_PENDING=1
@@ -2683,9 +2690,17 @@ rerecord_device_shifted_pr_poll() {  # <id>
 resurface_after_downtime() {
   # Handling successors already have a predecessor-delivered wake on the way.
   # Re-announcing from this cycle is what turned a lost handshake into an
-  # unbounded recovery loop; stay in the poll loop and supervise instead.
+  # unbounded recovery loop. A handled host turn explicitly settles its
+  # handoff after consuming the predecessor's rows, making any row left for
+  # main a recoverable downtime episode.
   if [ "${FM_WATCH_HANDLING_SUCCESSOR:-0}" = 1 ]; then
-    return 0
+    if ! fm_recovery_marker_arm_check "$WATCHER_DOWNTIME_MARKER"; then
+      echo "watcher: recovery state could not be consumed safely" >&2
+      exit 1
+    fi
+    [ "$FM_RECOVERY_MARKER_ACTION" = recover ] || return 0
+    handling_successor_has_queued_row || return 0
+    wake "check: rearm-resurface"
   fi
   if [ "$WATCHER_RECOVERY_PENDING" -ne 1 ]; then
     if ! fm_recovery_marker_arm_check "$WATCHER_DOWNTIME_MARKER"; then
