@@ -248,7 +248,7 @@ test_stale_inherited_launcher_pane_does_not_block_the_selection() {
   pass 'an explicit valid selection places its tab when the inherited pane is stale, while ambiguity still refuses'
 }
 
-test_stale_parent_recovers_only_for_one_matching_space() {
+test_stale_parent_recovers_with_unique_or_new_project_space() {
   local home out rc log
   home=$(setup_home stale-unique)
   fm_test_spawn_brief "$home" space-unique
@@ -272,9 +272,10 @@ test_stale_parent_recovers_only_for_one_matching_space() {
   out=$(FM_FAKE_HERDR_EMPTY=1 HERDR_PANE_ID=w999:p1 HERDR_SOCKET_PATH="$FAKE_HERDR_DIR/herdr.sock" \
     run_spawn "$home" space-unique "$PROJECT" --mode no-mistakes --yolo off)
   rc=$?
-  [ "$rc" -ne 0 ] || fail 'a stale pane with no confirmed Space was accepted'
-  assert_contains "$out" 'no identity-confirmed project Space' 'missing project Space refusal missing'
-  assert_not_contains "$(herdr_log)" $'\x1fworkspace\x1fcreate' 'stale-pane recovery created a new project Space'
+  [ "$rc" -ne 0 ] || fail 'the fake tab-create response should stop the spawn'
+  assert_contains "$out" 'could not parse tab/pane id from herdr tab create output' 'new project Space did not reach tab creation'
+  assert_contains "$(herdr_log)" $'\x1fworkspace\x1fcreate\x1f--cwd\x1f'"$PROJECT" 'stale-pane recovery did not create a Space for the confirmed project'
+  assert_contains "$(herdr_log)" $'\x1ftab\x1fcreate\x1f--workspace\x1fwnew' 'stale-pane recovery did not place the tab in the new Space'
   reset_herdr_log
   out=$(FM_FAKE_HERDR_SINGLE=1 HERDR_PANE_ID=w999:p1 HERDR_SOCKET_PATH="$TMP_ROOT/other-server/herdr.sock" \
     run_spawn "$home" space-unique "$PROJECT" --mode no-mistakes --yolo off)
@@ -282,7 +283,7 @@ test_stale_parent_recovers_only_for_one_matching_space() {
   [ "$rc" -ne 0 ] || fail 'a stale pane from another server was accepted'
   assert_contains "$out" 'cross-session parent identity' 'cross-server refusal missing'
   assert_not_contains "$(herdr_log)" $'\x1ftab\x1fcreate' 'a cross-server claim opened a tab'
-  pass 'a missing stale pane recovers only with one matching project Space and unrelated errors refuse'
+  pass 'a missing stale pane recovers with a unique or new project Space and unrelated errors refuse'
 }
 
 # The stale-parent tolerance is scoped to the claim's session and server
@@ -308,6 +309,6 @@ test_ship_launch_uses_the_selected_space
 test_scout_launch_uses_the_selected_space
 test_unverified_selection_refuses
 test_stale_inherited_launcher_pane_does_not_block_the_selection
-test_stale_parent_recovers_only_for_one_matching_space
+test_stale_parent_recovers_with_unique_or_new_project_space
 test_cross_session_parent_still_refuses_with_a_selection
 test_option_is_refused_outside_its_scope

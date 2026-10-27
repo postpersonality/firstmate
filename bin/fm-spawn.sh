@@ -147,9 +147,8 @@
 #   never from the disposable worktree or caller's focused/parent workspace.
 #   The backend owns path identity, ambiguity refusal and serialized creation.
 #   A claimed parent must pass session and server identity checks. If its pane
-#   is confirmed missing, placement can recover only into one existing,
-#   identity-confirmed project Space. Detached callers
-#   use the same project resolver. --secondmate keeps its own home container.
+#   is confirmed missing, placement uses the same identity-checked project
+#   resolver as detached callers. --secondmate keeps its own home container.
 #   --herdr-project-space <workspace-id> is the optional per-spawn selection of
 #   an already identified project Space (docs/herdr-backend.md "Explicit project
 #   Space selection"), for the case where repository identity matches more than

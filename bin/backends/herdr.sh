@@ -1591,9 +1591,9 @@ fm_backend_herdr_project_path_is_home() {  # <path>
 # id - all of which keep refusing. When it matches, it replaces the ambiguity
 # refusal and selects that Space without creating, moving, renaming, closing or
 # adopting anything; no Space is created even when the project has no
-# identity-confirmed match. Stale-parent recovery requires one existing match.
-fm_backend_herdr_project_workspace_ensure() {  # <session> <project> [<explicit-workspace-id>] [<require-existing>]
-  local session=$1 project=$2 explicit=${3:-} require_existing=${4:-0} identity label workspaces panes rows ws paths kind path key
+# identity-confirmed match.
+fm_backend_herdr_project_workspace_ensure() {  # <session> <project> [<explicit-workspace-id>]
+  local session=$1 project=$2 explicit=${3:-} identity label workspaces panes rows ws paths kind path key
   local matches='' unknown='' known matched foreign home count out state meta id own_home candidate
   local bound='[]' tab pane
   FM_BACKEND_HERDR_WS_ID=
@@ -1693,10 +1693,6 @@ EOF
     FM_BACKEND_HERDR_WS_ID=${matches%%$'\n'*}
     return 0
   fi
-  if [ "$require_existing" = 1 ]; then
-    echo "error: stale herdr launcher pane and no identity-confirmed project Space for '$project' in session '$session'; refusing to create a Space" >&2
-    return 1
-  fi
   # A source home may share identity with its standard registered project copy.
   # Create from that copy so subsequent discovery cannot mistake it for a home.
   if fm_backend_herdr_project_path_is_home "$project"; then
@@ -1730,12 +1726,12 @@ fm_backend_herdr_project_container_ensure() {  # <project> [<session>] [<explici
   fi
   # The subshell scopes the lock-release EXIT trap to this call.
   (
-    local project=$1 session=${2:-} explicit=${3:-} lock status require_existing=0
+    local project=$1 session=${2:-} explicit=${3:-} lock status
     fm_backend_herdr_version_check || return 1
     [ -n "$session" ] || session=$(fm_backend_herdr_session)
     fm_backend_herdr_server_ensure "$session" || return 1
     # A claimed parent never selects the project Space. A proven missing pane
-    # may recover only into one existing identity-confirmed project Space.
+    # can use ordinary identity-checked project Space discovery and creation.
     # An explicit per-spawn selection names that Space instead, so only the
     # claim's session and server identity is verified: a stale or unreadable
     # inherited pane id must not block a placement that does not use it.
@@ -1745,7 +1741,6 @@ fm_backend_herdr_project_container_ensure() {  # <project> [<session>] [<explici
       fm_backend_herdr_launcher_identity "$session" project && status=0 || status=$?
       if [ "$status" = 1 ] && [ "$FM_BACKEND_HERDR_LAUNCHER_PANE_MISSING" = 1 ]; then
         status=2
-        require_existing=1
       fi
     fi
     [ "$status" = 0 ] || [ "$status" = 2 ] || return 1
@@ -1758,7 +1753,7 @@ fm_backend_herdr_project_container_ensure() {  # <project> [<session>] [<explici
       return 1
     }
     trap 'fm_lock_release "$lock" || true' EXIT
-    fm_backend_herdr_project_workspace_ensure "$session" "$project" "$explicit" "$require_existing" || return 1
+    fm_backend_herdr_project_workspace_ensure "$session" "$project" "$explicit" || return 1
     printf '%s:%s\t%s' "$session" "$FM_BACKEND_HERDR_WS_ID" "$FM_BACKEND_HERDR_WS_SEEDED_TAB_ID"
   )
 }
