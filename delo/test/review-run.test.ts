@@ -27,12 +27,11 @@ setTimeout(() => { fs.appendFileSync(log, '{"topic":"partial"'); fs.writeFileSyn
 `, { mode: 0o755 });
     const make = () => store.createCase({ title: 'SA fixture', requestId: randomUUID(), review: { kind: 'sa', document: 'https://example.com/pages/12?x=one&y=two', repo: root } }).tasks[0].id;
     const taskId = make();
-    assert.match(saCommand.cwd, /3-sa-battle$/);
     assert.equal(saCommand.command, 'npm');
     await assert.rejects(runSaReview({ home, taskId, command: fake, cwd, pollMs: 20 }), /связ/i);
     const enrich = (id: string) => {
       const old = store.firstmate.show(id);
-      store.firstmate.update(id, {body: old.body + '\nИсточник: https://jira.example/browse/EXAMPLE-1\nReview links: ' + JSON.stringify({status:'found',links:['https://jira.example/browse/EXAMPLE-1'],note:'epic found; SA issue unavailable',startedAt:new Date(Date.now()-100).toISOString(),endedAt:new Date().toISOString()})});
+      store.firstmate.update(id, {body: old.body + '\nИсточник: https://jira.example/browse/EXAMPLE-123\nReview links: ' + JSON.stringify({status:'found',links:['https://jira.example/browse/EXAMPLE-123'],note:'epic found; SA issue unavailable',startedAt:new Date(Date.now()-100).toISOString(),endedAt:new Date().toISOString()})});
     };
     enrich(taskId);
     const progressPath = join(home, 'data', taskId, 'review-progress.json');
@@ -51,7 +50,7 @@ setTimeout(() => { fs.appendFileSync(log, '{"topic":"partial"'); fs.writeFileSyn
     const audit = result.phases.find(p=>p.name==='audit')!;
     assert.ok(audit.endedAt && audit.elapsedMs! > 0);
     assert.equal(audit.source,'ledger');
-    assert.match(readFileSync(join(home,'data',taskId,'report.md'),'utf8'),/EXAMPLE-1/);
+    assert.match(readFileSync(join(home,'data',taskId,'report.md'),'utf8'),/EXAMPLE-123/);
     assert.match(readFileSync(join(home,'state',taskId+'.status'),'utf8'),/audit_review.*elapsed/);
     await assert.rejects(runSaReview({home,taskId,command:fake,cwd}), /уже завершено/i);
     const failed = make(); enrich(failed);

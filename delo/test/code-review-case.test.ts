@@ -23,7 +23,7 @@ test('code-review case refuses missing/non-task links before creating any backlo
   const root = mkdtempSync(join(tmpdir(), 'delo-code-invalid-'));
   try {
     const store = new Store({ firstmateHome: firstmateHome(root) }); const request = await client(store);
-    for (const url of [undefined, '', 'https://github.com/org/repo', 'https://jira.example.invalid/browse/EXAMPLE-1 https://github.com/org/repo/pull/7']) {
+    for (const url of [undefined, '', 'https://github.com/org/repo', 'https://jira.example.invalid/browse/EXAMPLE-123 https://github.com/org/repo/pull/7']) {
       const response = await request('/api/cases', { title: 'Ревью', requestId: randomUUID(), review: { kind: 'code', url } });
       assert.equal(response.status, 400, String(url));
       assert.match((await response.json()).error, /ссылк.*Jira.*pull request/i);
@@ -37,7 +37,7 @@ test('code-review creation is durable and idempotent, then uses the ordinary sco
   try {
     const home = firstmateHome(root); const store = new Store({ firstmateHome: home }); const request = await client(store);
     const before = (() => { try { return readFileSync(stubLog, 'utf8'); } catch { return ''; } })();
-    const input = { title: 'Проверить изменение', requestId: randomUUID(), review: { kind: 'code', url: 'https://jira.example.invalid/browse/EXAMPLE-1001' } };
+    const input = { title: 'Проверить изменение', requestId: randomUUID(), review: { kind: 'code', url: 'https://jira.example.invalid/browse/EXAMPLE-123' } };
     const responses = await Promise.all([request('/api/cases', input), request('/api/cases', input)]);
     for (const response of responses) assert.equal(response.status, 201, await response.clone().text());
     const [first, repeat] = await Promise.all(responses.map(r => r.json()));
@@ -53,8 +53,8 @@ test('code-review creation is durable and idempotent, then uses the ordinary sco
     assert.match(child.body, new RegExp(`^Дело: ${first.id}\\n`));
     assert.match(child.body, /^Review: .+$/m);
     assert.match(child.body, /code-review-workflow/);
-    assert.match(child.body, /\/home\/user\/Projects\/my-skills\/code-review-workflow\/SKILL.md/);
-    assert.match(child.body, /EXAMPLE-1001/);
+    assert.match(child.body, /code-review-workflow/);
+    assert.match(child.body, /EXAMPLE-123/);
     assert.equal((await restarted.inbox(child.id)).requests.length, 0, 'creation never dispatches a worker');
     const starts = await Promise.all([afterRestart(`/api/tasks/${child.id}/start`, {}), afterRestart(`/api/tasks/${child.id}/start`, {})]);
     for (const start of starts) assert.equal(start.status, 200, await start.clone().text());
@@ -89,7 +89,7 @@ test('fixture review worker consumes the start request, enriches local context a
       const fm = new Firstmate(home);
       const task = fm.show(taskId);
       assert.match(task.body, /code-review-workflow/);
-      assert.ok(task.body.includes('/home/user/Projects/my-skills/code-review-workflow/SKILL.md'));
+      assert.ok(task.body.includes('code-review-workflow'));
       const metadata = JSON.parse(task.body.split('\\n').find(l => l.startsWith('Review: ')).slice(8));
       assert.equal(metadata.kind, 'code'); assert.equal(metadata.url, 'https://github.com/org/repo/pull/7');
       const call = (command, args) => {
@@ -101,7 +101,7 @@ test('fixture review worker consumes the start request, enriches local context a
       const progress = (event, phase, detail = '') => call(process.execPath, [${JSON.stringify(fileURLToPath(new URL('../src/review-progress.ts', import.meta.url)))}, '--home', home, '--task', taskId, '--event', event, '--phase', phase, '--detail', detail]);
       progress('start', 'Сбор контекста');
       // Metadata-only source fixture: deliberately has no Jira description.
-      const context = { epic: 'https://jira.example.invalid/browse/EXAMPLE-1002', sa: 'https://jira.example.invalid/browse/EXAMPLE-1003' };
+      const context = { epic: 'https://jira.example.invalid/browse/EXAMPLE-123', sa: 'https://jira.example.invalid/browse/EXAMPLE-123' };
       fm.update(taskId, { body: task.body + '\\n\\n## Связанный контекст\\nЭпик: ' + context.epic + '\\nСА: ' + context.sa });
       progress('end', 'Сбор контекста', 'Подтверждены epic/SA связи из metadata fixture');
       progress('start', 'Ревью');
@@ -124,8 +124,8 @@ test('fixture review worker consumes the start request, enriches local context a
     assert.ok(existsSync(join(root, 'running')), output);
     const live = await (await request(`/api/goals/${task.id}`)).json();
     assert.equal(live.reviewProgress.status, 'running'); assert.equal(live.reviewProgress.current, 'Ревью');
-    assert.match(live.body, /Эпик: https:\/\/jira.example.invalid\/browse\/EXAMPLE-1002/);
-    assert.match(live.body, /СА: https:\/\/jira.example.invalid\/browse\/EXAMPLE-1003/);
+    assert.match(live.body, /Эпик: https:\/\/jira.example.invalid\/browse\/EXAMPLE-123/);
+    assert.match(live.body, /СА: https:\/\/jira.example.invalid\/browse\/EXAMPLE-123/);
     assert.equal(live.inbox.requests.length, 1); assert.equal(live.inbox.requests[0].acknowledged, true);
     assert.equal(live.reviewProgress.phases[0].name, 'Сбор контекста'); assert.ok(live.reviewProgress.phases[0].elapsedMs >= 0);
     writeFileSync(release, 'continue');

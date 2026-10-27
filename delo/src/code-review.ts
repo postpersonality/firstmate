@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { reviewConfig } from './review-config.ts';
 
 const linkError = 'Укажите одну ссылку на задачу Jira или конкретный pull request Bitbucket/GitHub';
 // Only sources supported by the installed jira/bitbucket skills and gh-axi.
@@ -6,8 +7,9 @@ function reviewUrl(value: string): string | undefined {
   if (/\s/.test(value)) return;
   let url: URL; try { url = new URL(value); } catch { return; }
   if (url.protocol !== 'https:' || url.username || url.password || url.port) return;
-  const path = url.hostname === 'jira.example.invalid' ? /^\/browse\/[A-Z][A-Z0-9_]*-[1-9]\d*\/?$/.exec(url.pathname)?.[0].replace(/\/$/, '')
-    : url.hostname === 'bitbucket.example.invalid' ? /^\/projects\/[A-Za-z0-9_~-]+\/repos\/[A-Za-z0-9_.-]+\/pull-requests\/[1-9]\d*(?=\/|$)/.exec(url.pathname)?.[0]
+  const config = reviewConfig();
+  const path = (url.hostname === config.jiraHost || url.hostname === 'jira.example.invalid') ? /^\/browse\/[A-Z][A-Z0-9_]*-[1-9]\d*\/?$/.exec(url.pathname)?.[0].replace(/\/$/, '')
+    : (url.hostname === config.bitbucketHost || url.hostname === 'bitbucket.example.invalid') ? /^\/projects\/[A-Za-z0-9_~-]+\/repos\/[A-Za-z0-9_.-]+\/pull-requests\/[1-9]\d*(?=\/|$)/.exec(url.pathname)?.[0]
     : url.hostname === 'github.com' ? /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9]\d*(?=\/|$)/.exec(url.pathname)?.[0] : undefined;
   if (path) return `${url.origin}${path}`;
 }
@@ -29,7 +31,7 @@ export function codeReviewInstructions(input: CodeReviewInput, taskId: string, h
   const progress = `node ${quote(`${home}/delo/src/review-progress.ts`)} --home ${quote(home)} --task ${quote(taskId)}`;
   return `Проведи код-ревью: ${input.url}
 Используй существующий навык именно под именем code-review-workflow.
-Прочти /home/user/Projects/my-skills/code-review-workflow/SKILL.md и следуй ему, включая необходимые ponytail, ponytail-review, codebase-design, jira, bitbucket и confluence; GitHub читай через gh-axi.
+Найди и прочти SKILL.md этого навыка${reviewConfig(home).codeReviewSkill ? ` (${reviewConfig(home).codeReviewSkill})` : ''} и следуй ему, включая необходимые ponytail, ponytail-review, codebase-design, jira, bitbucket и confluence; GitHub читай через gh-axi.
 ${input.repo ? `Контекстный проект (только чтение): ${input.repo}\n` : ''}Локальная review-задача Firstmate: ${taskId}; выбранный FM_HOME: ${home}.
 
 Перед началом ревью извлеки связанные эпики и задачи на системную аналитику.

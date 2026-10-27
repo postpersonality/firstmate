@@ -5,12 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
+import { reviewConfig } from './review-config.ts';
 import { Firstmate } from './firstmate.ts';
 import { id } from './model.ts';
 import { reviewOf, validateReview, type ReviewProgress } from './review.ts';
 import { CompactReviewEvents, eventPhase, eventFailure } from './review-events.ts';
 
-export const saCommand = { command: 'npm', cwd: '/home/user/Projects/!researches⭐/dark-factory/3-sa-battle' };
+export const saCommand = { command: 'npm' };
 const enrichment = z.object({
   status: z.enum(['found', 'none', 'unavailable']), links: z.array(z.string().url().refine(v => /^https?:\/\//i.test(v))),
   note: z.string().trim().min(1).max(4000), startedAt: z.iso.datetime({ offset: true }), endedAt: z.iso.datetime({ offset: true }),
@@ -62,7 +63,8 @@ export async function runSaReview(options: { home: string; taskId: string; comma
     const progress: ReviewProgress = { status: 'running', current: 'unknown', startedAt, elapsedMs: 0,
       protocol: 'ralph-events-jsonl/observed-2026-10-20', warnings: [],
       phases: [{ name: 'links', startedAt: links.startedAt, endedAt: links.endedAt, elapsedMs: Date.parse(links.endedAt) - Date.parse(links.startedAt), source: 'agent' }] };
-    const cwd = options.cwd ?? saCommand.cwd;
+    const cwd = options.cwd ?? reviewConfig(home).saReviewCwd;
+    if (!cwd) throw new Error('Укажите saReviewCwd в config/delo-review.json');
     const argv = ['run', 'sa-review', '--', review.document, '--repo', review.repo];
     writeFileSync(join(lock, 'owner.json'), JSON.stringify({ pid: process.pid, startedAt }));
     saveProgress(home, taskId, progress);
