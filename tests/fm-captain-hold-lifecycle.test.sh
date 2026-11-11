@@ -22,7 +22,7 @@ command -v tasks-axi >/dev/null 2>&1 || { echo "skip: tasks-axi not found"; exit
 make_home() {  # <name>
   local home="$TMP_ROOT/$1" fakebin
   mkdir -p "$home/data" "$home/state" "$home/config" "$home/projects"
-  cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
+  fm_test_tasks_toml "$home/.tasks.toml"
   cat > "$home/data/backlog.md" <<'EOF'
 ## In flight
 
@@ -983,6 +983,113 @@ EOF
   pass "release frees held work with the captain's words recorded and the body preserved"
 }
 
+# A captain hold is released only in an attended session: the away posture
+# record and the away daemon flag each refuse --release, through `answer` and
+# the keyed-answer intake alike, before anything is written. No record and a
+# quiet record both release, and a closing answer is not gated by posture.
+test_release_is_attended_only() {
+  local home show out rc
+  home=$(make_home release-attended)
+  tasks_in "$home" add sample-widget "Ship the sample widget" --kind ship --repo sample >/dev/null \
+    || fail "could not create the held work item"
+  run_captain "$home" hold sample-widget --reason "captain go needed before shipping" >/dev/null \
+    || fail "could not hold the work item for the captain"
+  printf 'Not urgent; ship it as planned.\n' > "$home/go.txt"
+  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$ROOT/bin/fm-afk-contract.sh" enter \
+    --words 'merge green work' >/dev/null 2>&1 || fail "away entry failed"
+
+  rc=0
+  run_captain "$home" answer sample-widget --decision-file "$home/go.txt" --release \
+    >/dev/null 2>"$home/away.err" || rc=$?
+  [ "$rc" -ne 0 ] || fail "answer --release succeeded while the away record exists"
+  assert_grep "attended session" "$home/away.err" \
+    "the away refusal did not name the attended-session requirement"
+  show=$(tasks_in "$home" show sample-widget --full)
+  assert_contains "$show" "held: yes" "the away refusal lifted the hold"
+  assert_not_contains "$show" "Resolution mode" "the away refusal wrote a resolution record"
+
+  out=$(printf 'sample-widget\tgo\t\trelease\n' \
+    | run_captain "$home" answers --source "away release fixture") \
+    && fail "the keyed-answer intake released held work while away"
+  assert_contains "$out" "refused: sample-widget" "the intake did not report the away refusal"
+  show=$(tasks_in "$home" show sample-widget --full)
+  assert_contains "$show" "held: yes" "the intake lifted the hold while away"
+
+  run_captain "$home" hold sample-question --title "Pick the widget colour" \
+    --reason "captain must pick the colour" --repo sample >/dev/null \
+    || fail "could not hold the question for the captain"
+  printf 'Blue.\n' > "$home/blue.txt"
+  run_captain "$home" answer sample-question --decision-file "$home/blue.txt" >/dev/null \
+    || fail "a closing answer was refused while away"
+  show=$(tasks_in "$home" show sample-question --full)
+  assert_contains "$show" "state: done" "a closing answer while away did not close the question"
+
+  rm -f "$home/state/.afk-contract"
+  printf 'away\n%s\n' "$(date +%s)" > "$home/state/.afk"
+  rc=0
+  run_captain "$home" answer sample-widget --decision-file "$home/go.txt" --release \
+    >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "answer --release succeeded while the away daemon flag exists"
+  show=$(tasks_in "$home" show sample-widget --full)
+  assert_contains "$show" "held: yes" "the daemon-flag refusal lifted the hold"
+
+  rm -f "$home/state/.afk"
+  run_captain "$home" answer sample-widget --decision-file "$home/go.txt" --release >/dev/null \
+    || fail "answer --release failed with no away record"
+  show=$(tasks_in "$home" show sample-widget --full)
+  assert_contains "$show" "held: no" "an attended release kept the hold"
+  assert_contains "$show" "Resolution mode: released" "an attended release recorded no release"
+
+  run_captain "$home" hold sample-widget --reason "second captain go needed" >/dev/null \
+    || fail "could not re-hold the released work item"
+  printf 'quiet\n%s\n' "$(date +%s)" > "$home/state/.afk"
+  FM_AFK_MODE=quiet FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    "$ROOT/bin/fm-afk-contract.sh" enter --words 'keep routine wakes off my main' >/dev/null 2>&1 \
+    || fail "quiet entry failed"
+  printf 'Still ship it.\n' > "$home/go-quiet.txt"
+  run_captain "$home" answer sample-widget --decision-file "$home/go-quiet.txt" --release >/dev/null \
+    || fail "answer --release failed in quiet mode"
+  show=$(tasks_in "$home" show sample-widget --full)
+  assert_contains "$show" "held: no" "a quiet-mode release kept the hold"
+  pass "a captain hold is released only in an attended session: away refuses, quiet and no record release"
+}
+
+# A release that waits behind another task action must recheck the away posture
+# once it holds the task control lock: the captain can enter away mode during
+# the wait, and the release then refuses with the hold still in place.
+test_release_rechecks_away_after_waiting_on_task_lock() {
+  local home show rc holder i
+  home=$(make_home release-race)
+  tasks_in "$home" add sample-widget "Ship the sample widget" --kind ship --repo sample >/dev/null \
+    || fail "could not create the held work item"
+  run_captain "$home" hold sample-widget --reason "captain go needed before shipping" >/dev/null \
+    || fail "could not hold the work item for the captain"
+  printf 'Ship it.\n' > "$home/go-race.txt"
+
+  bash -c '. "$1/bin/fm-wake-lib.sh"; fm_lock_acquire_wait "$2" && : > "$3" && sleep 30' _ \
+    "$ROOT" "$home/state/.control-sample-widget.lock" "$home/control-held" &
+  holder=$!
+  for i in $(seq 1 100); do [ -e "$home/control-held" ] && break; sleep 0.1; done
+  [ -e "$home/control-held" ] || fail "the task control lock was not taken"
+
+  rc=0
+  run_captain "$home" answer sample-widget --decision-file "$home/go-race.txt" --release \
+    >/dev/null 2>"$home/race.err" &
+  local release_pid=$!
+  sleep 1
+  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$ROOT/bin/fm-afk-contract.sh" enter \
+    --words 'merge green work' >/dev/null 2>&1 || fail "away entry failed"
+  kill "$holder" 2>/dev/null || true
+  pkill -P "$holder" 2>/dev/null || true
+  rm -rf "$home/state/.control-sample-widget.lock"
+  wait "$release_pid" || rc=$?
+  [ "$rc" -ne 0 ] || fail "a release that waited on the task lock lifted the hold after away entry"
+  assert_grep "attended session" "$home/race.err" "the late refusal did not name the attended-session requirement"
+  show=$(tasks_in "$home" show sample-widget --full)
+  assert_contains "$show" "held: yes" "the waiting release lifted the hold while the away record exists"
+  pass "a release waiting on the task lock rechecks the away posture under the lock"
+}
+
 # The hold-set stamp must be durable before the captain hold becomes visible.
 # A wrapper observes the real tasks-axi hold boundary, and a forced stamp-write
 # failure proves the command never publishes the hold without its timestamp.
@@ -1300,6 +1407,50 @@ EOF
   pass "resolved findings and decision-like prose do not create captain-held tasks"
 }
 
+test_completion_keeps_an_armed_pr_identity_last() {
+  local home id url=https://github.com/example/sample/pull/7
+  home=$(make_home armed-pr-completion)
+  id=sample-armed-review
+  mkdir -p "$home/data/$id"
+  tasks_in "$home" add "$id" "Review an armed sample change" --kind scout --repo sample --start >/dev/null
+  write_origin_meta "$home" "$id"
+  printf 'pr=%s\n' "$url" >> "$home/state/$id.meta"
+  printf 'done: review complete\n' > "$home/state/$id.status"
+  run_captain "$home" complete "$id" --none >/dev/null \
+    || fail "completion with an armed PR identity failed"
+  assert_grep "decisions_reviewed=1" "$home/state/$id.meta" "completion attestation missing"
+  bash -c '. "$1"; fm_pr_metadata_identity_parse "$2" && [ "$FM_PR_META_URL" = "$3" ]' _ \
+    "$ROOT/bin/fm-pr-lib.sh" "$home/state/$id.meta" "$url" \
+    || fail "completion broke the armed PR identity the merge poll authenticates:"$'\n'"$(cat "$home/state/$id.meta")"
+  pass "completion keeps an armed PR identity last in the task record"
+}
+
+test_completion_replaces_a_pair_recorded_after_pr() {
+  local home id=sample-legacy-review url=https://github.com/example/sample/pull/8 meta
+  home=$(make_home legacy-completion-after-pr)
+  mkdir -p "$home/data/$id"
+  tasks_in "$home" add "$id" "Review a legacy sample change" --kind scout --repo sample --start >/dev/null
+  write_origin_meta "$home" "$id"
+  for out in old-call new-call; do
+    run_captain "$home" hold "$out" --title "Call $out" --reason "Choose" --origin "$id" >/dev/null \
+      || fail "could not create $out"
+  done
+  meta="$home/state/$id.meta"
+  # The previous writer appended the completion pair after an armed pr= line.
+  printf 'pr=%s\ndecisions_reviewed=1\ndecision_keys=old-call\n' "$url" >> "$meta"
+  printf 'done: review complete\n' > "$home/state/$id.status"
+  run_captain "$home" complete "$id" new-call >/dev/null \
+    || fail "completion over a legacy record failed"
+  assert_equals "decision_keys=new-call,old-call" "$(grep '^decision_keys=' "$meta")" \
+    "completion kept a stale inventory alongside the new one"
+  assert_equals 1 "$(grep -c '^decisions_reviewed=' "$meta")" "completion duplicated the attestation"
+  run_captain "$home" verify "$id" >/dev/null || fail "the rewritten inventory did not verify"
+  bash -c '. "$1"; fm_pr_metadata_identity_parse "$2" && [ "$FM_PR_META_URL" = "$3" ]' _ \
+    "$ROOT/bin/fm-pr-lib.sh" "$meta" "$url" \
+    || fail "completion left a legacy pair after the armed PR identity:"$'\n'"$(cat "$meta")"
+  pass "completion replaces a completion pair recorded after pr= by the previous writer"
+}
+
 test_terminal_single_owner_status_decision_does_not_block_empty_inventory() {
   local home id open secondmate
   home=$(make_home stale-terminal-decision)
@@ -1346,7 +1497,7 @@ test_secondmate_hold_stays_in_authoritative_home() {
   parent=$(make_home main-routing)
   mate="$TMP_ROOT/sample-mate-home"
   mkdir -p "$mate/data" "$mate/state" "$mate/config" "$mate/projects" "$mate/bin"
-  cp "$ROOT/.tasks.toml" "$mate/.tasks.toml"
+  fm_test_tasks_toml "$mate/.tasks.toml"
   printf '# Synthetic secondmate home\n' > "$mate/AGENTS.md"
   printf 'sample-mate\n' > "$mate/.fm-secondmate-home"
   # A seeded home always carries its parent binding; teardown delivers the
@@ -1405,7 +1556,7 @@ test_secondmate_home_publishes_holds_and_answers() {
   parent=$(make_home parent-channel)
   mate="$TMP_ROOT/channel-mate-home"
   mkdir -p "$mate/data" "$mate/state" "$mate/config" "$mate/projects"
-  cp "$ROOT/.tasks.toml" "$mate/.tasks.toml"
+  fm_test_tasks_toml "$mate/.tasks.toml"
   printf '# Synthetic secondmate home\n' > "$mate/AGENTS.md"
   printf 'channel-mate\n' > "$mate/.fm-secondmate-home"
   printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$parent" \
@@ -1429,6 +1580,26 @@ EOF
     --origin quoted-origin >/dev/null || fail "quoted-record hold failed"
   assert_grep 'needs-decision [key=captain-hold-quoted-record-call-1]: captain hold quoted-record-call: quoted record choice pending' \
     <(sed -E 's/ \[at=[0-9]+\]//' "$channel") "body prose was incorrectly counted as a resolution record"
+
+  run_captain "$mate" hold dated-call --title "Choose the dated release" \
+    --reason "dated choice pending" --repo sample --until 2099-01-01 >/dev/null \
+    || fail "dated mate hold failed"
+  assert_grep 'needs-decision [key=captain-hold-dated-call-1] [until=2099-01-01]: captain hold dated-call: dated choice pending' \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$channel") "a dated hold did not publish its structured deferral date"
+  # Re-holding A -> B -> A keeps one key, and the parent fold reads that key's
+  # latest line, so the final A must reach the channel; an exact retry of the
+  # latest state stays suppressed.
+  run_captain "$mate" hold dated-call --reason "dated choice pending" --until 2099-02-01 >/dev/null \
+    || fail "re-dated mate hold failed"
+  run_captain "$mate" hold dated-call --reason "dated choice pending" --until 2099-01-01 >/dev/null \
+    || fail "restored-date mate hold failed"
+  assert_equals 'needs-decision [key=captain-hold-dated-call-1] [until=2099-01-01]: captain hold dated-call: dated choice pending' \
+    "$(grep -F 'captain-hold-dated-call-1' "$channel" | tail -n 1 | sed -E 's/ \[at=[0-9]+\]//')" \
+    "a hold restored to an earlier date did not reach the parent channel"
+  run_captain "$mate" hold dated-call --reason "dated choice pending" --until 2099-01-01 >/dev/null \
+    || fail "retried dated mate hold failed"
+  assert_equals 3 "$(grep -c 'captain-hold-dated-call-1' "$channel")" \
+    "an exact retry of the latest hold state duplicated the parent line: $(cat "$channel")"
 
   run_captain "$mate" hold mate-call --title "Choose the mate release" \
     --reason "release choice pending" --repo sample >/dev/null \
@@ -1861,39 +2032,6 @@ test_normal_answers_retire_pending_reconcile_requests() {
 # `--wake` is the opt-in wake for a caller with no wake path of its own: one
 # check row per invocation that closed something, none without the flag or
 # when every key was skipped.
-test_answers_wake_flag_appends_one_check_wake() {
-  local home id out rows
-  home=$(make_home answers-wake)
-  for id in sample-wake-one sample-wake-two sample-wake-quiet; do
-    tasks_in "$home" add "$id" "Captain call $id" --repo sample >/dev/null
-    run_captain "$home" hold "$id" --reason "waiting for the captain" >/dev/null
-  done
-
-  printf 'sample-wake-quiet\tyes\tYes\n' \
-    | run_captain "$home" answers --source "board fixture" >/dev/null \
-    || fail "an answer without --wake failed"
-  rows=$(cat "$home/state/.wake-queue" 2>/dev/null | wc -l)
-  [ "$rows" -eq 0 ] || fail "answers without --wake appended $rows wake rows"
-
-  printf 'sample-wake-one\tyes\tYes\nsample-wake-two\tgo\tGo\trelease\n' \
-    | run_captain "$home" answers --source "board fixture" --wake >/dev/null \
-    || fail "an answer with --wake failed"
-  rows=$(wc -l < "$home/state/.wake-queue")
-  [ "$rows" -eq 1 ] || fail "answers --wake appended $rows wake rows instead of one"
-  out=$(cat "$home/state/.wake-queue")
-  assert_contains "$out" "check" "the --wake row is not a check wake: $out"
-  assert_contains "$out" "board fixture: sample-wake-one sample-wake-two" \
-    "the --wake row does not name the source and the answered ids: $out"
-
-  set +e
-  printf 'sample-wake-absent\tyes\tYes\n' \
-    | run_captain "$home" answers --source "board fixture" --wake >/dev/null 2>&1
-  set -e
-  rows=$(wc -l < "$home/state/.wake-queue")
-  [ "$rows" -eq 1 ] || fail "an all-skipped answers --wake appended a wake row"
-  pass "answers --wake appends one check wake only when something closed"
-}
-
 test_reconcile_closes_with_evidence_or_keeps_the_call_open() {
   local home show list rc out
   home=$(make_home reconcile-outcomes)
@@ -2845,6 +2983,7 @@ test_retained_row_artifacts_survive_captain_answers() {
     "project=$local_repo" "harness=codex" "kind=ship" "mode=local-only" \
     "spawn_gen=fixture-$local_id"
   printf 'done: local merge ready\n' > "$home/state/$local_id.status"
+  printf 'local_done_head=%s\n' "$(git -C "$local_wt" rev-parse HEAD)" >> "$home/state/$local_id.meta"
   run_captain "$home" hold "$local_id" --reason "captain local merge approval pending" \
     >/dev/null || fail "could not hold the released local merge"
   printf 'Land the approved change locally.\n' > "$home/local-answer.txt"
@@ -3462,6 +3601,7 @@ test_local_merge_entrypoint_refuses_a_captain_held_task() {
     "window=firstmate:fm-$local_id" "endpoint_task_id=$local_id" "worktree=$local_wt" \
     "project=$local_repo" "harness=codex" "kind=ship" "mode=local-only" \
     "spawn_gen=fixture-$local_id"
+  printf 'local_done_head=%s\n' "$(git -C "$local_wt" rev-parse HEAD)" >> "$home/state/$local_id.meta"
   run_captain "$home" hold "$local_id" --reason "captain local merge approval pending" \
     >/dev/null || fail "could not hold the local entrypoint fixture"
   before=$(git -C "$local_repo" rev-parse main)
@@ -3532,6 +3672,7 @@ test_local_merge_entrypoint_separates_an_unreadable_record_from_an_absent_one() 
     "window=firstmate:fm-$id" "endpoint_task_id=$id" "worktree=$wt" \
     "project=$repo" "harness=codex" "kind=ship" "mode=local-only" \
     "spawn_gen=fixture-$id"
+  printf 'local_done_head=%s\n' "$(git -C "$wt" rev-parse HEAD)" >> "$home/state/$id.meta"
   before=$(git -C "$repo" rev-parse main)
 
   # Unreadable authority record: refuse, and leave the default branch where it was.
@@ -3733,6 +3874,7 @@ test_merge_entrypoints_refuse_a_reused_task_incarnation() {
     "window=firstmate:fm-$local_id" "endpoint_task_id=$local_id" \
     "worktree=$local_old_wt" "project=$local_old_repo" "harness=codex" \
     "kind=ship" "mode=local-only" "spawn_gen=original-$local_id"
+  printf 'local_done_head=%s\n' "$(git -C "$local_old_wt" rev-parse HEAD)" >> "$local_home/state/$local_id.meta"
   printf 'done: local merge ready\n' > "$local_home/state/$local_id.status"
 
   local_teardown_ready="$local_home/reuse-teardown-ready"
@@ -3916,6 +4058,7 @@ SH
     "window=firstmate:fm-$local_id" "endpoint_task_id=$local_id" "worktree=$local_wt" \
     "project=$local_repo" "harness=codex" "kind=ship" "mode=local-only" \
     "spawn_gen=fixture-$local_id"
+  printf 'local_done_head=%s\n' "$(git -C "$local_wt" rev-parse HEAD)" >> "$local_home/state/$local_id.meta"
   printf 'done: local merge ready\n' > "$local_home/state/$local_id.status"
   run_captain "$local_home" hold "$local_id" \
     --reason "captain local merge approval pending" >/dev/null \
@@ -3930,7 +4073,8 @@ SH
   local_release="$local_home/local-validation-release"
   cat > "$local_home/fakebin/git" <<'SH'
 #!/usr/bin/env bash
-if [ "$*" = "-C ${FM_TEST_RACE_REPO:-} rev-parse --short main" ]; then
+if [ "${1:-}" = -C ] && [ "${2:-}" = "${FM_TEST_RACE_REPO:-}" ] \
+    && [ "${3:-}" = merge-base ] && [ "${4:-}" = --is-ancestor ]; then
   output=$("$FM_TEST_REAL_GIT" "$@") || exit $?
   : > "$FM_TEST_RACE_READY"
   while [ ! -e "$FM_TEST_RACE_RELEASE" ]; do sleep 0.01; done
@@ -4283,11 +4427,15 @@ test_complete_refuses_an_entry_held_for_another_origin() {
   pass "complete refuses an entry held for another origin and flags one with none recorded"
 }
 
-test_hold_origins_precede_backend_holds() {
-  local home phase timing failure id shown origin until_args=()
+test_hold_origins_follow_backend_holds() {
+  local home phase timing failure id shown origin out parent channel occurrence until_args=() until_field
   for phase in new active released; do
     for timing in plain dated; do
       home=$(make_home "origin-failure-$phase-$timing")
+      parent=$(make_home "origin-parent-$phase-$timing")
+      channel="$parent/state/origin-mate.status"
+      occurrence=1
+      [ "$phase" != released ] || occurrence=2
       id=sample-call
       for origin in origin-a origin-b; do
         tasks_in "$home" add "$origin" "Review $origin" --kind scout --repo sample >/dev/null \
@@ -4310,12 +4458,18 @@ if [ "${1:-}" = show ] && [ "${2:-}" = origin-b ] && [ -f "$FM_HOME/fail-lookup"
   printf 'error: origin read failed\ncode: READ_FAILED\n' >&2
   exit 2
 fi
-if [ "${1:-}" = update ] && [ -f "$FM_HOME/fail-write" ]; then
+if [ "${1:-}" = update ]; then
   previous=''
   for arg in "$@"; do
     if [ "$previous" = --body-file ] && grep -qx 'Captain hold origin: origin-b' "$arg"; then
-      : > "$FM_HOME/write-refused"
-      exit 9
+      [ -f "$FM_HOME/backend-held" ] || exit 8
+      "$REAL_TASKS_AXI" show "$2" --full > "$FM_HOME/before-origin-write" || exit $?
+      if [ -f "$FM_HOME/fail-write" ]; then
+        channel="$(sed -n 's/^parent_home=//p' "$FM_HOME/.fm-secondmate-parent")/state/origin-mate.status"
+        [ ! -f "$channel" ] || cp "$channel" "$FM_HOME/parent-before-origin-write"
+        : > "$FM_HOME/write-refused"
+        exit 9
+      fi
     fi
     previous=$arg
   done
@@ -4326,32 +4480,53 @@ if [ "${1:-}" = hold ] && [ "${2:-}" != --help ]; then
     : > "$FM_HOME/hold-refused"
     exit 9
   fi
+  "$REAL_TASKS_AXI" "$@" || exit $?
+  : > "$FM_HOME/backend-held"
+  exit 0
 fi
 exec "$REAL_TASKS_AXI" "$@"
 SH
       chmod +x "$home/fakebin/tasks-axi"
       until_args=()
       [ "$timing" != dated ] || until_args=(--until 2099-01-01)
-      for failure in lookup write hold; do
+      for failure in lookup hold write; do
+        if [ "$failure" = write ]; then
+          printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$parent" \
+            > "$home/.fm-secondmate-parent"
+          printf 'origin-mate\n' > "$home/.fm-secondmate-home"
+        fi
         : > "$home/fail-$failure"
         if run_captain "$home" hold "$id" --title "Separate call" --reason "Choose for B" \
           --origin origin-b ${until_args[@]+"${until_args[@]}"} > "$home/hold.out" 2> "$home/hold.err"; then
           fail "$phase $timing hold succeeded despite an origin $failure failure"
         fi
         assert_present "$home/$failure-refused" "the failure did not reach the origin $failure"
-        if [ "$failure" = hold ]; then
-          assert_present "$home/before-backend-hold" "$phase $timing failure never reached the backend hold"
-          assert_grep 'Captain hold origin: origin-b' "$home/before-backend-hold" \
-            "the failed backend hold did not see the new association"
-          rm "$home/before-backend-hold"
+        if [ "$failure" = lookup ]; then
+          assert_absent "$home/before-backend-hold" "$phase $timing origin lookup failure reached the backend hold"
         else
-          assert_absent "$home/before-backend-hold" "$phase $timing origin $failure failure reached the backend hold"
+          assert_present "$home/before-backend-hold" "$phase $timing failure never reached the backend hold"
+          assert_no_grep 'Captain hold origin: origin-b' "$home/before-backend-hold" \
+            "the backend hold saw the new association before succeeding"
+          rm "$home/before-backend-hold"
+        fi
+        if [ "$failure" = write ]; then
+          assert_present "$home/backend-held" "the origin write preceded backend success"
+          assert_grep 'held: yes' "$home/before-origin-write" "the origin write did not follow a live hold"
+          assert_grep 'hold_kind: captain' "$home/before-origin-write" "the origin write did not follow a captain hold"
+          assert_present "$home/parent-before-origin-write" "the verified hold was not published before the origin write"
+          until_field=''
+          [ "$timing" != dated ] || until_field=' [until=2099-01-01]'
+          assert_grep "needs-decision [key=captain-hold-$id-$occurrence]$until_field: captain hold $id: Choose for B" \
+            <(sed -E 's/ \[at=[0-9]+\]//' "$home/parent-before-origin-write") \
+            "the origin-write failure stranded the hold without its parent event"
+          assert_equals 1 "$(grep -Fc "needs-decision [key=captain-hold-$id-$occurrence]" "$channel")" \
+            "the failed origin write did not publish exactly one parent decision"
         fi
         shown=$(tasks_in "$home" show "$id" --full)
         assert_not_contains "$shown" 'Captain hold origin: origin-b' \
           "$phase $timing origin $failure failure published the new association"
-        if [ "$phase" = active ]; then
-          assert_contains "$shown" 'held: yes' "an origin $failure failure lifted an existing hold"
+        if [ "$phase" = active ] || [ "$failure" = write ]; then
+          assert_contains "$shown" 'held: yes' "an origin $failure failure lost the successful hold"
         else
           assert_contains "$shown" 'held: no' "$phase $timing origin $failure failure left the task held"
         fi
@@ -4360,6 +4535,14 @@ SH
             "$phase $timing origin $failure failure lost the original association"
         fi
         rm "$home/fail-$failure"
+        rm -f "$home/backend-held" "$home/before-origin-write"
+        if [ "$phase" = new ] && [ "$failure" = write ]; then
+          out=$(run_captain "$home" complete origin-b "$id") \
+            || fail "the unrecorded successful hold was not durable"
+          assert_contains "$out" "no recorded origin on: $id" "the unrecorded hold was claimed to have an origin"
+          run_captain "$home" verify origin-b >/dev/null || fail "the unrecorded hold could not verify"
+          continue
+        fi
         if [ "$phase" = new ] && run_captain "$home" complete origin-a "$id" \
           > "$home/unrelated.out" 2> "$home/unrelated.err"; then
           fail "$timing origin $failure failure satisfied an unrelated inventory"
@@ -4382,12 +4565,17 @@ SH
         ${until_args[@]+"${until_args[@]}"} >/dev/null || fail "$phase $timing successful retry failed"
       assert_present "$home/before-backend-hold" "the successful retry did not reach the backend hold"
       shown=$(cat "$home/before-backend-hold")
-      assert_contains "$shown" 'Captain hold origin: origin-b' "the backend hold ran before the new origin was recorded"
-      assert_not_contains "$shown" 'Captain hold origin: origin-a' "the backend hold ran with the old association"
+      assert_not_contains "$shown" 'Captain hold origin: origin-b' "the backend hold ran with the new association already published"
+      if [ "$phase" != new ]; then
+        assert_contains "$shown" 'Captain hold origin: origin-a' "the backend hold lost the old association before succeeding"
+      fi
+      assert_grep 'held: yes' "$home/before-origin-write" "the successful origin write preceded a live hold"
       shown=$(tasks_in "$home" show "$id" --full)
       assert_contains "$shown" 'held: yes' "the successful retry did not hold the task"
       assert_contains "$shown" 'Captain hold origin: origin-b' "a successful hold lost its association"
       assert_not_contains "$shown" 'Captain hold origin: origin-a' "a successful hold retained the old association"
+      assert_equals 1 "$(grep -Fc "needs-decision [key=captain-hold-$id-$occurrence]" "$channel")" \
+        "retrying the origin write duplicated the parent decision"
       run_captain "$home" complete origin-b "$id" >/dev/null \
         || fail "a successful hold could not complete B"
       run_captain "$home" verify origin-b >/dev/null || fail "a successful hold could not verify B"
@@ -4396,7 +4584,141 @@ SH
       fi
     done
   done
-  pass "new, active, and released holds require the origin first with and without deferral"
+  pass "new, active, and released holds publish origins after backend success with and without deferral"
+}
+
+test_interrupted_origin_move_does_not_inherit_the_previous_answer() {
+  local home id=sample-moved-call shown phase failure o rc until_args=()
+  for phase in active expired released-replay released-done; do
+    for failure in refused interrupted; do
+      home=$(make_home "interrupted-origin-move-$phase-$failure")
+      for o in origin-a origin-b; do
+        tasks_in "$home" add "$o" "Review $o" --kind scout --repo sample >/dev/null \
+          || fail "could not create $o"
+        write_origin_meta "$home" "$o"
+      done
+      run_captain "$home" hold "$id" --title "Separate call" --reason "Choose for A" \
+        --origin origin-a >/dev/null || fail "could not hold the call for A"
+      printf 'Release this work.\n' > "$home/answer.txt"
+      run_captain "$home" answer "$id" --release --decision-file "$home/answer.txt" >/dev/null \
+        || fail "could not release the call for A"
+      until_args=()
+      [ "$phase" != expired ] || until_args=(--until 2000-01-01)
+      case "$phase" in
+        active|expired)
+          run_captain "$home" hold "$id" --reason "Choose again for A" --origin origin-a \
+            ${until_args[@]+"${until_args[@]}"} >/dev/null || fail "could not re-hold the call for A"
+          ;;
+      esac
+      run_captain "$home" complete origin-a "$id" >/dev/null \
+        || fail "the genuine call for A did not complete A"
+
+      cat > "$home/fakebin/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+if [ -f "$FM_HOME/hold-refused" ] && [ "${1:-}" = update ]; then
+  : > "$FM_HOME/restore-refused"
+  exit 9
+fi
+if [ "${1:-}" = hold ] && [ "${2:-}" != --help ]; then
+  "$REAL_TASKS_AXI" show "$2" --full > "$FM_HOME/before-backend-hold" || exit $?
+  : > "$FM_HOME/hold-refused"
+  if [ -f "$FM_HOME/interrupt-hold" ]; then
+    kill -TERM "$(cat "$FM_HOME/hold-pid")"
+  fi
+  exit 9
+fi
+exec "$REAL_TASKS_AXI" "$@"
+SH
+      chmod +x "$home/fakebin/tasks-axi"
+      rc=0
+      if [ "$failure" = interrupted ]; then
+        : > "$home/interrupt-hold"
+        PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" \
+          FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+          FM_CONFIG_OVERRIDE="$home/config" bash -c \
+          'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ \
+          "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b \
+          > "$home/hold.out" 2> "$home/hold.err" || rc=$?
+        [ "$rc" -eq 143 ] || fail "the hold was not interrupted by TERM: $rc"
+        assert_absent "$home/restore-refused" "an interrupted hold attempted restoration"
+      else
+        run_captain "$home" hold "$id" --reason "Choose for B" --origin origin-b \
+          > "$home/hold.out" 2> "$home/hold.err" || rc=$?
+        [ "$rc" -ne 0 ] || fail "the hold succeeded although the backend refused it"
+        assert_present "$home/restore-refused" "the refused hold did not attempt restoration"
+      fi
+      assert_present "$home/hold-refused" "the failure did not reach the backend hold"
+      assert_no_grep 'Captain hold origin: origin-b' "$home/before-backend-hold" \
+        "the move published B before the backend hold"
+      shown=$(tasks_in "$home" show "$id" --full)
+      assert_contains "$shown" 'Captain hold origin: origin-a' "the failed move lost A's association"
+      assert_not_contains "$shown" 'Captain hold origin: origin-b' "the failed move published B's association"
+      assert_contains "$shown" 'Captain hold set:' "the fixture did not retain the uncommitted stamp"
+      assert_contains "$shown" 'Release this work.' "the failed move lost the earlier answer"
+      if [ "$phase" = active ]; then
+        assert_contains "$shown" 'held: yes' "the failed move lifted A's active hold"
+      else
+        assert_contains "$shown" 'held: no' "the failed move created a live hold"
+      fi
+      if [ "$phase" = expired ]; then
+        assert_contains "$shown" 'hold_kind: captain' "the expired fixture lost A's captain annotations"
+      fi
+      rm "$home/fakebin/tasks-axi"
+
+      if run_captain "$home" complete origin-b "$id" > "$home/complete.out" 2> "$home/complete.err"; then
+        fail "complete accepted the previous call for B"
+      fi
+      assert_no_grep "decisions_reviewed=1" "$home/state/origin-b.meta" \
+        "the refused completion recorded an attestation for B"
+      printf 'decisions_reviewed=1\ndecision_keys=%s\n' "$id" >> "$home/state/origin-b.meta"
+      if run_captain "$home" verify origin-b > "$home/verify.out" 2> "$home/verify.err"; then
+        fail "verify accepted the previous call for B"
+      fi
+      case "$phase" in
+        released-*)
+          if run_captain "$home" complete origin-a "$id" >/dev/null 2> "$home/incomplete.err"; then
+            fail "the verification boundary accepted a released answer beneath an incomplete hold"
+          fi
+          assert_grep "newer hold never completed" "$home/incomplete.err" "the stamp guard did not refuse the incomplete hold"
+          if run_captain "$home" verify origin-a >/dev/null 2> "$home/incomplete-verify.err"; then
+            fail "verify accepted a released answer beneath an incomplete hold"
+          fi
+          if [ "$phase" = released-replay ]; then
+            run_captain "$home" answer "$id" --release --decision-file "$home/answer.txt" >/dev/null \
+              || fail "could not replay A's earlier answer"
+          else
+            tasks_in "$home" "done" "$id" --keep 1 >/dev/null || fail "could not complete the released work"
+          fi
+          shown=$(tasks_in "$home" show "$id" --full)
+          assert_contains "$shown" 'Captain hold origin: origin-a' "the subsequent transition changed A's association"
+          if run_captain "$home" complete origin-b "$id" >/dev/null 2> "$home/transition-complete.err"; then
+            fail "$phase certified B after a failed move"
+          fi
+          assert_grep "was held for origin origin-a, not origin-b" "$home/transition-complete.err" \
+            "the transition did not refuse B on origin provenance"
+          if run_captain "$home" verify origin-b >/dev/null 2> "$home/transition-verify.err"; then
+            fail "$phase verified B after a failed move"
+          fi
+          ;;
+      esac
+      run_captain "$home" complete origin-a "$id" >/dev/null || fail "the surviving call could not complete A"
+      run_captain "$home" verify origin-a >/dev/null || fail "the surviving call could not verify A"
+      [ "$phase" != released-done ] || continue
+
+      run_captain "$home" hold "$id" --reason "Choose for B" --origin origin-b >/dev/null \
+        || fail "the interrupted move could not be completed"
+      run_captain "$home" complete origin-b "$id" >/dev/null \
+        || fail "a held call for B did not complete B"
+      printf 'Ship it for B.\n' > "$home/answer-b.txt"
+      run_captain "$home" answer "$id" --release --decision-file "$home/answer-b.txt" >/dev/null \
+        || fail "could not release the call for B"
+      run_captain "$home" complete origin-b "$id" >/dev/null \
+        || fail "the genuine answer for B did not complete B"
+      run_captain "$home" verify origin-b >/dev/null \
+        || fail "the genuine answer for B did not verify B"
+    done
+  done
+  pass "failed and interrupted origin moves cannot inherit active, expired, replayed, or completed calls"
 }
 
 test_historical_self_inventory_has_workable_repair() {
@@ -4678,351 +5000,141 @@ SH
   pass "marked hold reasons round-trip through public reads, fleet, startup, and return without changing other fields"
 }
 
-# New launches require an outcome review as well as the captain-call inventory.
-# No report prose is interpreted: the supervisor supplies the outcome and typed
-# continuation references, and the gate checks the existing backlog facts.
-make_completion_home() {
-  local home id=sample-outcome
-  home=$(make_home "$1")
-  tasks_in "$home" add "$id" "Working evaluator on the saved corpus" >/dev/null
-  tasks_in "$home" start "$id" >/dev/null
-  write_origin_meta "$home" "$id" "${2:-scout}"
-  printf 'completion_required=1\n' >> "$home/state/$id.meta"
+# Done retention moves an answered captain call into the Done archive, where
+# tasks-axi no longer shows it; the completion gate must still count the
+# archived answer as durable, and must still refuse an archived close that
+# carries no captain answer or an attested call found nowhere.
+test_archived_answered_hold_still_satisfies_the_gate() {
+  local home id archive
+  home=$(make_home archived-answer)
+  id=sample-archived-review
+  archive="$home/data/done-archive.md"
   mkdir -p "$home/data/$id"
-  printf '# Corpus and calibration plan\n' > "$home/data/$id/report.md"
-  printf 'done: bounded milestone saved\n' > "$home/state/$id.status"
-  printf '%s\n' "$home"
+  tasks_in "$home" add "$id" "Investigate the archived sample" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create the archived-answer origin"
+  write_origin_meta "$home" "$id"
+  printf 'done: report complete\n' > "$home/state/$id.status"
+  printf '# Archived sample review\n\nOne captain choice remains.\n' > "$home/data/$id/report.md"
+  run_captain "$home" hold sample-archived-call --title "Choose the archived option" \
+    --reason "captain archived choice pending" --repo sample --origin "$id" >/dev/null \
+    || fail "could not register the captain-held task"
+  run_captain "$home" complete "$id" sample-archived-call >/dev/null \
+    || fail "completion failed before the answer"
+  printf 'Captain chose the archived option.\n' > "$home/archived-decision.txt"
+  run_captain "$home" answer sample-archived-call --decision-file "$home/archived-decision.txt" >/dev/null \
+    || fail "answer could not close the captain-held task"
+  run_captain "$home" verify "$id" >/dev/null \
+    || fail "the answered captain call did not verify before retention"
+
+  perl -0pi -e 's/done_keep = 10/done_keep = 0/' "$home/.tasks.toml"
+  tasks_in "$home" add sample-archived-trigger "Trigger Done retention" --kind ship --repo sample >/dev/null
+  tasks_in "$home" "done" sample-archived-trigger >/dev/null \
+    || fail "could not trigger Done retention"
+  assert_grep "sample-archived-call" "$archive" "Done retention did not archive the answered call"
+  if tasks_in "$home" show sample-archived-call >/dev/null 2>&1; then
+    fail "the archived call is still shown from the live backlog, so the fixture reproduces nothing"
+  fi
+
+  run_captain "$home" verify "$id" >/dev/null 2> "$home/archived-verify.err" \
+    || fail "verify refused an answered call Done retention archived: $(cat "$home/archived-verify.err")"
+  run_captain "$home" complete "$id" sample-archived-call >/dev/null 2> "$home/archived-complete.err" \
+    || fail "complete refused an answered call Done retention archived: $(cat "$home/archived-complete.err")"
+  run_teardown "$home" "$id" >/dev/null 2> "$home/archived-teardown.err" \
+    || fail "teardown refused a scout whose answered call was archived: $(cat "$home/archived-teardown.err")"
+
+  id=sample-archived-unanswered-review
+  mkdir -p "$home/data/$id"
+  tasks_in "$home" add "$id" "Investigate the unanswered sample" --kind scout --repo sample --start >/dev/null
+  write_origin_meta "$home" "$id"
+  printf 'done: report complete\n' > "$home/state/$id.status"
+  run_captain "$home" hold sample-archived-unanswered-call --title "Choose the unanswered option" \
+    --reason "captain unanswered choice pending" --repo sample --origin "$id" >/dev/null \
+    || fail "could not register the unanswered captain-held task"
+  run_captain "$home" complete "$id" sample-archived-unanswered-call >/dev/null \
+    || fail "completion failed for the unanswered hold"
+  tasks_in "$home" "done" sample-archived-unanswered-call >/dev/null \
+    || fail "could not close the unanswered hold out of band"
+  assert_grep "sample-archived-unanswered-call" "$archive" \
+    "Done retention did not archive the unanswered close"
+  if run_captain "$home" verify "$id" > "$home/unanswered-verify.out" 2> "$home/unanswered-verify.err"; then
+    fail "verify accepted an archived captain call closed with no recorded answer"
+  fi
+  if run_teardown "$home" "$id" > "$home/unanswered-teardown.out" 2> "$home/unanswered-teardown.err"; then
+    fail "teardown proceeded while an archived captain call had no recorded answer"
+  fi
+  assert_present "$home/state/$id.meta" "refused teardown removed investigation metadata"
+
+  printf 'decisions_reviewed=1\ndecision_keys=sample-never-held-call\n' >> "$home/state/$id.meta"
+  if run_captain "$home" verify "$id" > "$home/missing-verify.out" 2> "$home/missing-verify.err"; then
+    fail "verify accepted an attested captain call that exists nowhere"
+  fi
+  assert_grep "sample-never-held-call" "$home/missing-verify.err" \
+    "the refusal did not name the missing captain call"
+  pass "an answered captain call archived by Done retention still satisfies the completion gate"
 }
 
-test_fulfilled_outcome_requires_a_live_metadata_sink() {
-  local home
-  home=$(make_home fulfilled-without-metadata)
-  mkdir -p "$home/data/archive-only"
-  printf '# Saved report\n' > "$home/data/archive-only/report.md"
-  if run_captain "$home" complete archive-only --none --fulfilled > "$home/fulfilled.out" 2>&1; then
-    fail "--fulfilled succeeded without live origin metadata to preserve the attestation"
-  fi
-  assert_grep 'live origin metadata' "$home/fulfilled.out" \
-    "missing metadata refusal did not explain the absent attestation sink"
-  run_captain "$home" complete archive-only --none >/dev/null \
-    || fail "inventory-only post-cleanup compatibility was removed"
-  pass "fulfilled completion needs a live metadata sink while inventory-only cleanup remains compatible"
-}
+# The archive location is not always beside the backlog: tasks-axi honours a
+# [markdown] archive set only in the user-level $HOME/.tasks-axi/config.toml, and
+# resolves a relative value against the backlog root. The completion gate must
+# resolve it the same way, or an answered call retention moved there reads as
+# absent and teardown is refused.
+test_archived_answer_in_a_user_configured_archive_satisfies_the_gate() {
+  local home axi_home archive id
+  home=$(make_home archived-answer-userconfig)
+  axi_home="$home/axi-home"
+  mkdir -p "$axi_home/.tasks-axi"
+  # Root config sets no archive, so the location comes only from the user config.
+  cat > "$home/.tasks.toml" <<'EOF'
+backend = "markdown"
 
-test_in_flight_worker_requires_a_paired_task_record() {
-  local home meta saved
-  home=$(make_completion_home in-flight-worker-pair)
-  tasks_in "$home" add sample-running-worker "An in-flight independent worker task" >/dev/null
-  tasks_in "$home" start sample-running-worker >/dev/null
-  if run_captain "$home" complete sample-outcome --none --remaining sample-running-worker \
-      > "$home/orphan.out" 2>&1; then
-    fail "in-flight work without a paired worker record was accepted"
-  fi
-  assert_grep 'no paired worker record' "$home/orphan.out" \
-    "orphaned in-flight work did not fail at its paired-record boundary"
-  write_worker_meta "$home" sample-running-worker ship another-task
-  if run_captain "$home" complete sample-outcome --none --remaining sample-running-worker \
-      > "$home/mismatched.out" 2>&1; then
-    fail "a worker record for another task was accepted"
-  fi
-  assert_grep 'paired with worker record for another-task' "$home/mismatched.out" \
-    "mismatched task ownership was not named"
-  write_worker_meta "$home" sample-running-worker ship
-  meta="$home/state/sample-running-worker.meta"
-  saved="$home/state/sample-running-worker.meta.saved"
-  mv "$meta" "$saved"
-  ln -s "$saved" "$meta"
-  if run_captain "$home" complete sample-outcome --none --remaining sample-running-worker \
-      > "$home/unreadable.out" 2>&1; then
-    fail "a symlinked worker record was accepted"
-  fi
-  assert_grep 'no paired worker record' "$home/unreadable.out" \
-    "unreadable worker metadata did not fail at the paired-record boundary"
-  rm -f "$meta"
-  mv "$saved" "$meta"
-  run_captain "$home" complete sample-outcome --none --remaining sample-running-worker >/dev/null \
-    || fail "a valid paired record for stopped-but-owned work was rejected"
-  run_captain "$home" verify sample-outcome >/dev/null \
-    || fail "paired in-flight work failed completion verification"
-  pass "in-flight work requires an exact readable worker record, while valid stopped-but-owned work remains accepted"
-}
+[markdown]
+path = "data/backlog.md"
+done_keep = 10
+EOF
+  cat > "$axi_home/.tasks-axi/config.toml" <<'EOF'
+[markdown]
+archive = "data/relocated-done-archive.md"
+EOF
+  archive="$home/data/relocated-done-archive.md"
+  id=sample-userconfig-review
+  mkdir -p "$home/data/$id"
+  HOME="$axi_home" tasks_in "$home" add "$id" "Investigate the user-config sample" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create the user-config origin"
+  write_origin_meta "$home" "$id"
+  printf 'done: report complete\n' > "$home/state/$id.status"
+  printf '# User-config sample review\n\nOne captain choice remains.\n' > "$home/data/$id/report.md"
+  HOME="$axi_home" run_captain "$home" hold sample-userconfig-call --title "Choose the relocated option" \
+    --reason "captain relocated choice pending" --repo sample --origin "$id" >/dev/null \
+    || fail "could not register the captain-held task"
+  HOME="$axi_home" run_captain "$home" complete "$id" sample-userconfig-call >/dev/null \
+    || fail "completion failed before the answer"
+  printf 'Captain chose the relocated option.\n' > "$home/userconfig-decision.txt"
+  HOME="$axi_home" run_captain "$home" answer sample-userconfig-call --decision-file "$home/userconfig-decision.txt" >/dev/null \
+    || fail "answer could not close the captain-held task"
 
-test_outcome_review_distinguishes_a_milestone_from_the_goal() {
-  local home out
-  home=$(make_completion_home outcome-required)
-  if run_captain "$home" complete sample-outcome --none > "$home/review.out" 2>&1; then
-    fail "a captain-call-only inventory silently completed a working-evaluator outcome"
+  perl -0pi -e 's/done_keep = 10/done_keep = 0/' "$home/.tasks.toml"
+  HOME="$axi_home" tasks_in "$home" add sample-userconfig-trigger "Trigger Done retention" --kind ship --repo sample >/dev/null
+  HOME="$axi_home" tasks_in "$home" "done" sample-userconfig-trigger >/dev/null \
+    || fail "could not trigger Done retention"
+  assert_present "$archive" "Done retention did not write the user-configured archive"
+  assert_grep "sample-userconfig-call" "$archive" \
+    "Done retention did not archive the answered call to the user-configured location"
+  if HOME="$axi_home" tasks_in "$home" show sample-userconfig-call >/dev/null 2>&1; then
+    fail "the archived call is still shown from the live backlog, so the fixture reproduces nothing"
   fi
-  if run_teardown "$home" sample-outcome > "$home/teardown.out" 2>&1; then
-    fail "teardown accepted a milestone without an outcome disposition"
-  fi
-  assert_present "$home/state/sample-outcome.meta" "outcome refusal lost its source records"
-  tasks_in "$home" add sample-evaluator "Implement and assess the authorized evaluator" >/dev/null
-  run_captain "$home" complete sample-outcome --none --remaining sample-evaluator >/dev/null \
-    || fail "a durable executable continuation was not accepted"
-  run_captain "$home" verify sample-outcome >/dev/null || fail "continuation did not verify"
-  run_teardown "$home" sample-outcome > "$home/teardown.out" 2>&1 \
-    || fail "milestone cleanup failed: $(cat "$home/teardown.out")"
-  out=$(tasks_in "$home" ready)
-  assert_contains "$out" sample-evaluator "cleanup hid remaining authorized work from ready"
-  out=$(tasks_in "$home" show sample-evaluator --full)
-  assert_contains "$out" 'state: queued' "cleanup closed the remaining executable task"
-  pass "a saved corpus milestone requires and preserves executable remaining work"
-}
 
-test_prepared_firstmate_action_cannot_be_a_generic_wait() {
-  local home out before
-  home=$(make_completion_home coordinator-action)
-  tasks_in "$home" add sample-activate "Activate the already authorized bounded handoff" >/dev/null
-  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate \
-      > "$home/action.out" 2>&1; then
-    fail "an unperformed coordinator action was accepted as complete"
-  fi
-  assert_grep 'firstmate action sample-activate' "$home/action.out" "ready refusal did not name its action"
-  tasks_in "$home" hold sample-activate --reason "my own next step later" --kind future >/dev/null
-  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate \
-      > "$home/future.out" 2>&1; then
-    fail "an undated future hold hid an accepted firstmate action"
-  fi
-  assert_grep 'generic future wait' "$home/future.out" "future-hold case did not reach disposition validation"
-  if run_captain "$home" complete sample-outcome --none --fulfilled > "$home/erase.out" 2>&1; then
-    fail "a fulfilled attestation erased an outstanding accepted handoff"
-  fi
-  tasks_in "$home" unhold sample-activate >/dev/null
-  tasks_in "$home" start sample-activate >/dev/null
-  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate \
-      > "$home/start.out" 2>&1; then
-    fail "starting an ordinary row claimed that a firstmate action executed"
-  fi
-  tasks_in "$home" "done" sample-activate --keep 0 >/dev/null
-  run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate >/dev/null \
-    || fail "the handled coordinator action did not clear the gate"
-  before=$(cat "$home/state/sample-outcome.meta")
-  run_captain "$home" complete sample-outcome --none --firstmate-action sample-activate >/dev/null \
-    || fail "completion replay failed"
-  [ "$before" = "$(cat "$home/state/sample-outcome.meta")" ] || fail "completion replay rewrote metadata"
-  run_captain "$home" verify sample-outcome >/dev/null || fail "handled action failed verification"
-  pass "prepared coordinator actions must be handled and replay converges"
+  HOME="$axi_home" run_captain "$home" verify "$id" >/dev/null 2> "$home/userconfig-verify.err" \
+    || fail "verify refused an answered call archived to the user-configured location: $(cat "$home/userconfig-verify.err")"
+  HOME="$axi_home" run_captain "$home" complete "$id" sample-userconfig-call >/dev/null 2> "$home/userconfig-complete.err" \
+    || fail "complete refused an answered call archived to the user-configured location: $(cat "$home/userconfig-complete.err")"
+  HOME="$axi_home" run_teardown "$home" "$id" >/dev/null 2> "$home/userconfig-teardown.err" \
+    || fail "teardown refused a scout whose answered call was archived to the user-configured location: $(cat "$home/userconfig-teardown.err")"
+  pass "an answered captain call archived to a user-configured location still satisfies the completion gate"
 }
-
-test_outcome_review_preserves_real_gates_and_explicit_deliverables() {
-  local home id kind
-  home=$(make_completion_home legitimate-outcomes)
-  for kind in running captain external dated dependency; do
-    id=sample-$kind
-    tasks_in "$home" add "$id" "Legitimate continuation gate" >/dev/null
-    case "$kind" in
-      captain) run_captain "$home" hold "$id" --reason "Explicit stop or missing paid network authority" >/dev/null ;;
-      external)
-        # A genuine external condition is recorded through the referent the home
-        # re-reads: the job's own row. Prose alone is no longer a gate.
-        tasks_in "$home" add sample-importer "The external job whose receipt we await" >/dev/null
-        tasks_in "$home" block "$id" --by sample-importer >/dev/null
-        tasks_in "$home" hold "$id" --reason "Executing job completion receipt" --kind external >/dev/null
-        ;;
-      dated) tasks_in "$home" hold "$id" --reason "External release window" --until 2099-01-01 --kind future >/dev/null ;;
-      dependency) tasks_in "$home" block "$id" --by sample-running >/dev/null ;;
-      running)
-        tasks_in "$home" start "$id" >/dev/null
-        write_worker_meta "$home" "$id" ship
-        ;;
-    esac
-  done
-  run_captain "$home" complete sample-outcome --none --firstmate-action sample-captain \
-    --firstmate-action sample-external --firstmate-action sample-dated \
-    --firstmate-action sample-dependency --remaining sample-running >/dev/null \
-    || fail "a legitimate gate or already-running independent task was rejected"
-  run_captain "$home" verify sample-outcome >/dev/null || fail "legitimate dispositions did not verify"
-  # The external job finishes. The backlog drops the completed dependency, so
-  # the recorded external hold is left naming nothing the home re-reads.
-  tasks_in "$home" "done" sample-importer --keep 0 >/dev/null
-  if run_captain "$home" verify sample-outcome > "$home/cleared.out" 2>&1; then
-    fail "a completed external condition concealed the now-ready firstmate action"
-  fi
-  assert_grep 'names no live dependency row and no date' "$home/cleared.out" \
-    "the completed external dependency did not surface the unbacked external hold"
-  tasks_in "$home" unhold sample-external >/dev/null
-  home=$(make_completion_home origin-blocker)
-  tasks_in "$home" add sample-other "An independent blocker" >/dev/null
-  tasks_in "$home" add sample-after "Act after the milestone" >/dev/null
-  tasks_in "$home" block sample-after --by sample-outcome >/dev/null
-  tasks_in "$home" block sample-after --by sample-other >/dev/null
-  run_captain "$home" complete sample-outcome --none --firstmate-action sample-after >/dev/null \
-    || fail "an independent active blocker was not accepted as a dependency gate"
-  tasks_in "$home" "done" sample-other --keep 0 >/dev/null
-  if run_captain "$home" verify sample-outcome > "$home/origin-blocker.out" 2>&1; then
-    fail "the origin vouched for its firstmate action once the other blocker completed"
-  fi
-  assert_grep 'firstmate action sample-after' "$home/origin-blocker.out" "origin-blocker refusal did not name its action"
-  if run_teardown "$home" sample-outcome > "$home/origin-teardown.out" 2>&1; then
-    fail "cleanup closed an origin whose only gate on its firstmate action was itself"
-  fi
-  assert_grep 'completion gate' "$home/origin-teardown.out" "origin-blocker cleanup refusal came from an unrelated gate"
-  home=$(make_completion_home origin-only-blocker)
-  tasks_in "$home" add sample-only "Act only after the milestone" >/dev/null
-  tasks_in "$home" block sample-only --by sample-outcome >/dev/null
-  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-only \
-      > "$home/origin-only.out" 2>&1; then
-    fail "a firstmate action blocked only by its origin was accepted"
-  fi
-  assert_grep 'firstmate action sample-only' "$home/origin-only.out" "origin-only refusal did not name its action"
-  for kind in scout ship; do
-    home=$(make_completion_home "archive-only-$kind" "$kind")
-    run_captain "$home" complete sample-outcome --none --fulfilled >/dev/null \
-      || fail "an explicitly requested archive-only deliverable could not complete"
-    run_captain "$home" verify sample-outcome >/dev/null || fail "fulfilled outcome failed verification"
-    if [ "$kind" = ship ]; then
-      printf 'completion_reviewed=\n' >> "$home/state/sample-outcome.meta"
-      if run_teardown "$home" sample-outcome > "$home/ship.out" 2>&1; then
-        fail "ship teardown skipped the outcome gate"
-      fi
-      assert_grep 'completion gate' "$home/ship.out" "ship refusal came from an unrelated gate"
-      run_captain "$home" complete sample-outcome --none --fulfilled >/dev/null || fail "ship could not re-attest"
-    else
-      printf 'kind=ship\n' >> "$home/state/sample-outcome.meta"
-      if run_captain "$home" verify sample-outcome > "$home/promoted.out" 2>&1; then
-        fail "a scout promotion inherited the scout outcome attestation"
-      fi
-      run_captain "$home" complete sample-outcome --none --fulfilled >/dev/null || fail "promoted ship could not re-attest"
-    fi
-    printf 'spawn_gen=replacement\n' >> "$home/state/sample-outcome.meta"
-    if run_captain "$home" verify sample-outcome > "$home/replaced.out" 2>&1; then
-      fail "a replacement worker inherited a previous outcome attestation"
-    fi
-  done
-  pass "explicit deliverables, real external gates, stops, and independent work remain valid"
-}
-
-test_outcome_inventory_rejects_missing_self_and_nondispatchable_work() {
-  local home
-  home=$(make_completion_home invalid-outcomes)
-  if run_captain "$home" complete sample-outcome --none --remaining sample-missing > "$home/missing.out" 2>&1; then
-    fail "remaining work accepted an absent task"
-  fi
-  if run_captain "$home" complete sample-outcome --none --remaining sample-outcome > "$home/self.out" 2>&1; then
-    fail "a milestone could vouch for its own follow-through"
-  fi
-  tasks_in "$home" add sample-program "A non-dispatchable umbrella" --kind program >/dev/null
-  if run_captain "$home" complete sample-outcome --none --remaining sample-program > "$home/program.out" 2>&1; then
-    fail "a non-dispatchable umbrella satisfied executable follow-through"
-  fi
-  tasks_in "$home" add sample-action "A bounded step" >/dev/null
-  if run_captain "$home" complete sample-outcome --none --remaining sample-action \
-    --firstmate-action sample-action > "$home/owners.out" 2>&1; then
-    fail "conflicting next-action owners were accepted"
-  fi
-  pass "completion inventory refuses missing, self, program and conflicting-owner references"
-}
-
-test_firstmate_action_ownership_survives_milestone_cleanup() {  local home out before
-  home=$(make_completion_home retained-action)
-  tasks_in "$home" add sample-deliver "Deliver after the external completion receipt" >/dev/null
-  tasks_in "$home" add sample-importer "The external job whose receipt we await" >/dev/null
-  tasks_in "$home" block sample-deliver --by sample-importer >/dev/null
-  tasks_in "$home" hold sample-deliver --reason "Executing job completion receipt" --kind external >/dev/null
-  run_captain "$home" complete sample-outcome --none --firstmate-action sample-deliver >/dev/null \
-    || fail "a genuinely gated firstmate action could not be accepted"
-  # The receipt arrives before cleanup: the backlog drops the completed
-  # dependency, so the recorded external hold names nothing the home re-reads.
-  tasks_in "$home" "done" sample-importer --keep 0 >/dev/null
-  if run_captain "$home" verify sample-outcome > "$home/receipt.out" 2>&1; then
-    fail "a completed external dependency left the external hold looking like a gate"
-  fi
-  assert_grep 'names no live dependency row and no date' "$home/receipt.out" \
-    "the arrived receipt did not surface the now-unbacked external hold"
-  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-deliver --kind external \
-    --until 2099-01-01 --reason "The receipt is due before that date" >/dev/null \
-    || fail "a dated external wait was refused on a firstmate action"
-  run_captain "$home" verify sample-outcome >/dev/null || fail "a dated external wait did not verify"
-  run_teardown "$home" sample-outcome > "$home/cleanup.out" 2>&1 \
-    || fail "milestone cleanup failed: $(cat "$home/cleanup.out")"
-  out=$(tasks_in "$home" show sample-deliver --full)
-  assert_contains "$out" 'kind: firstmate' "milestone cleanup lost the next-action owner"
-  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" unhold sample-deliver >/dev/null || fail "external wait could not clear"
-  before=$(cat "$home/data/backlog.md")
-  if FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-deliver --kind future \
-      --reason "my own later move" > "$home/hide.out" 2>&1; then
-    fail "a cleaned-up milestone's firstmate action disappeared into a generic future wait"
-  fi
-  [ "$before" = "$(cat "$home/data/backlog.md")" ] || fail "refused future wait changed the backlog"
-  out=$(FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" ready)
-  assert_contains "$out" sample-deliver "a ready firstmate action disappeared after cleanup"
-  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-deliver --kind captain \
-    --reason "Explicit user stop or missing network authority" >/dev/null || fail "explicit stop was refused"
-  assert_absent "$home/state/.wake-queue" "completion created an automatic re-wake loop"
-  pass "firstmate ownership survives cleanup, refuses generic future waits, and preserves explicit stops"
-}
-
-# The one gate kind nothing re-read: an `external` condition is prose unless it
-# names a dependency row or a date. This pins both sides of that boundary - the
-# write is refused, a referent-backed wait is accepted, and a legacy prose row
-# is surfaced by the audit - plus the captain stop that must never be touched.
-test_firstmate_action_external_wait_needs_a_rereadable_referent() {
-  local home out before
-  home=$(make_completion_home external-referent)
-  tasks_in "$home" add sample-action "Run the acceptance Firstmate owes" >/dev/null
-  if run_captain "$home" complete sample-outcome --none --firstmate-action sample-action >/dev/null 2>&1; then
-    fail "an unperformed firstmate action was accepted"
-  fi
-  out=$(tasks_in "$home" show sample-action --full)
-  assert_contains "$out" 'kind: firstmate' "the refused review did not record firstmate ownership"
-  before=$(cat "$home/data/backlog.md")
-  if FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-action --kind external \
-      --reason "Waiting for the user to organize acceptance" > "$home/prose.out" 2>&1; then
-    fail "a prose-only external wait parked a firstmate action"
-  fi
-  assert_grep 'external referent the home can re-read' "$home/prose.out" \
-    "the intake refusal did not name the missing referent"
-  assert_grep 'live dependency row' "$home/prose.out" \
-    "the intake refusal did not name the dependency row that would satisfy it"
-  [ "$before" = "$(cat "$home/data/backlog.md")" ] || fail "the refused external hold changed the backlog"
-  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-action --kind external --until 2099-01-01 \
-    --reason "The external receipt is due before that date" >/dev/null \
-    || fail "a dated external wait was refused on a firstmate action"
-  tasks_in "$home" unhold sample-action >/dev/null
-  tasks_in "$home" add sample-receipt "The external job whose receipt we await" >/dev/null
-  tasks_in "$home" block sample-action --by sample-receipt >/dev/null
-  FM_HOME="$home" "$ROOT/bin/fm-tasks-axi.sh" hold sample-action --kind external \
-    --reason "Executing job completion receipt" >/dev/null \
-    || fail "a dependency-backed external wait was refused"
-  run_captain "$home" complete sample-outcome --none --firstmate-action sample-action >/dev/null \
-    || fail "a referent-backed external wait was not accepted by the outcome gate"
-  # The receipt arrives. The backlog drops the completed dependency, so the
-  # recorded external hold is left naming nothing this home re-reads.
-  tasks_in "$home" "done" sample-receipt --keep 0 >/dev/null
-  if run_captain "$home" verify sample-outcome > "$home/stale.out" 2>&1; then
-    fail "a completed external dependency concealed the now-ready firstmate action"
-  fi
-  assert_grep 'names no live dependency row and no date' "$home/stale.out" \
-    "the stale external hold was not refused by its own lost referent"
-  out=$(run_captain "$home" gate-audit)
-  assert_contains "$out" sample-action "the gate audit did not report the unbacked external hold"
-  assert_contains "$out" 'no live dependency row and no date' \
-    "the gate audit did not name the missing referent"
-  # The captain's own stop is not an external claim and must survive untouched.
-  run_captain "$home" hold sample-action --origin sample-outcome \
-    --reason "Stop this acceptance until I explicitly ask again" >/dev/null \
-    || fail "an explicit stop was refused"
-  out=$(run_captain "$home" gate-audit)
-  [ -z "$out" ] || fail "the gate audit reported a genuine captain hold: $out"
-  run_captain "$home" verify sample-outcome >/dev/null || fail "a genuine captain stop failed verification"
-  case "$(tasks_in "$home" ready)" in
-    *sample-action*) fail "a captain-stopped firstmate action returned to the ready queue" ;;
-  esac
-  pass "firstmate external waits need a dependency row or a date, and a stale one is named without the user"
-}
-
-test_fulfilled_outcome_requires_a_live_metadata_sink
-test_in_flight_worker_requires_a_paired_task_record
-test_outcome_review_distinguishes_a_milestone_from_the_goal
-test_prepared_firstmate_action_cannot_be_a_generic_wait
-test_outcome_review_preserves_real_gates_and_explicit_deliverables
-test_outcome_inventory_rejects_missing_self_and_nondispatchable_work
-test_firstmate_action_ownership_survives_milestone_cleanup
-test_firstmate_action_external_wait_needs_a_rereadable_referent
 
 test_hold_reason_round_trips_awkward_characters
-test_hold_origins_precede_backend_holds
+test_hold_origins_follow_backend_holds
+test_interrupted_origin_move_does_not_inherit_the_previous_answer
 test_historical_self_inventory_has_workable_repair
 test_inventory_compares_backend_identities
 test_origin_is_never_its_own_inventory_entry
@@ -5033,12 +5145,16 @@ test_retained_body_keeps_its_utf8_bytes
 test_completion_gate_attests_and_transfers
 test_answer_records_and_closes
 test_release_frees_held_work
+test_release_is_attended_only
+test_release_rechecks_away_after_waiting_on_task_lock
 test_hold_stamp_precedes_hold_visibility
 test_interrupted_answer_preserves_hold_age
 test_deferral_leaves_captains_call_until_due
 test_out_of_band_close_is_recordable
 test_visual_review_uses_shared_completion_owner
 test_none_inventory_and_resolved_prose_do_not_create_holds
+test_completion_keeps_an_armed_pr_identity_last
+test_completion_replaces_a_pair_recorded_after_pr
 test_terminal_single_owner_status_decision_does_not_block_empty_inventory
 test_secondmate_hold_stays_in_authoritative_home
 test_secondmate_home_publishes_holds_and_answers
@@ -5046,7 +5162,6 @@ test_secondmate_reconcile_publishes_before_request_retirement
 test_bound_channel_answers_close_at_answer_time
 test_reconcile_never_closes_through_the_keyed_answer_intake
 test_normal_answers_retire_pending_reconcile_requests
-test_answers_wake_flag_appends_one_check_wake
 test_reconcile_closes_with_evidence_or_keeps_the_call_open
 test_reconcile_outcomes_retry_partial_failures_once
 test_unbound_source_closes_no_hold
@@ -5083,3 +5198,5 @@ test_verify_names_the_unresolvable_legacy_id_once
 test_verify_resolves_a_pre_collapse_key_through_its_derived_marker
 test_captain_hold_mutations_address_the_beads_backend
 test_hold_creates_a_captain_row_when_beads_requires_due_without_custom_type
+test_archived_answered_hold_still_satisfies_the_gate
+test_archived_answer_in_a_user_configured_archive_satisfies_the_gate

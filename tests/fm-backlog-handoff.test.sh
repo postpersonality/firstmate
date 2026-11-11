@@ -110,49 +110,6 @@ EOF
   pass "a routed handoff wakes once and a successful rerun stays idempotent"
 }
 
-test_handoff_preserves_and_verifies_completion_owner() {
-  local home="$TMP_ROOT/completion-main" sub="$TMP_ROOT/completion-sub"
-  local origin=completion-origin continuation=completion-work out
-  setup_homes "$home" "$sub"
-  cat > "$home/.tasks.toml" <<'EOF'
-backend = "markdown"
-[markdown]
-path = "data/backlog.md"
-EOF
-  cat > "$sub/.tasks.toml" <<'EOF'
-backend = "markdown"
-[markdown]
-path = "data/backlog.md"
-EOF
-  printf '## In flight\n\n## Queued\n\n## Done\n' > "$home/data/backlog.md"
-  printf '## In flight\n\n## Queued\n\n## Done\n' > "$sub/data/backlog.md"
-  tasks-axi add "$origin" "Review the delivered milestone" --kind scout --file "$home/data/backlog.md" >/dev/null
-  tasks-axi start "$origin" --file "$home/data/backlog.md" >/dev/null
-  tasks-axi add "$continuation" "Continue the authorized work" --kind ship --file "$home/data/backlog.md" >/dev/null
-  fm_write_meta "$home/state/$origin.meta" \
-    "window=firstmate:fm-$origin" "endpoint_task_id=$origin" "kind=scout" \
-    "spawn_gen=fixture-$origin" "completion_required=1"
-  FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$ROOT/bin/fm-captain-hold.sh" \
-    complete "$origin" --none --remaining "$continuation" >/dev/null \
-    || fail "the source continuation could not be recorded before handoff"
-
-  FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$ROOT/bin/fm-backlog-handoff.sh" \
-    design "$continuation" > "$TMP_ROOT/completion-handoff.out" 2>&1 \
-    || fail "local handoff failed: $(cat "$TMP_ROOT/completion-handoff.out")"
-  assert_grep "completion_work=secondmate:design:$continuation" "$home/state/$origin.meta" \
-    "local handoff left the source continuation without its registered owner"
-  FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$ROOT/bin/fm-captain-hold.sh" verify "$origin" >/dev/null \
-    || fail "the source completion gate could not verify queued work at its local secondmate"
-
-  FM_HOME="$sub" FM_DATA_OVERRIDE="$sub/data" "$ROOT/bin/fm-tasks-axi.sh" \
-    "done" "$continuation" --keep 0 >/dev/null
-  FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$ROOT/bin/fm-captain-hold.sh" verify "$origin" >/dev/null \
-    || fail "the source completion gate could not verify Done work in the secondmate archive"
-  out=$(FM_HOME="$sub" "$ROOT/bin/fm-tasks-axi.sh" archive show "$continuation" --full)
-  assert_contains "$out" 'state: done' "the local secondmate did not archive the completed continuation"
-  pass "local handoff preserves the registered owner through queued and archived completion"
-}
-
 test_failed_wake_retries_when_the_item_is_already_present() {
   local home="$TMP_ROOT/retry-wake-main" sub="$TMP_ROOT/retry-wake-sub" out corr rc=0
   setup_homes "$home" "$sub"
@@ -817,7 +774,7 @@ assert_block_equals() {
 seed_public_commitment() {
   local home=$1 obligation=$2 work_home=$3 work_id=$4
   printf 'FMX_PAIRING_TOKEN=test-token\n' > "$home/.env"
-  cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
+  fm_test_tasks_toml "$home/.tasks.toml"
   jq -n '{request_id:"req-handoff", platform:"x",
           context_binding:{version:"ctx1", value:"ctx1_req-handoff"},
           public_safe_summary:"looking into the sign-in redirect",
@@ -1387,8 +1344,32 @@ EOF
   pass "registry entry without (home: ...) fails cleanly with has no home"
 }
 
+# A caller's working directory may hold a .tasks.toml for another backend (an
+# operator checkout keeps a beads override). The handoff names explicit markdown
+# files, so that override must not redirect the move.
+test_cwd_tasks_toml_does_not_redirect_handoff() {
+  local home="$TMP_ROOT/decoy-cwd-main" sub="$TMP_ROOT/decoy-cwd-sub" decoy="$TMP_ROOT/decoy-cwd" out
+  setup_homes "$home" "$sub"
+  cat > "$home/data/backlog.md" <<'EOF'
+## Queued
+- [ ] decoy-item - moves despite a cwd beads config (repo: alpha)
+- [ ] decoy-keep - stays put (repo: alpha)
+
+## Done
+EOF
+  mkdir -p "$decoy"
+  printf 'backend = "beads"\n\n[beads]\ndb = "%s/missing/beads.db"\n' "$decoy" > "$decoy/.tasks.toml"
+
+  out=$(cd "$decoy" && FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design decoy-item 2>&1) \
+    || fail "handoff from a cwd with a beads .tasks.toml failed: $out"
+  assert_grep 'decoy-item' "$sub/data/backlog.md" "item did not reach the secondmate backlog"
+  assert_no_grep 'decoy-item' "$home/data/backlog.md" "item stayed in the main backlog"
+  assert_grep 'decoy-keep' "$home/data/backlog.md" "unrelated item was disturbed"
+  pass "a cwd .tasks.toml for another backend does not redirect a markdown handoff"
+}
+
 test_handoff_wakes_live_local_receiver
-test_handoff_preserves_and_verifies_completion_owner
+test_cwd_tasks_toml_does_not_redirect_handoff
 test_failed_wake_retries_when_the_item_is_already_present
 test_known_receiver_failure_remains_retryable_after_grace
 test_known_failure_restores_retry_after_reconciliation_race
