@@ -1,8 +1,7 @@
 ---
 name: captain-hold-lifecycle
 description: >-
-  Agent-only policy for accepting worker milestones and firstmate-owned handoffs without losing the requested outcome, completing investigations and visual reviews without losing captain calls, and recording captain answers.
-  Load before accepting a worker milestone or a prepared firstmate-owned handoff, when queue intake meets a ready kind=firstmate task, before ship cleanup, before treating an investigation, scout report, structured review, or Lavish review as complete, before ending a visual review that exposed a captain decision, when recording or routing the captain's answer, and on any RECORD DIVERGENCE line the wake drain prints.
+  Load before treating an investigation, scout report, structured review, or Lavish review as complete, before ending a visual review that exposed a captain decision, when recording or routing the captain's answer, and on any RECORD DIVERGENCE line the wake drain prints.
 user-invocable: false
 metadata:
   internal: true
@@ -13,49 +12,6 @@ metadata:
 A decision is not a separate thing: it is simply a task waiting on the captain.
 The one primitive is an ordinary backlog task held for the captain through `bin/fm-captain-hold.sh hold`; its identity is the task id, and that wrapper owns the deterministic mechanics this policy relies on.
 The agent performs the semantic inventory because scripts must not infer captain calls from report prose, visual-review artifacts, terminal output, or chat.
-Before publishing or holding a proposed question, apply `ask-user-authority`, the semantic owner that determines whether the call actually requires the captain.
-
-## Outcome review
-
-Compare the delivered milestone with the task's recorded captain ask (`bin/fm-ask.sh`) and with the obligations the brief states from it, never with your own summary of the ask: `complete` refuses a brief that no longer carries the record.
-A saved input, dataset, plan, or prepared command satisfies an archive/plan/preparation-only ask; it does not satisfy an already authorized working result or execution ask.
-Keep authorized work with the current worker when possible, promoting a scout when appropriate, or file the remaining executable work as ordinary backlog tasks carrying the original outcome and authority boundaries.
-Do not turn that work into an optional suggestion or ask for the same authorization again.
-A recommendation outside the authorized ask remains a recommendation.
-
-Use the existing `complete` gate for this outcome review as well as the captain-call inventory, explicitly declaring fulfillment or naming the remaining tasks through its flags.
-Classify each remaining step by who must act next: worker work belongs in the ready queue or its actual running task; an already authorized activation/delivery owned by firstmate must be handled in the accepting turn.
-Name the latter as a firstmate action at the gate before acting, so an interrupted or refused handoff retains its task reference and owner, then re-run the gate after handling it.
-A firstmate action merely marked In flight or parked for firstmate's own next move is still owed.
-A ready `kind=firstmate` task met at queue intake is such an owed action, never dispatch work: handle it in that turn or record its real gate.
-Record a real captain, external, dated, or task-dependency gate when one exists, including an explicit user stop, missing paid/network/destructive authority, an executing job's completion condition, or independent work already running.
-Do not invent an external condition or activate an action just to pass the gate; a failed check requires handling the named work or correcting its disposition from evidence.
-After acceptance, re-evaluate ready work under the existing lifecycle.
-Ordinary status replies and resolved decisions create no work or new completion obligation.
-
-The gate can verify declared references, structured task states, and that a brief still carries its recorded ask; it cannot prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition, and a recorded authority never makes another task's restriction this task's own.
-Reviewing the original outcome and declaring its remaining scope are supervisor judgments; `bin/fm-captain-hold.sh --help` owns the record, retry and compatibility mechanics.
-
-## Outcome review
-
-Compare the delivered milestone with the task's recorded captain ask (`bin/fm-ask.sh`) and with the obligations the brief states from it, never with your own summary of the ask: `complete` refuses a brief that no longer carries the record.
-A saved input, dataset, plan, or prepared command satisfies an archive/plan/preparation-only ask; it does not satisfy an already authorized working result or execution ask.
-Keep authorized work with the current worker when possible, promoting a scout when appropriate, or file the remaining executable work as ordinary backlog tasks carrying the original outcome and authority boundaries.
-Do not turn that work into an optional suggestion or ask for the same authorization again.
-A recommendation outside the authorized ask remains a recommendation.
-
-Use the existing `complete` gate for this outcome review as well as the captain-call inventory, explicitly declaring fulfillment or naming the remaining tasks through its flags.
-Classify each remaining step by who must act next: worker work belongs in the ready queue or its actual running task; an already authorized activation/delivery owned by firstmate must be handled in the accepting turn.
-Name the latter as a firstmate action at the gate before acting, so an interrupted or refused handoff retains its task reference and owner, then re-run the gate after handling it.
-A firstmate action merely marked In flight or parked for firstmate's own next move is still owed.
-A ready `kind=firstmate` task met at queue intake is such an owed action, never dispatch work: handle it in that turn or record its real gate.
-Record a real captain, external, dated, or task-dependency gate when one exists, including an explicit user stop, missing paid/network/destructive authority, an executing job's completion condition, or independent work already running.
-Do not invent an external condition or activate an action just to pass the gate; a failed check requires handling the named work or correcting its disposition from evidence.
-After acceptance, re-evaluate ready work under the existing lifecycle.
-Ordinary status replies and resolved decisions create no work or new completion obligation.
-
-The gate can verify declared references, structured task states, and that a brief still carries its recorded ask; it cannot prove fulfillment from prose, establish network/payment authority, or prove the truth of a declared external condition, and a recorded authority never makes another task's restriction this task's own.
-Reviewing the original outcome and declaring its remaining scope are supervisor judgments; `bin/fm-captain-hold.sh --help` owns the record, retry and compatibility mechanics.
 
 ## Policy
 
@@ -65,7 +21,9 @@ Prefer holding the work item the question gates over minting a new row; create a
 The originating investigation or review is never its own inventory entry, so hold a separate task for the call and pass `--origin <origin-id>` so `complete` can check it.
 Put the question and its options in the hold reason, and keep one held task per genuine gate: a multi-question review is one held task pointing at its report, not a row per question. Represent that task with exactly one board card that consolidates its questions and options; never fan one task id into duplicate same-key cards.
 Register or re-hold through `bin/fm-captain-hold.sh hold`, which is idempotent per task id.
-After inventorying the whole report and review surface, run `bin/fm-captain-hold.sh complete` with every captain-held task id, or with `--none` only when the reviewed surface leaves nothing waiting on the captain.
+After inventorying the whole report and review surface, firstmate runs `bin/fm-captain-hold.sh complete` with every captain-held task id, or with `--none` when nothing waits on the captain.
+A scout may attest its own empty inventory only through the narrow command exception in its generated brief's Definition of done.
+For a non-empty inventory or a refused command, the scout reports to firstmate rather than writing metadata or backlog records.
 A completed investigation and an ended visual review use this same owner and completion command; a visual tool, including Lavish, never owns a parallel completion policy.
 Run the command in the originating work's authoritative `FM_HOME`; secondmate-owned work registers in that secondmate home's backlog, and a question already held anywhere is never re-registered as a second row.
 Do not close a captain-held task merely because the originating investigation completed, its report was archived, its visual review ended, or its task was torn down.
@@ -103,9 +61,8 @@ The absence of a routed work item is not a divergence and the guard never requir
 
 1. Read the complete investigation result and complete the visual review before declaring either complete.
 2. Inventory only genuine unresolved choices that require the captain, and find the task each one gates.
-3. Hold that task - or create one captain-held task for the review's open questions - with a concise reason carrying the question and options, and, once that task has a recorded ask, with the `--basis` the hold gate requires: a fresh `question` this task leaves open, the captain's own words recorded for that task, or a dependency the backlog records. A genuine choice may block the current task; another task's brief, audit restriction, or program rule never may, and the `question` basis is judged once against this task's recorded ask and authority so a carried-over restriction is refused with the correction it needs.
-   For a proposed blocker email, submit the source-backed analysis and attempted self-resolution through `bin/fm-mail.sh alert <request.json>` in that same event-handling turn; its mandatory independent critic, durable correction delivery and request format are owned by `bin/fm-captain-alert.py`.
-4. Run `complete` with the full captain-held inventory for that review pass.
+3. Firstmate holds that task - or creates one captain-held task for the review's open questions - with a concise reason carrying the question and options.
+4. Attest the full inventory for that review pass under the caller authority in Policy above.
 5. Relay the choices to the captain as decisions from Bearings' Captain's Call section under `AGENTS.md` section 9; do not use the word hold in captain chat.
 6. Close each call only through `answer` (or a channel that feeds `answers`), close a board-requested moot call through evidence-backed `reconcile close`, record a still-active reconciliation through `reconcile note`, use `--until` when the captain defers it, or confirm a channel already closed it.
 7. Confirm Bearings reflects the outcome: answered or reconciled-moot calls leave Captain's Call, released work resumes, active reconciliations remain held, and deferred calls sit in Charted Next with their date.

@@ -35,9 +35,8 @@ It never reads report bodies, review artifacts, terminal output, or chat.
 | --- | --- | --- |
 | `hold` | Creates or reuses a task and holds it for the captain. | [Creating a hold](#creating-a-hold-hold) |
 | `answer` | Records the captain's exact words and resolves the call. | [Answering a call](#answering-a-call-answer) |
-| `complete` | Records the outcome disposition and reviewed captain-held task ids. | [Recording a reviewed inventory](#recording-a-reviewed-inventory-complete) |
-| `verify` | Read-only completion check before teardown removes source state. | [Checking before teardown](#checking-before-teardown-verify) |
-| `gate-audit` | Read-only report of held firstmate actions whose recorded gate the home can no longer re-read. | [Checking before teardown](#checking-before-teardown-verify) |
+| `complete` | Records the reviewed captain-held task ids in the originating task's metadata. | [Recording a reviewed inventory](#recording-a-reviewed-inventory-complete) |
+| `verify` | Read-only check that scout teardown runs before removing source state. | [Checking before scout teardown](#checking-before-scout-teardown-verify) |
 | `open` | Read-only check of whether a row is still an open captain call. | [Cleanup never closes a captain call](#cleanup-never-closes-a-captain-call) |
 | `answers` | Channel-agnostic entry point for keyed answers. | [Answer-time resolution](#answer-time-resolution) |
 | `bind`, `unbind`, `binding` | Record that a captured-answer source feeds the keyed-answer intake. | [Source bindings](#source-bindings) |
@@ -52,9 +51,10 @@ It works in this order:
 
 1. It uses an existing task, or creates one when nothing exists to hold.
 2. It records the task's UTC hold-set timestamp as the leading line of the task body.
-3. When `--origin` is supplied, it records the origin on the task, replacing any previous association.
-4. It invokes the underlying tasks-axi hold operation.
-5. It verifies the hold and timestamp.
+3. It invokes the underlying tasks-axi hold operation.
+4. It verifies the captain-hold annotations and timestamp.
+5. In a secondmate home, it publishes the verified hold to the parent channel.
+6. When `--origin` is supplied, it records the origin on the task, replacing any previous association only after the backend hold succeeds.
 
 Publishing the stamp first ensures a snapshot cannot observe a newly captain-held task without the timestamp that defines its age.
 
@@ -64,8 +64,17 @@ Repeat and edge cases:
 - Re-holding released work starts a new timestamped lifecycle.
 - A closed task is refused rather than reopened.
 - `--until` stores the captain's own deferral date through tasks-axi's date gate.
-- Before the backend hold runs, `--origin` records the origin the call is held for on its own `Captain hold origin:` body line, which `complete` and `verify` check using backend identities rather than alias spellings.
-  If that write fails, the backend hold is not attempted.
+- `--origin` resolves the backend origin identity before writing the hold-set stamp.
+  The association lives on its own `Captain hold origin:` body line; [completion inventory checks](#recording-a-reviewed-inventory-complete) own how it is verified.
+  The ordering above prevents an interrupted or refused backend hold from publishing the new association, even when an old captain hold is still active or date-expired.
+- If the backend hold fails, `hold` attempts to restore the previous body.
+  If restoration also fails, the new stamp can remain, but the previous origin is unchanged.
+  If the subsequent origin write fails, the command returns nonzero, but the successful captain hold and its stamp remain with the previous association (or with no recorded origin for a new task).
+  Parent publication is attempted before that write in a secondmate home, so an origin-write failure cannot skip delivery; a channel failure retains the existing `actionable:` diagnostic.
+  Re-running `hold` retries origin publication without duplicating the parent decision.
+- If an incomplete hold leaves a stamp above an earlier answer, the [completion durability boundary](#recording-a-reviewed-inventory-complete) applies.
+  When the task already records its previous origin, replaying the earlier `answer --release` can remove that stamp, and normal work completion can retain the answer, but neither transition changes the stored origin: neither can certify the failed move's new origin.
+  Re-running `hold` completes the move, and re-running the same `answer --release` also normalizes a release interrupted before its stamp was removed.
 - The reason may contain parentheses, semicolons, quotes, and line breaks.
   [`bin/fm-hold-reason-lib.sh`](../bin/fm-hold-reason-lib.sh) owns the storage encoding and compatibility rules; [`bin/fm-tasks-axi.sh --help`](../bin/fm-tasks-axi.sh) owns the public read commands and output contract.
 
@@ -79,6 +88,8 @@ The `answer` subcommand records the captain's exact words and resolves the call 
 | `answer --release` | Frees a captain-gated work item to proceed without completing it. |
 
 It requires a non-empty captain decision file of at most 8192 bytes.
+`answer --release` is attended-only: while the away-posture record exists it is refused before anything is written, and the keyed-answer intake refuses a `release` line the same way, because only the captain in an attended session releases a captain hold.
+A quiet record is a present captain and does not refuse.
 It then works in this order:
 
 1. It durably writes a resolution block carrying the decision digest and a `Resolution mode:`.
@@ -103,32 +114,32 @@ An expired deferral therefore remains answerable.
 
 ### Recording a reviewed inventory (`complete`)
 
-While originating task metadata is live, the `complete` subcommand unions the reviewed captain-held task ids, called the reviewed inventory, into `decision_keys=` and appends `decisions_reviewed=1`.
-Every fresh ship/scout incarnation also requires an outcome seal, independent of whether its home mutates a backlog automatically; an outcome-only review in manual mode writes metadata without changing the queue.
-A post-teardown visual review can still complete an inventory-only review against the surviving report and durable tasks without recreating volatile task metadata.
+While originating task metadata is live, the `complete` subcommand unions the reviewed captain-held task ids, called the reviewed inventory, into `decision_keys=` and records `decisions_reviewed=1`, replacing any earlier pair and writing it once ahead of any armed `pr=` merge-poll identity lines, because the metadata identity parse refuses these keys after `pr=`.
+A post-teardown visual review can complete against the surviving report and durable tasks without recreating volatile task metadata.
+The [lifecycle policy](../.agents/skills/captain-hold-lifecycle/SKILL.md#policy) assigns caller authority, including the scout's brief-scoped exception for an empty inventory.
+`tests/fm-brief.test.sh` pins that the scout brief's outside-worktree rule names exactly that `complete --none` command, so the write boundary and the completion step cannot drift apart again.
 
 `complete` accepts `--none` as an explicit semantic inventory result.
 `--none` is refused while the origin still has a lifecycle-open keyed status decision.
-When the origin has a recorded captain ask, `complete` also refuses unless that task's brief still carries every recorded clause verbatim, cites every clause id in its spec, and records authority only from the recorded words ([`fm-ask.sh`](../bin/fm-ask.sh) owns that check and its limits), so acceptance is bound to the source firstmate compared rather than to its own summary; a task with no such record keeps the inventory-only behavior.
 Before recording completion, `complete` verifies every listed task against tasks-axi.
+A durable entry is an open task with captain-hold annotations (including a date-expired hold), or a task carrying a recorded resolution.
+For an open task without those annotations, a leading hold-set stamp above the resolution is refused: the answer alone cannot establish durability while the hold or release normalization is incomplete.
+A Done task still requires a recorded resolution, but is not subject to that stamp refusal.
+An answered entry that markdown Done retention moved into the configured Done archive still counts, while an archived close with no recorded answer does not.
 The origin is never its own inventory entry, so a hold that failed cannot be vouched for by the origin row.
 For a historical inventory that names its own origin, hold a separate captain task with `--origin`, replace only the invalid entry in the final `decision_keys=` line of the origin metadata with that task id while preserving all other entries, and re-run `complete`.
-An entry whose recorded origin differs from the one being completed is refused.
+An entry whose recorded origin differs from the one being completed is refused, comparing backend identities rather than alias spellings.
 An entry with no recorded origin, such as a hold made before origins were recorded or without `--origin`, is accepted on the durability check alone and named in the output.
 
 With a non-empty inventory, `complete` appends a `captain-held [key=<key>]` transfer event for every still-open keyed status decision.
 The event names the reviewed inventory.
 `bin/fm-classify-lib.sh` recognizes it as closing the live status copy without claiming that the captain has answered it.
 
-### Checking before teardown (`verify`)
+### Checking before scout teardown (`verify`)
 
-Scout teardown and new ship teardown call the read-only `verify` subcommand before removing source state.
-The outcome review and continuation record are owned by `bin/fm-captain-hold.sh --help`; the procedure is owned by the [lifecycle skill](../.agents/skills/captain-hold-lifecycle/SKILL.md#outcome-review).
-`verify` checks:
+Scout teardown calls the read-only `verify` subcommand after checking for the report and before removing any source state.
+`verify` checks three things:
 
-- For an origin that requires an outcome review (`completion_required=1`) or has recorded one, the `completion_reviewed=` seal matches the current worker kind and spawn generation, and every `completion_work=` reference is still Done, blocked by an unfinished task other than its origin, held for the captain, held to a date, held for an external condition that names a live dependency row or a date, or, for worker work only, Queued or In flight with the exact paired worker record in its recorded owner home.
-  A firstmate action held for an external condition with neither a live dependency row nor a date is refused, because nothing re-reads a prose-only claim; `bin/fm-captain-hold.sh gate-audit` reports the rows already carrying one.
-- A continuation moved to a secondmate is referenced by its registered secondmate id; verification reads only that registered local home or remote task transport, including its Done archive.
 - The recorded attestation exists.
 - Every recorded inventory entry still passes the [completion inventory checks](#recording-a-reviewed-inventory-complete).
 - No keyed status decision opened after the last `complete`.
@@ -156,7 +167,8 @@ After cleanup, and still under the task's own lock, teardown does three things:
 
 - It records one `Deliverable of the finished work: ...` line at the end of the task body.
 - It copies a supported pull request or canonical `data/<id>/report.md` into the row's structured artifact fields.
-  A Gerrit change URL is not a pull request tasks-axi accepts, so it appears only in the deliverable line.
+  A forced retention of a scout whose report was never written records no report, so the held row cannot read as a delivery.
+  A Gerrit change or GitLab merge request URL is not a pull request tasks-axi accepts, so it appears only in the deliverable line.
 - It runs `tasks-axi reopen`.
 
 The row returns to Queued with its hold intact.
@@ -164,12 +176,12 @@ It remains on the appropriate Captain's Call or Charted Next decision surface in
 
 ### Interrupted cleanup
 
-Teardown already stages a pending-close record before destructive cleanup.
+[`bin/fm-teardown.sh`](../bin/fm-teardown.sh)'s header owns when teardown publishes its pending-close record.
 That record carries the retention intent as a `mode=retain` line.
 An interrupted cleanup therefore replays the retention at the next session start through the same record, validator, and lock as an ordinary close, and never closes the row.
 
 If the captain answers before replay, `answer` validates that record and copies any supported retained pull request or report into the row before closing it.
-A retained Gerrit change URL is instead recorded as a `Gerrit change <url>` note on that close.
+A retained Gerrit change or GitLab merge request URL is instead recorded as a `Gerrit change <url>` or `GitLab merge request <url>` note on that close.
 Replay then retires the record.
 
 ### Known retained-delivery gaps
@@ -393,6 +405,9 @@ It preserves every captain hold in the bounded queued inventory of the owning ho
 An available hold is therefore never in both Captain's Call and Charted Next.
 An actively worked held task may also appear in Underway, which reports running work independently of those decision buckets.
 
+Decision presentation uses the full-text field documented in [`bin/fm-bearings-snapshot.sh`](../bin/fm-bearings-snapshot.sh), preserving the recorded question and options while compact summaries remain overview-only.
+Older secondmate summaries without that field fall back to the title and reason text they retained.
+
 ### Accepted limits
 
 Three accepted limits remain deliberate:
@@ -531,15 +546,17 @@ The suite does not test the accepted merge-to-cleanup re-hold window or asynchro
 
 - A report-only unresolved captain call refuses `--none` completion before teardown can erase the source.
 - Non-forced scout teardown always requires the durable inventory verification.
-- The outcome-review cases cover milestone continuation, firstmate-owned action acceptance, retained ownership, genuine gates, archive retention, replay and worker replacement.
-  `tests/fm-backlog-atomicity.test.sh` checks that firstmate-owned tasks refuse worker dispatch before resources are created.
 - The recorded-answer guard holds: a bare `tasks-axi done` close fails `verify` until `answer` records the captain's word, and an ordinary finished task cannot be dressed up as an answered call.
+- `test_hold_origins_follow_backend_holds` exercises lookup, backend-hold, and origin-write failures for new, active, and released holds, including secondmate publication and retry deduplication.
+- `test_interrupted_origin_move_does_not_inherit_the_previous_answer` exercises failed restoration, TERM interruption, active and expired holds, earlier-answer replay, and normal released-work completion against the [hold failure semantics](#creating-a-hold-hold) and inventory checks above.
+- An answered call that markdown Done retention moved into the Done archive still passes `verify`, `complete`, and scout teardown, while an archived close carrying no recorded answer still refuses teardown, and an attested call found nowhere is refused by name.
 
 ### Answers, stamps, and deferral
 
 - Answer-time resolution works through a bound channel with task-id keys.
   This includes the `release` mode, mode-matched replay idempotence, and the refusal of drifted, mode-mismatched, absent, unheld, and already-closed keys.
 - The chat channel reaches the same intake.
+- `test_release_is_attended_only` exercises the attended-only release: the away posture record and the away daemon flag each refuse `answer --release` and a `release` intake line without writing, while no record and a quiet record release, and a closing answer is not gated.
 - Hold-set stamping precedes visible hold state, preserves an active lifecycle's timestamp, and resets after release.
 - Interrupted answer closure retains the stamp until close and restores resolution-first ordering on retry.
 - Deferral through `--until` leaves `captain_actionable` false until due.
@@ -636,12 +653,13 @@ That suite drives its Lavish session through a protocol-shaped stub.
 It separates a resolution from the durable-transfer close and from a still-open key.
 It reports the last real transition across re-openings and both key positions, and treats a prose mention as no transition.
 
-Projection regressions live in two suites:
+Projection and decision-text rendering regressions live in three suites:
 
 | Suite | What it covers |
 | --- | --- |
 | `tests/fm-fleet-snapshot-view.test.sh` | The total structured-only bucket classifier, hold-until parsing, kind-independent captain actionability, undated-hold aging, and title stripping. |
-| `tests/fm-bearings-snapshot.test.sh` | Default and expanded decision-bucket membership, deferral explanations, blocker-overflow disclosure, working-hold dual surfaces, remote-summary schema invalidation, exact leading-kind inference, artifact-kind mismatch and answered-question exclusion, kind-bearing and kindless local-only landings publishing their recorded note, and scout-report precedence over competing pull-request links. |
+| `tests/fm-bearings-snapshot.test.sh` | Default and expanded decision-bucket membership, deferral explanations, blocker-overflow disclosure, working-hold dual surfaces, remote-summary schema invalidation, exact leading-kind inference, artifact-kind mismatch and answered-question exclusion, kind-bearing and kindless local-only landings publishing their recorded note, scout-report precedence over competing pull-request links, and full local and secondmate question transport with Unicode, report pointers, and legacy optional-field fallbacks. |
+| `tests/fm-bearings-board-render.test.sh` | Complete snapshot question and option text reaching the rendered decision card, including Unicode. |
 
 ### Refreshing this record
 
@@ -649,7 +667,7 @@ The exact commands and their summarized outputs are recorded in the shipping PR'
 To refresh this record, run:
 
 - The four suites above: `tests/fm-captain-hold-lifecycle.test.sh`, `tests/fm-classify-decision-key.test.sh`, `tests/fm-fleet-snapshot-view.test.sh`, and `tests/fm-bearings-snapshot.test.sh`.
-- `tests/fm-send-resolve-key.test.sh`, `tests/fm-bearings-board.test.sh`, and `tests/fm-procevent.test.sh`.
+- `tests/fm-send-resolve-key.test.sh`, `tests/fm-bearings-board.test.sh`, `tests/fm-bearings-board-render.test.sh`, and `tests/fm-procevent.test.sh`.
 - `bin/fm-lint.sh`.
 
 After a lavish-axi upgrade, run `FM_BEARINGS_LAVISH_LIVE=1 tests/fm-bearings-board-lavish-live-e2e.test.sh`.

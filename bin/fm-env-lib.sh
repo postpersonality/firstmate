@@ -3,13 +3,13 @@
 # Usage: . bin/fm-env-lib.sh
 #
 # This file is the single owner of the one-key .env read: the Relay pairing
-# token (bin/fm-x-lib.sh and its callers) and the optional typesafe.ai dispatch
-# key (bin/fm-dispatch-resolve.sh) resolve their value through fmx_env_get, and
-# the drain's blocker-email recipient presence check (bin/fm-wake-drain.sh)
-# through fmx_env_first, so those opt-in settings in $FM_HOME/.env are parsed by
-# one rule. (bin/fm-mail.sh loads its whole .env block itself under the same
-# env-wins contract, keeping the first nonempty assignment.) The value is
-# printed to the caller's command substitution only; nothing is logged.
+# token (bin/fm-x-lib.sh and its callers), dispatch provider settings, and
+# optional typesafe.ai, OpenRouter, System One-host, or OpenAI dispatch keys
+# (bin/fm-dispatch-resolve.sh) resolve through fmx_env_get, so $FM_HOME/.env
+# uses one parsing rule.
+# (bin/fm-mail.sh loads its whole .env block itself under the same env-wins
+# contract.) The value is printed to the caller's command substitution only;
+# nothing is logged.
 
 # fmx_env_get <key> <file>
 # Read the value of KEY from a .env-style file: last assignment wins; tolerates a
@@ -27,7 +27,7 @@ fmx_env_get() {
 # fmx_env_first <key> <file>
 # fmx_env_get, except the first assignment with a nonempty value wins: the rule
 # bin/fm-mail.sh's loader applies, for a caller that must agree with the mail
-# plane's configuration.
+# plane's configuration (the drain's blocker-recipient presence check).
 fmx_env_first() {
   local key=$1 file=$2 line val
   [ -f "$file" ] || return 0

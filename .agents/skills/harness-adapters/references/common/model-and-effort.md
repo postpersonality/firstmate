@@ -6,7 +6,8 @@ Add `references/common/dispatch.md` for configured profile precedence.
 ## Axes and precedence
 
 `../../../bin/fm-spawn.sh` accepts concrete `--harness`, `--model`, and `--effort` values selected at intake; scripts never parse natural-language dispatch rules.
-The tool reference records verified flags, accepted values, omission behavior, and discovery.
+The tool reference records verified flags, accepted values, omission behavior, and discovery for pane-backed launches.
+For T3 Code, resolve both axes through the [provider catalog contract](../../../../../docs/t3code-backend.md#provider-instances-and-models) before selecting a profile.
 
 A home with `config/crew-effort` pins every worker launch: an omitted or `default` effort resolves to the pinned level, a different explicit effort is refused, and a runtime or model that cannot natively carry the pinned level is refused instead of capped or recorded-and-omitted.
 `../../../docs/configuration.md` "Worker effort pin" owns that contract; the precedence, fallback, cap, and record-and-omit rules below apply only to unpinned homes.
@@ -21,9 +22,8 @@ If an adapter lacks `xhigh`, cap at its highest supported non-`max` level rather
 Never select `max` through this fallback; only an explicit per-task or standing captain preference permits it.
 
 The explicit native `ultra` value follows the model-scoped refusal contract in `../../../bin/fm-harness.sh validate-native-effort`; it is never silently omitted or mapped to a Pi level.
-For other values, if requested effort is outside the adapter's accepted set, the spawn records `effort=` in task metadata but emits no effort flag.
-This preserves launch success instead of passing a known-bad value.
-A harness with no verified interactive effort flag follows the same record-and-omit contract.
+[`configuration.md`](../../../../../docs/configuration.md#crew-dispatch-profiles-configcrew-dispatchjson) owns backend-specific refusal or omission behavior for other effort values, including harnesses with no verified interactive effort flag.
+Polytoken uses its [model-scoped selectable-reference contract](../harness/polytoken.md) instead of record-and-omit.
 
 ## Harness and provider identity
 
