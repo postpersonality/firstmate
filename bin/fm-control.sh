@@ -1165,7 +1165,7 @@ EOF
   # signed out must refuse here, while nothing has changed yet.
   # Under a declared Claude account list, the replacement stays on the
   # account the task records unless --account explicitly moves it.
-  local account_model=$TARGET_MODEL account_mate= account_selection='' account_root='' account_provider=''
+  local account_model=$TARGET_MODEL account_mate='' account_selection='' account_root='' account_provider=''
   [ "$account_model" != default ] || account_model=
   [ "$KIND" != secondmate ] || account_mate=$ID
   TARGET_ACCOUNT=$(fm_worker_account_relaunch_request "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \

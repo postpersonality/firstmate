@@ -71,9 +71,38 @@ write_policy() {  # <home>
 }' > "$1/config/crew-dispatch.json"
 }
 
+seed_dispatch_record() {  # <home> <args...>
+  local home=$1
+  shift
+  local harness='' model='' effort='' arg ids=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --harness) harness=${2:-}; shift 2 ;;
+      --model) model=${2:-}; shift 2 ;;
+      --effort) effort=${2:-}; shift 2 ;;
+      -*) shift ;;
+      *) ids+=("${1%%=*}"); shift ;;
+    esac
+  done
+  [ -f "$home/config/crew-dispatch.json" ] || return 0
+  local id
+  for id in "${ids[@]}"; do
+    [ -n "$id" ] || continue
+    mkdir -p "$home/data/$id"
+    if [ -z "$harness" ]; then
+      printf '{"task":"%s","status":"off"}\n' "$id" > "$home/data/$id/dispatch-resolution.json"
+    else
+      printf '{"task":"%s","status":"clear","profile":{"harness":"%s"%s%s}}\n' "$id" "$harness" \
+        "${model:+,\"model\":\"$model\"}" "${effort:+,\"effort\":\"$effort\"}" \
+        > "$home/data/$id/dispatch-resolution.json"
+    fi
+  done
+}
+
 run_spawn() {  # <home> <wt> <fakebin> <launchlog> <args...>
   local home=$1 wt=$2 fakebin=$3 launchlog=$4
   shift 4
+  seed_dispatch_record "$home" "$@"
   : > "$launchlog"
   : > "$(dirname "$launchlog")/pane.log"
   CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" FM_FAKE_LAUNCH_LOG="$launchlog" \

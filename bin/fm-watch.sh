@@ -660,8 +660,16 @@ inbox_steer_check() {  # <window> <task>
     watcher_capture "$backend" "$w" 40 "$label" || WATCHER_CAPTURE=
     tail40=$WATCHER_CAPTURE
   fi
-  if { [ -f "$external_binding" ] && [ "$external_activity" != idle ] && [ "$external_activity" != done ]; } ||
-    { [ ! -f "$external_binding" ] && inbox_steer_busy "$w" "$backend" "$task" "$tail40"; }; then
+  local inspector_busy=0
+  if [ -f "$external_binding" ]; then
+    case "$external_activity" in
+    idle | done) ;;
+    *) inspector_busy=1 ;;
+    esac
+  elif inbox_steer_busy "$w" "$backend" "$task" "$tail40"; then
+    inspector_busy=1
+  fi
+  if [ "$inspector_busy" = 1 ]; then
     [ "$verb" != retry ] || return 0
     if ! count=$(fm_task_inbox_record_busy "$STATE" "$task" "$rec"); then
       [ -f "$rec" ] || return 0
