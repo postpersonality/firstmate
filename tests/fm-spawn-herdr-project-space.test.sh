@@ -22,6 +22,9 @@ FAKE_HERDR_DIR="$TMP_ROOT/fake-herdr"
 PROJECT="$TMP_ROOT/project"
 mkdir -p "$FAKE_HERDR_DIR"
 git init -q "$PROJECT" || fail 'could not initialize the project fixture'
+git -C "$PROJECT" -c user.email=fixture@example.invalid -c user.name=fixture \
+  commit -q --allow-empty -m 'chore: initialize project fixture' \
+  || fail 'could not commit the project fixture'
 export HERDR_SESSION=fm-herdr-space-selector-fake
 export FM_BACKEND=herdr
 export FM_FAKE_HERDR_DIR="$FAKE_HERDR_DIR"

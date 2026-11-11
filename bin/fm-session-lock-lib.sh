@@ -670,6 +670,13 @@ fm_session_lock_pid_verdict() {
   # live and keep a stale lock from ever being reclaimed - the same
   # permanent read-only wedge this change exists to remove.
   if kill -0 "$pid" 2>/dev/null; then
+    # A zombie still answers kill -0 but is not a live harness owner: an
+    # unreaped child must never keep a session lock.
+    local state=
+    state=$(ps -o stat= -p "$pid" 2>/dev/null) || state=
+    case "$state" in
+      *Z*) FM_SESSION_LOCK_PID_VERDICT=dead; return 0 ;;
+    esac
     # Alive. Its identity may still be unreadable, and that is the case
     # this verdict exists for: the owner is live, so its lock must not
     # be reclaimed.

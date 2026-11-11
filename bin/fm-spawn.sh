@@ -2074,6 +2074,23 @@ spawn_abort_cleanup() {
   # Firstmate wiring, task temp root, and staged launch file it wrote go with it.
   # Once a launch was delivered into an endpoint still open, a worker may be
   # running there, so those stay for the operator, as the refusal says.
+  # A fresh spawn that fails before its launch was delivered holds nothing but
+  # the shell in its new endpoint, so closing it leaves no window or tab for a
+  # retry to trip over. Once a launch was delivered into an endpoint still open,
+  # a worker may be running there, so those stay for the operator.
+  if [ "$status" -ne 0 ] && [ "$SPAWN_FRESH_ENDPOINT_OPENED" = 1 ] &&
+    [ "$SPAWN_LAUNCH_SENT" = 0 ] && [ -n "${T:-}" ] &&
+    [ "$RELAUNCH" -eq 0 ] &&
+    [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ]; then
+    SPAWN_FRESH_ENDPOINT_OPENED=0
+    local abort_tab_id=
+    [ "$BACKEND" != zellij ] || abort_tab_id=${ZELLIJ_TAB_ID:-}
+    if fm_backend_kill "$BACKEND" "$T" "$abort_tab_id" "fm-$ID" 2>/dev/null; then
+      SPAWN_ENDPOINT_CLOSED=1
+    else
+      echo "warning: could not close endpoint $T after the failed spawn of $ID; close it by hand so its slot returns to the pool" >&2
+    fi
+  fi
   if [ "$status" -ne 0 ] && [ "${HARNESS:-}" = polytoken ] &&
     { [ "$SPAWN_FRESH_ENDPOINT_OPENED" = 1 ] || [ "$SPAWN_FRESH_WIRING_PENDING" = 1 ] ||
       [ "$SPAWN_TASK_TMP_CREATED" = 1 ] || [ -n "$SPAWN_STAGED_LAUNCH_FILE" ]; } &&
@@ -3950,7 +3967,7 @@ model_flag_for_harness() {
     [ "$oc_major" = 1 ] || return 0
     printf -- '--model %s ' "$(shell_quote "$model")"
     ;;
-  claude | codex | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin | commandcode | cortex | kiro)
+  claude | codex | pi | pi-signed | grok | kimi | cursor | gemini | muse | rovo | omp | agy | devin | commandcode | cortex | kiro | dsh)
     printf -- '--model %s ' "$(shell_quote "$model")"
     ;;
   # polytoken encodes reasoning effort inside the model reference, so the
@@ -5613,10 +5630,11 @@ EOF
     T3CODE_ABORT_CLEANUP=1
     ;;
   esac
-  # Orca and the Herdr projection own their own abort cleanup above; every other
-  # endpoint a fresh polytoken spawn opened is closed by spawn_abort_cleanup when
-  # the spawn ends with no record before its launch is delivered.
-  if [ "$HARNESS" = polytoken ] && [ "$BACKEND" != orca ] && [ "${HERDR_PROJECTED:-0}" -ne 1 ]; then
+  # Orca and the Herdr projection own their own abort cleanup above, and a T3
+  # thread does too; every other endpoint a fresh spawn opened holds nothing but
+  # the shell before its launch is delivered, so spawn_abort_cleanup closes it
+  # when the spawn ends with no record.
+  if [ "$BACKEND" != orca ] && [ "$BACKEND" != t3code ] && [ "${HERDR_PROJECTED:-0}" -ne 1 ]; then
     SPAWN_FRESH_ENDPOINT_OPENED=1
   fi
 fi
@@ -7700,7 +7718,6 @@ MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL" "$OPENCODE_MAJOR")
 # A pinned Pi launch confines Pi's model lookup to the declared provider.
 [ -z "$WORKER_ACCOUNT_PROVIDER" ] || MODELFLAG="--provider $(shell_quote "$WORKER_ACCOUNT_PROVIDER") $MODELFLAG"
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL" "$OPENCODE_MAJOR") || exit 1
-EFFORTFLAG=$(fm_effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL") || exit 1
 if [ "$HARNESS" = dsh ] && [ "$RAW_LAUNCH" -eq 0 ]; then
   # Use the backend owner's session-selected compatible client for reports,
   # including a reactive protocol-mismatch retry during endpoint provisioning.
@@ -8324,27 +8341,6 @@ if [ "$HARNESS" = hermes ] && [ "$RAW_LAUNCH" -eq 0 ]; then
     exit 1
   fi
 fi
-LAUNCH_FILE="$LAUNCH_DIR/launch.$SPAWN_GEN.sh"
-LAUNCH_STAGE="$LAUNCH_DIR/.launch.$SPAWN_GEN.tmp"
-if [ -e "$LAUNCH_FILE" ] || [ -L "$LAUNCH_FILE" ]; then
-  echo "error: task launch file $LAUNCH_FILE already exists; refusing to replace it" >&2
-  exit 1
-fi
-if ! (umask 077 && printf '%s\n' "$LAUNCH" >"$LAUNCH_STAGE" &&
-  chmod 0600 "$LAUNCH_STAGE" && mv -f "$LAUNCH_STAGE" "$LAUNCH_FILE"); then
-  rm -f "$LAUNCH_STAGE"
-  echo "error: could not stage the launch command at $LAUNCH_FILE" >&2
-  exit 1
-fi
-sleep 0.3
-SPAWN_LAUNCH_SENT=1
-spawn_send_literal "$T" ". $(shell_quote "$LAUNCH_FILE")"
-sleep 0.3
-if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
-  HERDR_PROJECTION_ABORT_CLEANUP=0
-  spawn_herdr_presentation_order_lock_release
-fi
-spawn_send_key "$T" Enter
 if [ "$HARNESS" = dsh ] && [ "$RAW_LAUNCH" -eq 0 ]; then
   dsh_ready=0
   for _ in $(seq 1 100); do
