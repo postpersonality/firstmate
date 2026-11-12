@@ -37,7 +37,7 @@ Nothing is listed as "not found" without a reason: a capability missing from one
 | Install and update | `bin/fm-install-herdr.sh` | `bin/fm-install-hc.sh` plus the adapter's version floor | migrated | `tests/fm-install-herdr.test.sh` (multiplexer), `tests/fm-backend-hc.test.sh` |
 | CI cleanup of leaked sessions | `bin/fm-herdr-ci-cleanup.sh` | `bin/fm-hc-ci-cleanup.sh` | migrated | `.github/workflows` |
 | Local secondmates | multiplexer home container, `2ndmate-<id>` workspace, generic secondmate launch path | the same generic path on Core: the secondmate's own home labels and its own space, no backend-specific refusal | migrated | `tests/fm-backend-hc.test.sh` (secondmate spawn case) |
-| Remote secondmates | `fm-remote-herdr-guard.sh`, `fm-remote-herdr-identity-lib.sh`, `fm-remote-herdr-owner-lib.sh`, `fm-remote-secondmate-control.sh`, `fm-remote-doctor.sh --backend herdr\|rex` | not migrated: the remote route is still `herdr` or `rex` | boundary with its own contracts, not a Core prohibition: the route records a `remote_backend` from that pair, resolves a multiplexer session identity, and verifies the host through the doctor's per-backend table, so a Core route needs the same three owners extended and a real remote host to verify against. Minimal alternative: record `hc_session`/`hc_terminal` in the route and add an `hc` arm to the doctor and readiness check | `fm-remote-doctor.sh` backend table, `fm-remote-secondmate-control.sh` route check, `fm-spawn.sh` remote route |
+| Remote secondmates | `fm-remote-herdr-guard.sh`, `fm-remote-herdr-identity-lib.sh`, `fm-remote-herdr-owner-lib.sh`, `fm-remote-secondmate-control.sh`, `fm-remote-doctor.sh --backend herdr\|rex` | the same SSH/`fm-on` route with `remote_backend=hc`: the spawn validates the launch against the code-root namespace and records `remote_hc_session`/`remote_hc_terminal`, the host-local control plane pins `HC_SESSION` and refuses another root's session, and the doctor gains `--backend hc` with a connect-only liveness check | migrated over the existing route; the live half needs a remote host, so the verification here is the deterministic transport fixture below | `tests/fm-remote-secondmate-hc.test.sh` (route, wrong owner, moved endpoint, absent and stale socket with no core start), `tests/fm-remote-secondmate-relaunch.test.sh`, `tests/fm-remote-secondmate-parent-binding.test.sh` |
 | Focus and ordering surfaces | `herdr-focus`, `herdr-workspace-move.py`, `fm-herdr-lab-viewer.py` | `herdr-app do tab.move`/`space.move` for ordering and `tab.select` for the focus backstop; `hc attach <t>` for a person who wants the terminal itself | migrated for tab order and the close backstop; space ordering stays app-side because Firstmate names one space per home and never reorders the person's other spaces | `tests/fm-backend-hc.test.sh`; `herdr-app commands` |
 
 Two consequences follow from the table and are worth stating plainly:
@@ -74,6 +74,15 @@ The evidence model differs from the multiplexer's because Core publishes differe
 - **Liveness.** Every later `verify`/`state`/`observe` re-reads the same terminal through `hc get`, refuses to start a core, and reports `unknown` rather than `lost` when it cannot read.
 
 Discovery (`fm-attach.sh discover --backend hc`) lists unmanaged live terminals in one session from Core's own record: it never uses the presence of an app window as evidence about any process, and it never types into anything.
+
+## Remote secondmates on Core
+
+The remote route is the ordinary SSH/`fm-on` route; Core only changes which session-provider owns the endpoint.
+
+- The spawn records `remote_backend=hc` plus `remote_hc_session`/`remote_hc_terminal`, and refuses a launch reply whose session is outside this code root's own namespace (`fm-remote` or `fm-remote-<root-id>`) or whose target is not that session's terminal.
+- The host-local control plane validates the same pair before acting, pins `HC_SESSION` for the launch exactly as the multiplexer path pins `HERDR_SESSION`, and prints the session readiness and later control name.
+- Readiness never starts a core: `bin/fm-remote-doctor.sh --backend hc` gates the CLI and version through the adapter and proves liveness with a real connect (`fm_backend_hc_core_live`). An absent socket reads as "no core yet — the authorized launch starts it"; a stale one is reported and neither started nor replaced.
+- `tests/fm-remote-secondmate-hc.test.sh` is the deterministic transport fixture: route acceptance, another code root's session, a moved endpoint, and both socket states with the fake CLI proving no core call and no state created. A real remote host is the only missing piece there, and it is an environment gap rather than an unimplemented contract.
 
 ## Switching a home to Core
 

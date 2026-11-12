@@ -14,7 +14,7 @@
 # remains the single owner of every check, every repair, and every message;
 # nothing here restates them.
 #
-# <backend> is herdr, rex, or any (the default). A concrete backend is passed
+# <backend> is herdr, rex, hc, or any (the default). A concrete backend is passed
 # to the doctor's --backend flag; `any` invokes it bare, which resolves
 # whichever supported backend that host provides. A remote still on the
 # herdr-only doctor exits 2 on the unknown flag; an explicit herdr request then

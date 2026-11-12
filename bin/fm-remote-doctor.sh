@@ -578,7 +578,16 @@ report_required_tools() {
   local tool resolved harness
   MISSING=()
   for tool in "${REQUIRED_TOOLS[@]}"; do
-    resolved=$(command -v "$tool" 2>/dev/null || true)
+    if [ "$tool" = hc ]; then
+      # The Core CLI ships under two allowed names (the release asset
+      # `herdr-core` and its `hc` alias), so this gate resolves either through
+      # the adapter rather than depending on a particular alias being installed.
+      # Resolution and the adapter's `--version` gate touch no core.
+      resolved=$(hc_adapter_load >/dev/null 2>&1 && fm_backend_hc_bin 2>/dev/null || true)
+      [ -n "$resolved" ] || resolved=$(command -v herdr-core 2>/dev/null || command -v hc 2>/dev/null || true)
+    else
+      resolved=$(command -v "$tool" 2>/dev/null || true)
+    fi
     if [ -n "$resolved" ] && [ -x "$resolved" ]; then
       if [ "$tool" = tasks-axi ] && ! fm_tasks_axi_compatible; then
         printf 'required tasks-axi=MISSING (incompatible)\n'
