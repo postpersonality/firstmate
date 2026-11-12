@@ -395,6 +395,50 @@ test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint() {
   pass "fm-control relaunch: a same-harness relaunch replaces the agent in the same endpoint and worktree"
 }
 
+test_hc_relaunch_persists_the_adopted_session_and_terminal() {
+  local id=rl-hc-meta dir out rc home_tag
+  dir=$(new_case hc-meta "$id")
+  add_ship_task "$dir" "$id" pi
+  home_tag=$(FM_HOME="$dir/home" FM_ROOT="$ROOT" bash -c \
+    '. "$1/bin/fm-backend-hometag-lib.sh"; fm_backend_hometag' _ "$ROOT")
+  sed -i 's/^window=.*/window=fmses:t7/' "$dir/home/state/$id.meta"
+  printf 'backend=hc\nhc_session=fmses\nhc_terminal=t7\n' >> "$dir/home/state/$id.meta"
+  cat > "$dir/fakebin/herdr-core" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) printf 'hc 0.1.20\n' ;;
+  get)
+    jq -cn --arg task "fm-$FM_FAKE_HC_TASK_ID" --arg home "$FM_FAKE_HC_HOME_TAG" \
+      --arg cwd "$FM_FAKE_HC_WORKTREE" \
+      '{state:"live",labels:{"firstmate.task":$task,"firstmate.home":$home},
+        cwd:$cwd,foreground:{name:"sh",argv:["/bin/sh"],cwd:$cwd,pid:999999}}'
+    ;;
+  send) printf '{"started":true,"status":"started"}\n' ;;
+  *) printf '{}\n' ;;
+esac
+SH
+  cat > "$dir/fakebin/pi" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --help) printf 'Options: --tui-mode --session\n' ;;
+  --version) printf 'Pi 0.84.0\n' ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "$dir/fakebin/herdr-core" "$dir/fakebin/pi"
+  out=$(FM_HC_BIN="$dir/fakebin/herdr-core" FM_FAKE_HC_TASK_ID="$id" \
+    FM_FAKE_HC_HOME_TAG="$home_tag" FM_FAKE_HC_WORKTREE="$dir/wt" HC_SESSION=fmses \
+    run_spawn "$dir" "$id" --relaunch); rc=$?
+  expect_code 0 "$rc" "an HC relaunch should adopt its recorded endpoint: $out"
+  [ "$(meta_field "$dir" "$id" hc_session)" = fmses ] \
+    || fail "HC relaunch must preserve its recorded session"
+  [ "$(meta_field "$dir" "$id" hc_terminal)" = t7 ] \
+    || fail "HC relaunch must preserve its recorded terminal"
+  [ "$(meta_field "$dir" "$id" window)" = fmses:t7 ] \
+    || fail "HC relaunch must preserve its exact endpoint"
+  pass "fm-spawn --relaunch: an adopted HC endpoint retains its session and terminal metadata"
+}
+
 test_relaunch_refuses_before_exit_when_the_composer_holds_pending_text() {
   local dir out rc
   dir=$(new_case pending-exit rl43)
@@ -3433,6 +3477,7 @@ test_relaunch_off_opencode_removes_tracked_wiring
 test_exit_and_relaunch_remove_the_dialog_file
 test_exit_removes_the_dialog_file_before_releasing_the_lock
 test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint
+test_hc_relaunch_persists_the_adopted_session_and_terminal
 test_relaunch_refuses_before_exit_when_the_composer_holds_pending_text
 test_relaunch_refuses_before_exit_when_the_composer_state_is_unproven
 test_relaunch_from_linked_home_preserves_recorded_worktree

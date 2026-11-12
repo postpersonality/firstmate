@@ -7637,8 +7637,8 @@ preserve_relaunch_meta() {
     echo "tern_block_id=$TERN_BLOCK_ID"
   fi
   if [ "$BACKEND" = hc ]; then
-    echo "hc_session=$HC_SES"
-    echo "hc_terminal=$HC_TERMINAL"
+    echo "hc_session=${HC_SES:-${T%%:*}}"
+    echo "hc_terminal=${HC_TERMINAL:-${T#*:}}"
   fi
   if [ "$KIND" = secondmate ]; then
     echo "home=$PROJ_ABS"
