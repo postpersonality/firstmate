@@ -404,6 +404,165 @@ test_control_capabilities_and_absence_proof() {
   pass "hc: control capabilities and absence proof come from the recorded core only"
 }
 
+# ---- Herdr App presentation -------------------------------------------------
+#
+# herdr-app owns the window: the space/tab names, their order, and focus are its
+# commands (space.rename, tab.rename, tab.move, tab.select). These cases pin the
+# migrated multiplexer rules in App terms: name the home's space, name each task's
+# tab, keep a home's task tabs contiguous, restore focus only after closing the
+# ACTIVE tab, and never touch anything the app did not report as this home's own.
+make_app_fakebin() {  # <dir> -> echoes fakebin dir
+  local fb="$1/fakebin"
+  mkdir -p "$fb"
+  cat > "$fb/herdr-app" <<'SH'
+#!/usr/bin/env bash
+set -u
+D="${FAKE_APP_DIR:?}"
+printf '%s' "${1:-}" >> "$D/app.log"
+for a in "${@:2}"; do printf '\x1f%s' "$a" >> "$D/app.log"; done
+printf '\n' >> "$D/app.log"
+case "${1:-}" in
+  ls) cat "$D/app.json" ;;
+  status) printf '{"tab":"%s"}\n' "$(jq -r '.active // ""' "$D/app.json")" ;;
+  do) printf '{}\n' ;;
+  *) printf '{}\n' ;;
+esac
+SH
+  chmod +x "$fb/herdr-app"
+}
+
+# app_state <dir>: one space holding a foreign terminal, our task tab, and a
+# second own tab after it, so ordering and ownership are both exercised.
+app_state() {  # <dir> <space-name> <include-foreign:0|1> [active:own|foreign]
+  local dir=$1 name=$2 foreign=$3 active=${4:-foreign}
+  local foreign_term=() foreign_tab=()
+  if [ "$foreign" = 1 ]; then
+    foreign_tab=('{"id":"tb-foreign","name":"1","terminals":[{"terminal":"t1","pane":"p1"}]}')
+  fi
+  jq -n --arg name "$name" --arg active "$active" \
+     --argjson foreign_tabs "$(printf '[%s]' "${foreign_tab[@]:-}" | jq -c 'map(select(. != null))')" '
+    {spaces: [{id: "sp-home", name: $name,
+               tabs: ($foreign_tabs + [
+                 {id: "tb-ours", name: "auto name", terminals: [{terminal: "t7", pane: "p7"}]},
+                 {id: "tb-other", name: "later-task", terminals: [{terminal: "t2", pane: "p2"}]}
+               ])}],
+     active: (if $active == "own" then "tb-ours" else "tb-foreign" end)}' > "$dir/app.json"
+}
+
+test_app_presentation_names_and_orders_own_work_only() {
+  local out tag
+  setup_case app
+  make_app_fakebin "$D" >/dev/null
+  tag=$(hometag_of)
+  # t7 is ours; t2 is this home's other task; t1 is a foreign terminal in the
+  # same space, so the space itself must not be renamed.
+  write_terminal "$D" t7 live "fm-mig1" "$tag" 2.1.312 pi
+  write_terminal "$D" t2 live "fm-other" "$tag" 2.1.312 pi
+  write_terminal "$D" t1 live "" "" "" ""
+  app_state "$D" "Projects" 1
+  : > "$D/app.log"
+
+  out=$(FAKE_APP_DIR="$D" FM_HC_APP_BIN="$D/fakebin/herdr-app" FM_HC_APP_PRESENT_TRIES=1 \
+    hc_shell 'fm_backend_hc_app_present fmtest:t7 fm-mig1; echo rc=$?' 2>&1)
+  assert_contains "$out" "rc=0" "presentation must never fail a spawn"
+  assert_contains "$(cat "$D/app.log")" $'\x1ftab.rename\x1f--id\x1ftb-ours\x1f--name\x1fmig1' \
+    "the task tab must be renamed to the concise task label"
+  assert_contains "$(cat "$D/app.log")" $'\x1ftab.move\x1f--id\x1ftb-ours\x1f--index\x1f2' \
+    "the task tab must move into this home's contiguous task block"
+  assert_not_contains "$(cat "$D/app.log")" $'\x1fspace.rename\x1f' \
+    "a space shared with a foreign terminal must not be renamed"
+  assert_not_contains "$(cat "$D/app.log")" "focus" "creating a task must never focus anything"
+  assert_not_contains "$(cat "$D/app.log")" $'\x1ftab.select\x1f' "creating a task must never select a tab"
+
+  # The same space, now entirely this home's own terminals: it may be named.
+  rm -f "$D/t1.json"
+  jq 'del(.spaces[].tabs[] | select(.id == "tb-foreign"))' "$D/app.json" > "$D/app.json.new"
+  mv "$D/app.json.new" "$D/app.json"
+  : > "$D/app.log"
+  FAKE_APP_DIR="$D" FM_HC_APP_BIN="$D/fakebin/herdr-app" FM_HC_APP_PRESENT_TRIES=1 \
+    hc_shell 'fm_backend_hc_app_present fmtest:t7 fm-mig1' >/dev/null 2>&1
+  assert_contains "$(cat "$D/app.log")" $'\x1fspace.rename\x1f--id\x1fsp-home\x1f--name\x1ffirstmate' \
+    "this home's own space must be named after the home label"
+
+  # A secondmate home names its space after its own marker.
+  printf 'sm-a\n' > "$HOMEDIR/.fm-secondmate-home"
+  out=$(FAKE_APP_DIR="$D" FM_HC_APP_BIN="$D/fakebin/herdr-app" FM_HC_APP_PRESENT_TRIES=1 \
+    hc_shell 'fm_backend_hc_app_workspace_label; echo')
+  assert_contains "$out" 2ndmate-sm-a "a secondmate space must carry its own label"
+  rm -f "$HOMEDIR/.fm-secondmate-home"
+
+  # No app: nothing is presented and nothing fails.
+  : > "$D/app.log"
+  out=$(FM_HC_APP_BIN=/nonexistent/herdr-app hc_shell 'fm_backend_hc_app_present fmtest:t7 fm-mig1; echo rc=$?' 2>&1)
+  assert_contains "$out" "rc=0" "a missing app must skip presentation"
+  assert_equals "$(cat "$D/app.log")" "" "a missing app must not be replaced by a guessed one"
+  pass "hc: App presentation names the home's space and this task's tab, orders only its own tabs, and never focuses"
+}
+
+test_app_presentation_leaves_shared_tab_and_focus_alone() {
+  local out
+  setup_case appfocus
+  make_app_fakebin "$D" >/dev/null
+  app_state "$D" "Firstmate" 1 own
+  # Our tab also holds another terminal: it is not this task's alone to rename.
+  jq '.spaces[0].tabs[1].terminals += [{"terminal":"t3","pane":"p3"}]' "$D/app.json" > "$D/app.json.new"
+  mv "$D/app.json.new" "$D/app.json"
+  : > "$D/app.log"
+  FAKE_APP_DIR="$D" FM_HC_APP_BIN="$D/fakebin/herdr-app" FM_HC_APP_PRESENT_TRIES=1 \
+    hc_shell 'fm_backend_hc_app_present fmtest:t7 fm-mig1' >/dev/null 2>&1
+  assert_not_contains "$(cat "$D/app.log")" $'\x1ftab.rename\x1f' \
+    "a tab holding another terminal must not be renamed"
+  assert_not_contains "$(cat "$D/app.log")" $'\x1ftab.move\x1f' \
+    "a tab holding another terminal must not be moved"
+
+  # Focus backstop: only an ACTIVE tab being closed has a predecessor to restore.
+  jq '.spaces[0].tabs[1].terminals = [{"terminal":"t7","pane":"p7"}]' "$D/app.json" > "$D/app.json.new"
+  mv "$D/app.json.new" "$D/app.json"
+  out=$(FAKE_APP_DIR="$D" FM_HC_APP_BIN="$D/fakebin/herdr-app" hc_shell 'fm_backend_hc_app_prior_tab t7; echo')
+  assert_contains "$out" tb-foreign "the active tab's predecessor is the focus backstop"
+  jq '.active = "tb-foreign"' "$D/app.json" > "$D/app.json.new"
+  mv "$D/app.json.new" "$D/app.json"
+  out=$(FAKE_APP_DIR="$D" FM_HC_APP_BIN="$D/fakebin/herdr-app" hc_shell 'fm_backend_hc_app_prior_tab t7 || echo none')
+  assert_contains "$out" none "closing an inactive tab must not move focus"
+  # The terminal is gone after a close, so the recorded neighbour is selected.
+  jq '.active = "tb-ours" | del(.spaces[0].tabs[] | select(.id == "tb-ours"))' "$D/app.json" > "$D/app.json.new"
+  mv "$D/app.json.new" "$D/app.json"
+  : > "$D/app.log"
+  FAKE_APP_DIR="$D" FM_HC_APP_BIN="$D/fakebin/herdr-app" \
+    hc_shell 'fm_backend_hc_app_close_focus_restore t7 tb-foreign' >/dev/null 2>&1
+  assert_contains "$(cat "$D/app.log")" $'\x1ftab.select\x1f--id\x1ftb-foreign' \
+    "closing the active tab must restore its predecessor"
+  jq '.spaces[0].tabs += [{"id":"tb-ours","name":"x","terminals":[{"terminal":"t7","pane":"p7"}]}]' "$D/app.json" > "$D/app.json.new"
+  mv "$D/app.json.new" "$D/app.json"
+  : > "$D/app.log"
+  FAKE_APP_DIR="$D" FM_HC_APP_BIN="$D/fakebin/herdr-app" \
+    hc_shell 'fm_backend_hc_app_close_focus_restore t7 tb-foreign' >/dev/null 2>&1
+  assert_not_contains "$(cat "$D/app.log")" $'\x1ftab.select\x1f' "a still-present terminal must not displace focus"
+  pass "hc: App presentation leaves a shared tab alone and restores focus only for a closed active tab"
+}
+
+# A persistent secondmate on Core uses the same generic launch path as every
+# other backend: its own home container and space, its own labels, its own
+# inbox. The former blanket `--secondmate` refusal is gone, so a spawn must
+# proceed past backend selection instead of stopping there.
+test_secondmate_spawn_proceeds_past_backend_selection() {
+  local dir out
+  dir="$TMP_ROOT/secondmate-hc"
+  mkdir -p "$dir/state" "$dir/data" "$dir/config" "$dir/projects" "$dir/fakebin"
+  printf 'claude\n' > "$dir/config/secondmate-harness"
+  printf '#!/bin/sh\necho Linux\n' > "$dir/fakebin/uname"
+  chmod +x "$dir/fakebin/uname"
+  out=$(unset TMUX HERDR_ENV CMUX_WORKSPACE_ID __CFBundleIdentifier
+    PATH="$dir/fakebin:$PATH" FM_BACKEND=hc FM_HC_BIN=/nonexistent/hc \
+      FM_STATE_OVERRIDE="$dir/state" FM_DATA_OVERRIDE="$dir/data" FM_CONFIG_OVERRIDE="$dir/config" \
+      FM_PROJECTS_OVERRIDE="$dir/projects" "$FM_TEST_ROOT/bin/fm-spawn.sh" sm-hc-test --secondmate --backend hc 2>&1)
+  assert_not_contains "$out" "does not support --secondmate" \
+    "hc must not refuse --secondmate as an unsupported backend any more"
+  assert_contains "$out" "no firstmate home supplied" \
+    "--secondmate on hc must reach the ordinary home check instead of stopping at backend selection"
+  pass "hc: a secondmate spawn uses the generic launch path instead of a backend refusal"
+}
+
 fm_test_run \
   test_hc_is_spawn_capable_and_needs_app_signals \
   test_required_tool_check_uses_the_adapter_resolver \
@@ -421,4 +580,7 @@ fm_test_run \
   test_container_ensure_gates_binary_version_and_generation \
   test_send_text_submit_confirms_through_send_wait \
   test_send_delimiters_and_binary_socket_pins \
-  test_control_capabilities_and_absence_proof
+  test_control_capabilities_and_absence_proof \
+  test_app_presentation_names_and_orders_own_work_only \
+  test_app_presentation_leaves_shared_tab_and_focus_alone \
+  test_secondmate_spawn_proceeds_past_backend_selection

@@ -336,29 +336,50 @@ print(json.dumps(out))
             replacement.terminate(); replacement.wait(timeout=5)
 
 # Herdr Core (herdr-core, the terminal core under Herdr.app) binds an existing
-# agent from ITS records, which differ from the multiplexer's: the terminal's
-# single foreground process plus the terminal's own identity, and no native
-# session registration. These cases pin that model and its refusals.
+# agent from ITS records plus the harness's own native evidence: the terminal's
+# single foreground process, and the conversation identity only that process can
+# attest (Pi's own session file, or an explicit path its environment or open
+# files name). These cases pin that model, its refusals, and the
+# conversation-change boundary at an unchanged PID.
 with tempfile.TemporaryDirectory(prefix='fm-external-core-') as temp:
     temp = Path(temp)
     home = temp / 'home'
     cwd = temp / 'user folder'
+    store = temp / 'pi-sessions'
     fakebin = temp / 'bin'
-    for path in (home / 'state', home / 'data', cwd, fakebin, temp / 'runtime'):
+    for path in (home / 'state', home / 'data', cwd, fakebin, temp / 'runtime', store):
         path.mkdir(parents=True)
     (home / 'data/backlog.md').write_text('## In flight\n\n## Queued\n\n## Done\n')
     marker = cwd / 'private.txt'
     marker.write_text('uncommitted user material\n')
-    shutil.copy2('/bin/sleep', fakebin / 'agy')
+    # A harness stand-in that keeps its own argv: Pi's session store and its
+    # --session-dir flag are read from the process itself, never from a guess.
+    def standin(name):
+        path = fakebin / name
+        path.write_text('#!/usr/bin/env python3\nimport time\ntime.sleep(300)\n')
+        path.chmod(0o755)
+
+    standin('pi')
+    standin('agy')
     core_sock = temp / 'core.sock'
+    session_id = 'session-core-1'
+    # An explicit --session-dir is FLAT: Pi writes its conversation files
+    # directly there, as measured on the installed client. The per-folder
+    # subdirectory layout belongs to the default store only.
+    slug_dir = store
+    session = slug_dir / f'2026-01-01T00-00-00-000Z_{session_id}.jsonl'
     env = {k: v for k, v in os.environ.items()
-           if not k.startswith(('FM_', 'HERDR_', 'HC_', 'TASKS_AXI_', 'XDG_RUNTIME_DIR'))}
+           if not k.startswith(('FM_', 'HERDR_', 'HC_', 'TASKS_AXI_', 'XDG_RUNTIME_DIR', 'PI_'))}
     env.update(FM_HOME=str(home), PATH=str(fakebin) + ':' + os.environ['PATH'],
                FM_GATE_REFUSE_BYPASS='1', XDG_RUNTIME_DIR=str(temp / 'runtime'),
                FM_CONTROL_POLL='0.1', FM_CONTROL_EXIT_WAIT='2', FM_CONTROL_SETTLE_WAIT='0',
                FM_SEND_SETTLE='0', FM_SEND_SLEEP='0.1', FM_SEND_RETRIES='1',
                FM_TASK_INBOX_GRACE_SECS='0',
-               FM_HC_BIN=str(fakebin / 'hc'), FM_HC_SOCKET=str(core_sock))
+               FM_HC_BIN=str(fakebin / 'hc'), FM_HC_SOCKET=str(core_sock),
+               # Pi publishes its conversation to its own environment, which is
+               # the only per-process claim available; the file it names must also
+               # be a record for this cwd and still the newest one there.
+               PI_SESSION_FILE=str(session), PI_SESSION_ID=session_id)
     config = temp / 'core.json'
     log = temp / 'calls.jsonl'
     env.update(TEST_HC_CONFIG=str(config), TEST_HC_LOG=str(log))
@@ -375,8 +396,8 @@ labels = {'herdr.space': 'sp-core', 'herdr.tab': 'tb-core'}
 labels.update(c.get('labels', {}))
 rec = {'address': c.get('address', 't3'), 'state': c.get('state', 'live'), 'labels': labels,
        'cwd': c['cwd'], 'turn': 0,
-       'status': {'app': c.get('app', 'agy'), 'state': c.get('status', 'idle')},
-       'foreground': {'name': 'agy', 'pid': c['pid'], 'cwd': c['cwd']}}
+       'status': {'app': c.get('app', 'pi'), 'state': c.get('status', 'idle')},
+       'foreground': {'name': c.get('name', 'pi'), 'pid': c['pid'], 'cwd': c['cwd']}}
 if args[0] == '--version':
     print('hc 0.1.20')
 elif args[0] == 'get':
@@ -400,18 +421,25 @@ else:
     (fakebin / 'hc').write_text(FAKE)
     (fakebin / 'hc').chmod(0o755)
     listener = core_socket(core_sock)
-    agent = subprocess.Popen([str(fakebin / 'agy'), '300'], cwd=cwd, env=env)
-    replacement = None
+    agent = subprocess.Popen([str(fakebin / 'pi'), '--session-dir', str(store)], cwd=cwd, env=env)
+    other = None
     try:
+        # The conversation file is written after the process starts, exactly as
+        # Pi does when a session opens.
+        session.write_text(
+            json.dumps({'type': 'session', 'version': 3, 'id': session_id, 'cwd': str(cwd)}) + '\n'
+            + json.dumps({'type': 'message', 'message': {'role': 'assistant',
+                                                        'content': [{'text': 'CORE_OK received'}]}}) + '\n')
         save(config, {'pid': agent.pid, 'cwd': str(cwd)})
         discovery = json.loads(attach('discover', '--session', 'test-core', '--backend', 'hc').stdout)
         assert len(discovery) == 1 and discovery[0]['backend'] == 'hc', discovery
-        assert discovery[0]['family'] == 'agy' and discovery[0]['task'] is None
+        assert discovery[0]['family'] == 'pi' and discovery[0]['task'] is None
         selection_args = ['inspect', '--backend', 'hc', '--session', 'test-core', '--pane', 't3',
                           '--pid', str(agent.pid)]
         identity = json.loads(attach(*selection_args).stdout)['identity']
         assert identity['backend'] == 'hc' and identity['pane_id'] == 't3'
-        assert identity['native'] == {'kind': 'hc-terminal', 'value': 'test-core:t3'}
+        assert identity['native']['kind'] == 'path' and identity['native']['value'] == str(session)
+        assert identity['native']['evidence'] == 'pi-session-env'
         assert identity['space_id'] == 'sp-core' and identity['tab_id'] == 'tb-core'
         selection = temp / 'selection.json'
         selection.write_text(attach(*selection_args).stdout)
@@ -423,7 +451,7 @@ else:
                 '--dod-file', proposed, '--title', 'Core research']
         attach(*args)
         bound = json.loads((home / 'state/core-research.external.json').read_text())
-        assert bound['identity']['backend'] == 'hc'
+        assert bound['identity']['backend'] == 'hc' and bound['identity']['native']['kind'] == 'path'
         assert json.loads(attach('state', 'core-research').stdout)['identity'] == 'verified'
         # Core's own `blocked` status is the question state, not a stall.
         cfg(status='blocked')
@@ -432,19 +460,76 @@ else:
         # A steer reaches the bound Core terminal through its recorded provider.
         call([ROOT / 'bin/fm-send.sh', 'core-research', 'answer the pending question'])
         assert json.loads(config.read_text())['typed'], 'the Core binding did not receive the steer'
-        # Core publishes no native session registration: a Pi transcript receipt
-        # has no source there, and the exact agent reply is the evidence instead.
-        attach('receipt', 'core-research', '--file', source, '--token', 'x', '--format', 'pi', ok=False)
-        # A different process in the same terminal is a lost binding, never repaired.
-        replacement = subprocess.Popen([str(fakebin / 'agy'), '300'], cwd=cwd, env=env)
-        cfg(pid=replacement.pid)
-        assert json.loads(attach('state', 'core-research').stdout)['identity'] != 'verified'
+        # Pi's own session file is the receipt source on Core too.
+        attach('receipt', 'core-research', '--file', session, '--token', 'CORE_OK', '--format', 'pi')
+        assert json.loads(attach('state', 'core-research').stdout)['receipt'] is True
+        # The conversation moving on inside the SAME process is unprovable here:
+        # a newer session file written after this process started refuses input
+        # rather than leaving the old binding authorized.
+        later = slug_dir / '2026-01-01T00-10-00-000Z_session-core-2.jsonl'
+        later.write_text(json.dumps({'type': 'session', 'version': 3,
+                                     'id': 'session-core-2', 'cwd': str(cwd)}) + '\n')
+        later_mtime = time.time() + 5
+        os.utime(later, (later_mtime, later_mtime))
+        moved = json.loads(attach('state', 'core-research').stdout)
+        # The conversation moved to another file inside the SAME process: the
+        # stored native session is no longer the one being written.
+        assert moved['identity'] != 'verified', moved
         before = len(log.read_text().splitlines())
         call([ROOT / 'bin/fm-send.sh', 'core-research', '--key', 'Enter'], ok=False)
+        call([ROOT / 'bin/fm-control.sh', 'core-research', 'interrupt'], ok=False)
         after = [json.loads(line) for line in log.read_text().splitlines()[before:]]
         assert not any(row[0] in ('send', 'keys') for row in after), after
-        replacement.terminate(); replacement.wait(timeout=5); replacement = None
+        later.unlink()
+        assert json.loads(attach('state', 'core-research').stdout)['identity'] == 'verified'
+        # The two-process counterexample: another Pi in the same folder writes a
+        # newer record. The env claim still names this process's conversation, so
+        # the currency veto must REFUSE rather than adopt the foreign file.
+        foreign = slug_dir / '2026-01-02T00-00-00-000Z_session-foreign.jsonl'
+        foreign.write_text(json.dumps({'type': 'session', 'version': 3,
+                                       'id': 'session-foreign', 'cwd': str(cwd)}) + '\n')
+        moved = json.loads(attach('state', 'core-research').stdout)
+        assert moved['identity'] != 'verified' and 'native session' in moved['detail'], moved
+        before = len(log.read_text().splitlines())
+        call([ROOT / 'bin/fm-send.sh', 'core-research', 'should not arrive'], ok=False)
+        typed = [json.loads(line) for line in log.read_text().splitlines()[before:]]
+        assert not any(row[0] in ('send', 'keys') for row in typed), typed
+        foreign.unlink()
+        # An inherited claim from a parent Pi in ANOTHER folder never binds.
+        other_cwd = temp / 'another folder'
+        other_cwd.mkdir()
+        stray = temp / 'stray-session.jsonl'
+        stray.write_text(json.dumps({'type': 'session', 'version': 3,
+                                     'id': 'stray-1', 'cwd': str(other_cwd)}) + '\n')
+        env_stray = dict(env)
+        env_stray.update(PI_SESSION_FILE=str(stray), PI_SESSION_ID='stray-1')
+        other = subprocess.Popen([str(fakebin / 'pi'), '--session-dir', str(store)], cwd=cwd, env=env_stray)
+        cfg(pid=other.pid)
+        attach('inspect', '--backend', 'hc', '--session', 'test-core', '--pane', 't3',
+               '--pid', str(other.pid), ok=False)
+        other.terminate(); other.wait(timeout=5); other = None
         cfg(pid=agent.pid)
+        assert json.loads(attach('state', 'core-research').stdout)['identity'] == 'verified'
+        # A different process in the same terminal is a lost binding, never repaired.
+        other = subprocess.Popen([str(fakebin / 'pi'), '--session-dir', str(store)], cwd=cwd, env=env)
+        cfg(pid=other.pid)
+        assert json.loads(attach('state', 'core-research').stdout)['identity'] != 'verified'
+        other.terminate(); other.wait(timeout=5); other = None
+        cfg(pid=agent.pid)
+        # A harness with no self-published session needs an attributable path, and
+        # nothing weaker is accepted.
+        env_agy = dict(env)
+        env_agy['SESSION_HINT'] = str(session)
+        other = subprocess.Popen([str(fakebin / 'agy')], cwd=cwd, env=env_agy)
+        cfg(pid=other.pid, name='agy', app='agy')
+        agy_args = ['inspect', '--backend', 'hc', '--session', 'test-core', '--pane', 't3',
+                    '--pid', str(other.pid)]
+        attach(*agy_args, ok=False)  # no native session published
+        attach(*agy_args, '--native-session', str(temp / 'unrelated.jsonl'), ok=False)
+        agy_identity = json.loads(attach(*agy_args, '--native-session', str(session)).stdout)['identity']
+        assert agy_identity['native']['evidence'] == 'process-env', agy_identity['native']
+        other.terminate(); other.wait(timeout=5); other = None
+        cfg(pid=agent.pid, name='pi', app='pi')
         # A terminal that already belongs to a task is never adopted.
         cfg(labels={'firstmate.task': 'fm-someone-else'})
         attach(*selection_args, ok=False)
@@ -458,10 +543,9 @@ else:
         assert not (temp / 'absent.sock').exists(), 'discovery created core state'
         env['FM_HC_SOCKET'] = str(core_sock)
         assert marker.read_text() == 'uncommitted user material\n'
-        print('ok: Core binding, question state, steer delivery, Pi-receipt refusal, lost-process and unstarted-core guards')
+        print('ok: Core binding, native-session evidence and its change boundary, steer delivery, lost-process and unstarted-core guards')
     finally:
-        if agent.poll() is None:
-            agent.terminate(); agent.wait(timeout=5)
-        if replacement and replacement.poll() is None:
-            replacement.terminate(); replacement.wait(timeout=5)
+        for proc in (agent, other):
+            if proc is not None and proc.poll() is None:
+                proc.terminate(); proc.wait(timeout=5)
         listener.terminate(); listener.wait(timeout=5)

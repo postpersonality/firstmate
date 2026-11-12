@@ -246,6 +246,248 @@ def unmanaged(pid):
     return not any(row.startswith(b'FM_TASK_ID=') and row != b'FM_TASK_ID=' for row in raw)
 
 
+def process_argv(pid):
+    """The exact process's own argument vector, already bounded by the kernel."""
+    try:
+        raw = Path(f'/proc/{pid}/cmdline').read_bytes()
+    except OSError:
+        raise ValueError('командная строка процесса не прочитана')
+    return [os.fsdecode(part) for part in raw.split(b'\0') if part]
+
+
+def environ_of(pid):
+    """The exact process's own initial environment; no value is stored or logged."""
+    env = {}
+    try:
+        raw = Path(f'/proc/{pid}/environ').read_bytes()
+    except OSError:
+        raise ValueError('окружение процесса не прочитано')
+    for row in raw.split(b'\0'):
+        if b'=' not in row:
+            continue
+        key, value = row.split(b'=', 1)
+        env[os.fsdecode(key)] = os.fsdecode(value)
+    return env
+
+
+def open_files(pid, limit=256):
+    """Targets of the process's own open files, bounded and symlinks resolved."""
+    targets = []
+    base = Path(f'/proc/{pid}/fd')
+    try:
+        entries = sorted(os.listdir(base))[:limit]
+    except OSError:
+        return targets
+    for entry in entries:
+        try:
+            link = os.readlink(base / entry)
+        except OSError:
+            continue
+        if link.startswith('/'):
+            targets.append(link)
+    return targets
+
+
+def native_file_identity(pid, path, sample):
+    """Prove <path> is the harness's own session file for THIS process.
+
+    The header must name its own session id and cwd, so a truncated or foreign
+    file cannot stand in for one. A conversation that moved on inside the same
+    process is the failure this guards: Pi writes only its active session, so a
+    sibling session file written after the bound one and after this process
+    started means the bound conversation is no longer the active one. That is
+    unprovable, not a repair, and the caller refuses input on it.
+    """
+    target = Path(path)
+    if not target.is_absolute() or not target.is_file() or target.is_symlink():
+        raise ValueError('native session path не является обычным абсолютным файлом')
+    try:
+        with target.open('rb') as handle:
+            first = handle.readline(4096)
+        header = json.loads(first)
+    except (OSError, ValueError):
+        raise ValueError('native session не читается как запись сессии')
+    if not isinstance(header, dict):
+        raise ValueError('native session не читается как запись сессии')
+    if header.get('type') not in (None, 'session'):
+        raise ValueError('native session указывает не на запись сессии')
+    if header.get('cwd') not in (None, sample['cwd']):
+        raise ValueError('native session записана для другой папки')
+    bound_mtime = target.stat().st_mtime
+    for sibling in sorted(target.parent.glob('*.jsonl')):
+        try:
+            stat = sibling.stat()
+        except OSError:
+            continue
+        if sibling.name == target.name or not sibling.is_file():
+            continue
+        if stat.st_mtime > bound_mtime and stat.st_mtime > sample['start']:
+            raise ValueError(f'native session не доказана: {sibling.name} записана позже привязанной и после старта процесса; требуется новое поручение')
+    return {'kind': 'path', 'value': str(target)}
+
+
+def pi_session_store(argv):
+    """The Pi session store THIS process uses, from its own command line.
+
+    `--session-dir <dir>` selects a store the caller named: measured on the
+    installed Pi, that store holds the `*.jsonl` conversation files DIRECTLY,
+    with no per-folder subdirectory. Without it Pi uses its documented per-user
+    store, which is laid out as `--<folder-with-slashes-as-dashes>--/` per
+    working folder. The two layouts are different facts, not one guess.
+    """
+    for i, arg in enumerate(argv):
+        if arg == '--session-dir' and i + 1 < len(argv):
+            return Path(argv[i + 1]), True
+        if arg.startswith('--session-dir='):
+            return Path(arg.split('=', 1)[1]), True
+    return Path.home() / '.pi/agent/sessions', False
+
+
+def pi_explicit_session(argv):
+    """An explicit `--session <path|id>` or `--session-id <id>`, when given."""
+    for i, arg in enumerate(argv):
+        for flag in ('--session', '--session-id'):
+            if arg == flag and i + 1 < len(argv):
+                return argv[i + 1]
+            if arg.startswith(flag + '='):
+                return arg.split('=', 1)[1]
+    return ''
+
+
+def read_session_header(path):
+    try:
+        with Path(path).open('rb') as handle:
+            return json.loads(handle.readline(4096))
+    except (OSError, ValueError):
+        return None
+
+
+def pi_session_dir(cwd):
+    """Pi's per-folder session directory for <cwd>, in the default store.
+
+    Measured on the installed client, against real records for two folders: the
+    folder name is the absolute cwd with every `/` replaced by `-`, INCLUDING a
+    trailing separator, then wrapped in one more `-` on each side. So
+    `/home/u/app` becomes `--home-u-app--`. This function is the single owner of
+    that transformation; the lab and the tests import it instead of re-deriving
+    it, because a guess here silently picks the wrong folder.
+    """
+    return Path.home() / '.pi/agent/sessions' / ('-' + (str(cwd).rstrip('/') + '/').replace('/', '-') + '-')
+
+
+def pi_candidate_dirs(sample, argv):
+    """Every directory Pi can be writing this process's conversations in.
+
+    The default per-user store keeps one directory per working folder, derived
+    from the process's own cwd; an explicit `--session-dir` store is flat. Node's
+    Pi rewrites its own argv, so the flag is used only when it survived.
+    """
+    dirs = [pi_session_dir(sample['cwd'])]
+    for i, arg in enumerate(argv):
+        if arg == '--session-dir' and i + 1 < len(argv):
+            dirs.insert(0, Path(argv[i + 1]))
+        elif arg.startswith('--session-dir='):
+            dirs.insert(0, Path(arg.split('=', 1)[1]))
+    return dirs
+
+
+def pi_session_record(path, cwd):
+    """A Pi session record this cwd owns, or nothing.
+
+    The file must BE a session record whose own header names this id (its
+    filename carries it) and this working folder, so a foreign or truncated file
+    can never stand in for the conversation.
+    """
+    candidate = Path(path)
+    if not candidate.is_absolute() or not candidate.is_file() or candidate.is_symlink():
+        return None
+    header = read_session_header(candidate)
+    if not isinstance(header, dict) or header.get('type') not in (None, 'session'):
+        return None
+    if header.get('cwd') not in (None, cwd):
+        return None
+    if not header.get('id') or str(header['id']) not in candidate.name:
+        return None
+    return header
+
+
+def pi_native_session(pid, sample, argv, requested):
+    """The Pi conversation THIS process runs, from attributable evidence only.
+
+    Pi publishes its conversation to its own children, not to itself, so the
+    process's environment is the only per-process claim available and it can be
+    inherited and stale. A claim therefore counts only when it survives three
+    checks at once, and every failure refuses instead of choosing a file:
+
+    1. the process's own environment names a record and its id;
+    2. that record's header is that id and this process's working folder (an
+       inherited claim from a parent Pi in another folder fails here);
+    3. that record is still the newest one for this folder, so a conversation
+       switched inside the same process - or another live Pi that took the
+       conversation over - refuses rather than being mistaken for this one.
+
+    Picking merely the newest file would accept another process's conversation,
+    which is why the env claim is the entry point and the currency only vetoes.
+    """
+    if '--no-session' in argv:
+        raise ValueError('процесс Pi запущен с --no-session: native session отсутствует')
+    claimed = environ_of(pid).get('PI_SESSION_FILE') or ''
+    claimed_id = environ_of(pid).get('PI_SESSION_ID') or ''
+    if not claimed:
+        raise ValueError('процесс Pi не называет свою native session в собственном окружении; привязка без доказанной принадлежности невозможна')
+    header = pi_session_record(claimed, sample['cwd'])
+    if header is None:
+        raise ValueError(f'заявленная Pi сессия не принадлежит этой папке: {claimed}')
+    if claimed_id and str(header['id']) != claimed_id:
+        raise IdentityMismatch('идентификатор заявленной Pi сессии не совпадает с её файлом')
+    if requested and Path(requested).resolve() != Path(claimed).resolve():
+        raise IdentityMismatch('указанная native session не совпадает с заявленной процессом Pi')
+    active = Path(claimed)
+    newest = None
+    for directory in pi_candidate_dirs(sample, argv):
+        if not directory.is_dir():
+            continue
+        for candidate in sorted(directory.glob('*.jsonl')):
+            if pi_session_record(candidate, sample['cwd']) is None:
+                continue
+            try:
+                mtime = candidate.stat().st_mtime
+            except OSError:
+                continue
+            if newest is None or mtime > newest[0]:
+                newest = (mtime, candidate)
+    if newest is not None and newest[1].resolve() != active.resolve():
+        raise ValueError(f'native session не доказана: новее заявленной {active.name} записана {newest[1].name}; разговор мог быть переключён')
+    return {'kind': 'path', 'value': str(active), 'evidence': 'pi-session-env',
+            'session_id': header['id']}
+
+
+def native_identity(pid, sample, requested, argv=()):
+    """The harness conversation identity Core cannot publish, from its real owner.
+
+    Pi's own session store is structural evidence: the process's cwd and command
+    line name the store, and the file it appends carries its own session id and
+    cwd. For any other harness an explicit path is accepted only when the same
+    process's environment or open files name it. Nothing weaker is accepted: a
+    terminal address is not a conversation identity, and a binding that cannot
+    detect a conversation change must refuse rather than allow.
+    """
+    if sample['family'] in ('pi', 'pi-signed'):
+        return pi_native_session(pid, sample, list(argv), requested)
+    env = environ_of(pid)
+    if not requested:
+        raise ValueError(f"для '{sample['family']}' нужен явный --native-session: core не публикует native session, а адрес терминала ею не является")
+    target = Path(requested)
+    if not target.is_absolute():
+        raise ValueError('native session path должен быть абсолютным')
+    resolved = str(target)
+    attributed = resolved in env.values() or resolved in open_files(pid)
+    if not attributed:
+        raise ValueError('указанная native session не подтверждена ни окружением, ни открытыми файлами этого процесса')
+    native = native_file_identity(pid, resolved, sample) if target.is_file() else {'kind': 'path', 'value': resolved}
+    native['evidence'] = 'process-env' if resolved in env.values() else 'open-file'
+    return native
+
 def inspect(backend, session, endpoint, pid, parent_record=None, native_session=None):
     """Prove the exact process bound to <session>:<endpoint> on <backend>.
 
@@ -254,21 +496,21 @@ def inspect(backend, session, endpoint, pid, parent_record=None, native_session=
     harness process at that terminal - from different structural records.
     """
     if backend == 'hc':
-        return inspect_hc(session, endpoint, pid)
+        return inspect_hc(session, endpoint, pid, native_session)
     if backend == 'herdr':
         return inspect_herdr(session, endpoint, pid, parent_record, native_session)
     raise ValueError(f'неизвестный backend привязки: {backend}')
 
 
-def inspect_hc(session, address, pid):
+def inspect_hc(session, address, pid, native_session=None):
     """Bind one live herdr-core terminal to the exact process Core reports.
 
-    Core publishes no native conversation registration the way Herdr's agent
-    registry does, so the binding's native identity is the terminal itself plus
-    the process evidence: Core's own record must name `pid` as that terminal's
-    single foreground process, with matching cwd. A different conversation
-    inside the same process is therefore not detectable from Core, which is why
-    the report's own reply is the confirmation evidence
+    Core publishes no agent registry, so the native conversation identity comes
+    from its actual owner (native_identity): Pi's own session file from that
+    process's environment, or an explicit path attributable to the same process.
+    Core's record must additionally name `pid` as that terminal's single
+    foreground process, with matching cwd. A conversation that moved on inside
+    the same process is refused instead of assumed away
     (docs/herdr-core-migration.md "Binding an existing session to Core").
     """
     before = process_sample(pid)
@@ -283,7 +525,9 @@ def inspect_hc(session, address, pid):
     claimed = HC_APP_FAMILY.get(app)
     if claimed and claimed != sample['family'] and not (sample['family'] == 'pi' and claimed == 'pi-signed'):
         raise IdentityMismatch('семейство процесса противоречит записи herdr-core')
-    fields = ('pid', 'ticks', 'identity_paths', 'identity_files', 'cwd', 'argv0', 'name', 'cmdline_sha256')
+    # `name` is Core's own foreground name here, not part of the process sample's
+    # identity, so the sampled fields are the ones both readings provide.
+    fields = ('pid', 'ticks', 'identity_paths', 'identity_files', 'cwd', 'argv0', 'cmdline_sha256')
     after = process_sample(pid)
     if after is None or any(before[k] != after[k] or before[k] != sample[k] for k in fields):
         raise IdentityMismatch('процесс изменился во время проверки')
@@ -295,7 +539,7 @@ def inspect_hc(session, address, pid):
         raise ValueError('терминал herdr-core не принадлежит пространству Herdr App')
     if 'firstmate.task' in (record.get('labels') or {}):
         raise ValueError('терминал уже принадлежит задаче Firstmate')
-    native = {'kind': 'hc-terminal', 'value': f'{session}:{address}'}
+    native = native_identity(pid, sample, native_session, process_argv(pid))
     identity = {key: sample[key] for key in fields}
     identity.update(host_identity(), backend='hc', family=sample['family'], session=session,
                     pane_id=address, terminal_id=address, tab_id=agent['tab_id'],
@@ -771,8 +1015,6 @@ def main():
                     receipt = evidence(args.file, args.token)
                     if args.format == 'pi':
                         native = b['identity']['native']
-                        if b['identity'].get('backend', 'herdr') == 'hc':
-                            raise ValueError('herdr-core не публикует регистрацию native session, поэтому Pi-receipt на Core невозможен; используйте --format ack-file с точной фразой ответа агента')
                         if b['identity']['family'] != 'pi' or native['kind'] != 'path' or Path(args.file).resolve() != Path(native['value']).resolve():
                             raise ValueError('Pi receipt должен происходить из привязанного native session path')
                         found = False

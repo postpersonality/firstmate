@@ -28,9 +28,10 @@
 # stop/teardown own it), and `connect` (raw protocol writes bypass the CLI
 # guards).
 #
-# Provision snapshots the REAL user core state - the file inventory of
-# ${XDG_STATE_HOME:-$HOME/.local/state}/herdr-core, /run/user/$UID/herdr-core,
-# and, when set, $XDG_RUNTIME_DIR/herdr-core - as a fleet tripwire, recorded inside the
+# Provision snapshots the REAL user core state - the content inventory (path,
+# size, sha256) of ${XDG_STATE_HOME:-$HOME/.local/state}/herdr-core,
+# /run/user/$UID/herdr-core, and, when set, $XDG_RUNTIME_DIR/herdr-core - as a
+# fleet tripwire, recorded inside the
 # session's own lab directory as fleet-state.txt plus the resolved root list
 # in fleet-roots.txt (recorded once, so a caller that repoints XDG for its own
 # children cannot shift what the tripwire watches). The snapshot is file
@@ -146,8 +147,15 @@ fm_hclab_real_state_roots() {
   printf '%s\n' "/run/user/${UID}/herdr-core"
 }
 
-# fm_hclab_fleet_state: a sorted metadata inventory of the real core state:
-# path, inode, mtime, size for every file under the roots passed as arguments.
+# fm_hclab_fleet_state: a sorted CONTENT inventory of the real core state: path,
+# size, and sha256 for every regular file under the roots passed as arguments,
+# with sockets recorded by their own marker.
+# Size and digest, not inode and mtime: a core rewrites its own state file
+# atomically, so the same bytes reappear under a new inode and a later mtime
+# while nothing about the real state changed. Comparing metadata alone called
+# that damage; comparing content keeps the guard exactly as strong - any real
+# change to those bytes is still a difference - without a false alarm.
+# A file too large to digest is refused rather than compared by a weaker rule.
 # This is a pure filesystem read - deliberately NOT an `hc` call, because
 # contacting a stopped core auto-starts it and would itself dirty the
 # tripwire. The root list is resolved once at provision and recorded in
@@ -155,10 +163,43 @@ fm_hclab_real_state_roots() {
 # (the liveness test does) and the tripwire must always compare the SAME
 # real-state roots provision saw.
 if [ "$(uname 2>/dev/null)" = Darwin ]; then
-  fm_hclab_file_meta() { /usr/bin/stat -f '%N %i %m %z' "$1" 2>/dev/null; }
+  fm_hclab_file_size() { /usr/bin/stat -f '%z' "$1" 2>/dev/null; }
 else
-  fm_hclab_file_meta() { stat -c '%n %i %Y %s' "$1" 2>/dev/null; }
+  fm_hclab_file_size() { stat -c '%s' "$1" 2>/dev/null; }
 fi
+
+fm_hclab_file_digest() { # <path>
+  local path=$1 line
+  if command -v sha256sum >/dev/null 2>&1; then
+    line=$(sha256sum "$path" 2>/dev/null) || return 1
+  elif command -v shasum >/dev/null 2>&1; then
+    line=$(shasum -a 256 "$path" 2>/dev/null) || return 1
+  else
+    fm_hclab_error "no sha256 tool (sha256sum or shasum) to verify core state"
+    return 1
+  fi
+  line=${line%% *}
+  [ -n "$line" ] || return 1
+  printf '%s' "$line"
+}
+
+fm_hclab_fleet_entry() { # <path>
+  local path=$1 size digest limit
+  if [ -S "$path" ]; then
+    printf '%s socket -' "$path"
+    return 0
+  fi
+  size=$(fm_hclab_file_size "$path") || return 1
+  case "$size" in ''|*[!0-9]*) return 1 ;; esac
+  limit=${FM_HCLAB_FLEET_DIGEST_MAX_BYTES:-16777216}
+  case "$limit" in ''|*[!0-9]*) limit=16777216 ;; esac
+  if [ "$size" -gt "$limit" ]; then
+    fm_hclab_error "refusing to compare '$path' by metadata only: $size bytes exceeds the $limit-byte digest limit"
+    return 1
+  fi
+  digest=$(fm_hclab_file_digest "$path") || return 1
+  printf '%s %s %s' "$path" "$size" "$digest"
+}
 
 fm_hclab_fleet_state() ( # <root>...
   set -o pipefail
@@ -168,7 +209,7 @@ fm_hclab_fleet_state() ( # <root>...
     files=$(find "$root" \( -type f -o -type s \) -print | LC_ALL=C sort) || return 1
     [ -n "$files" ] || continue
     printf '%s\n' "$files" | while IFS= read -r f; do
-      fm_hclab_file_meta "$f" || return 1
+      fm_hclab_fleet_entry "$f" || return 1
     done || return 1
   done | LC_ALL=C sort
 )

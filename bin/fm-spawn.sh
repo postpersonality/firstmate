@@ -2580,10 +2580,6 @@ if [ "$RELAUNCH" -eq 0 ]; then
     echo "error: backend=tern does not support --secondmate spawns yet" >&2
     exit 1
   fi
-  if [ "$BACKEND" = hc ] && [ "$KIND" = secondmate ]; then
-    echo "error: backend=hc does not support --secondmate spawns yet" >&2
-    exit 1
-  fi
   fm_backend_runtime_check "$BACKEND" || exit 1
   if [ "$BACKEND" = rex ]; then
     fm_backend_rex_local_server_ensure || exit 1
@@ -5535,8 +5531,23 @@ EOF
     ;;
   hc)
     HC_SES=$(fm_backend_hc_container_ensure) || exit 1
-    HC_TERMINAL=$(fm_backend_hc_create_task "$HC_SES" "$W" "$PROJ_ABS") || exit 1
+    # A worker inherits its launcher's home labels and space; a persistent
+    # secondmate stands up its OWN home container instead, exactly as the
+    # multiplexer path does (HERDR_LABEL_HOME below, docs/herdr-backend.md
+    # "Watching and task containers"). The label home is this home's identity for
+    # the terminal, not a routing change: the session, the core, and the project
+    # folder are unchanged.
+    HC_LABEL_HOME=$FM_HOME
+    if [ "$KIND" = secondmate ]; then
+      HC_LABEL_HOME=$PROJ_ABS
+    fi
+    HC_TERMINAL=$(FM_HOME="$HC_LABEL_HOME" fm_backend_hc_create_task "$HC_SES" "$W" "$PROJ_ABS") || exit 1
     T="$HC_SES:$HC_TERMINAL"
+    # Herdr App presentation (space name, this task's tab name, contiguous task
+    # tabs) is best-effort and cannot fail the spawn, and it never focuses
+    # anything, so creating a task does not steal focus
+    # (bin/backends/hc.sh fm_backend_hc_app_present).
+    FM_HOME="$HC_LABEL_HOME" fm_backend_hc_app_present "$T" "$W" || true
     ;;
   orca)
     set +e

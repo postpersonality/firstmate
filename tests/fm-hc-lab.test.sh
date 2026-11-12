@@ -87,3 +87,22 @@ refuse 'could not record the fleet-state tripwire' env FAIL_READ=find bash "$LAB
 bash "$LAB" teardown fm-hclab-good
 [ ! -e "$FM_HC_LAB_DIR/fm-hclab-good" ] || fail 'successful teardown retained session'
 printf 'ok - private roots, exclusive sessions, and fail-closed tripwire\n'
+
+# A core rewrites its own state file atomically, so the same bytes reappear under
+# a new inode and a later mtime. Content, not metadata, decides: that rewrite must
+# not fail verification, while a real change to the same file must.
+bash "$LAB" provision fm-hclab-atomic
+cp "$XDG_STATE_HOME/herdr-core/state" "$TMP_ROOT/state.before"
+printf 'real state\n' > "$TMP_ROOT/state.same"
+mv "$TMP_ROOT/state.same" "$XDG_STATE_HOME/herdr-core/state"
+[ "$(stat -c '%i' "$TMP_ROOT/state.before")" != "$(stat -c '%i' "$XDG_STATE_HOME/herdr-core/state")" ] \
+  || fail 'the fixture did not replace the state file atomically'
+bash "$LAB" teardown fm-hclab-atomic || fail 'an identical-byte atomic rewrite was treated as damage'
+[ ! -e "$FM_HC_LAB_DIR/fm-hclab-atomic" ] || fail 'teardown after an identical rewrite retained the session'
+printf 'ok - an atomic rewrite of identical bytes is not damage\n'
+
+bash "$LAB" provision fm-hclab-content
+printf 'changed state\n' >> "$XDG_STATE_HOME/herdr-core/state"
+refuse 'FLEET-STATE TRIPWIRE FAILED' bash "$LAB" teardown fm-hclab-content
+[ -d "$FM_HC_LAB_DIR/fm-hclab-content" ] || fail 'a real content change removed evidence'
+printf 'ok - a real content change still fails verification\n'

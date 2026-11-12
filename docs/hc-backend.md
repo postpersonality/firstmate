@@ -58,7 +58,7 @@ Nothing here changes the remote `herdr` path.
 
 Two limits apply to auto-detection specifically:
 
-- A `--secondmate` spawn under an auto-detected hc fails the existing refusal rather than silently choosing another backend; set `config/backend` explicitly for a home that spawns secondmates.
+- A home that spawns secondmates sets `config/backend` explicitly rather than relying on auto-detection; a local secondmate then launches in its own Core space ([`herdr-core-migration.md`](herdr-core-migration.md) "Secondmates"). Remote secondmates remain multiplexer-only.
 - Away-mode supervisor discovery and hc refusal are owned by [Away-mode supervisor backend](configuration.md#away-mode-supervisor-backend-fm_supervisor_backend--fm_supervisor_target).
 
 ## Task shape and metadata
@@ -132,7 +132,7 @@ The away-mode supervisor accepts hc through the same generic injection dispatch 
 - hc reports one foreground process per terminal.
   When that process is a launcher, the adapter also reads the rest of its process group from `ps`, which works only for terminals on the local machine.
 - Right after a terminal starts, `hc get` can report no foreground process yet, and agent state reads `unreadable` until the shell is up.
-- `--secondmate` spawns are refused.
+- Remote secondmates are not migrated: a local `--secondmate` launch works, while a remote route still requires the multiplexer or Rex contract.
 - A worker inherits `HC_SESSION`, `HC_TERMINAL_ID`, `HC_TERMINAL_SOCKET`, and `HC_SCOPE` from its terminal, and the `config/launch-env-allowlist` floor keeps them; whether a real harness then reports native status under Firstmate's launch is not verified.
 - Naming a Herdr.app space needs the app window and is not done.
   The `herdr.space`/`herdr.tab` label contract above is the app's documented bridge (its window projects labeled terminals as spaces/tabs and keeps unlabeled ones hidden), verified against a real window: [`verification/runtime-backends.md`](verification/runtime-backends.md#hc) records the live exercise.

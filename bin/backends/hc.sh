@@ -314,6 +314,208 @@ fm_backend_hc_container_ensure() {
   printf '%s' "$session"
 }
 
+# ---- Herdr App presentation -------------------------------------------------
+#
+# herdr-core owns the terminals; the window is a second product with its own CLI
+# (herdr-app), reached only through `do <command>` (docs/herdr-core-migration.md
+# "Presentation"). This section is the adapter's whole App surface: it names the
+# home's space, names each task's tab, keeps a home's task tabs contiguous, and
+# restores focus after a close. Everything here is best-effort visual
+# presentation, never task ownership: a missing app, a closed window, or an
+# unreadable answer skips the step and never fails a spawn or a close, and no
+# step guesses an id it did not read from the app.
+#
+# Only ids the app itself returned are used, and mutations are restricted to what
+# this home owns: a space is renamed only when every terminal in it carries this
+# home's task labels, a tab is renamed or moved only when it holds exactly the
+# terminal the caller read, and no command here focuses or opens anything.
+
+# fm_backend_hc_app_bin: the resolved herdr-app binary. FM_HC_APP_BIN pins it for
+# tests and labs; otherwise the installed CLI is used.
+fm_backend_hc_app_bin() {
+  if [ -n "${FM_HC_APP_BIN:-}" ]; then
+    [ -x "$FM_HC_APP_BIN" ] || return 1
+    printf '%s' "$FM_HC_APP_BIN"
+    return 0
+  fi
+  command -v herdr-app 2>/dev/null
+}
+
+# fm_backend_hc_app_cli: one herdr-app call, stdin detached. It never launches a
+# bare `herdr-app`, which would open the window (herdr-app --skill "Inspect
+# before acting").
+fm_backend_hc_app_cli() {
+  local bin
+  bin=$(fm_backend_hc_app_bin) || return 1
+  "$bin" "$@" </dev/null
+}
+
+# fm_backend_hc_app_workspace_label: the home's space name, the same naming rule
+# the multiplexer path used (docs/herdr-backend.md "Watching and task
+# containers"): `firstmate` for a primary home, `2ndmate-<id>` for a secondmate,
+# resolved from that home's own validated marker.
+fm_backend_hc_app_workspace_label() {
+  local marker="$FM_HOME/.fm-secondmate-home" id
+  if [ -f "$marker" ]; then
+    id=$(tr -d '[:space:]' < "$marker" 2>/dev/null)
+    if [ -n "$id" ]; then
+      printf '2ndmate-%s' "$id"
+      return 0
+    fi
+  fi
+  printf 'firstmate'
+}
+
+# fm_backend_hc_app_concise_task_label: a task's tab name, the multiplexer's own
+# concise-label rule (fm_backend_herdr_projection_concise_task_label).
+fm_backend_hc_app_concise_task_label() {  # <window-label>
+  local task=${1:-}
+  case "$task" in
+    fm-*) task=${task#fm-} ;;
+  esac
+  printf '%s' "$task"
+}
+
+# fm_backend_hc_app_tab_info: the app's own record of the tab that holds
+# <address>, as one JSON object, or empty when the app does not show it yet.
+# The index is the tab's position in its space, which is what tab.move takes.
+fm_backend_hc_app_tab_info() {  # <ls-json> <address>
+  jq -c --arg a "$2" '
+    [ .spaces[]? as $s
+      | ($s.tabs | to_entries[] | select(any(.value.terminals[]?; .terminal == $a)) | .key) as $i
+      | { space: $s.id,
+          space_name: ($s.name // ""),
+          space_terminals: [$s.tabs[].terminals[]?.terminal],
+          tab: $s.tabs[$i].id,
+          tab_name: ($s.tabs[$i].name // ""),
+          tab_index: $i,
+          tab_count: ($s.tabs | length),
+          own_terminals: [$s.tabs[$i].terminals[].terminal] } ] | .[0] // empty' <<EOF
+$1
+EOF
+}
+
+# fm_backend_hc_app_read_tab: fm_backend_hc_app_tab_info against a live window,
+# retried briefly because a just-created terminal is projected asynchronously.
+# Empty output means the app is closed or the terminal is not shown: presentation
+# then has nothing to do and no authority to assert.
+fm_backend_hc_app_read_tab() {  # <address> [expected-label]
+  local address=$1 expected=${2:-} tries=${FM_HC_APP_PRESENT_TRIES:-6} ls_out
+  case "$tries" in ''|*[!0-9]*) tries=6 ;; esac
+  while [ "$tries" -gt 0 ]; do
+    if ls_out=$(fm_backend_hc_app_cli ls 2>/dev/null); then
+      ls_out=$(fm_backend_hc_app_tab_info "$ls_out" "$address")
+      if [ -n "$ls_out" ]; then
+        printf '%s' "$ls_out"
+        return 0
+      fi
+    fi
+    tries=$((tries - 1))
+    [ "$tries" -eq 0 ] || sleep 0.2
+  done
+  return 1
+}
+
+# fm_backend_hc_app_space_is_ours: every terminal the app shows in this space
+# carries this home's task labels. Positive proof only; an unreadable terminal or
+# any foreign one makes the space not ours, so a shared space is never renamed.
+fm_backend_hc_app_space_is_ours() {  # <session> <space-terminals-json-array>
+  local session=$1 terminals=$2 address addresses home fields task task_home
+  home=$(fm_backend_hometag)
+  # Read the list once, then iterate a plain word list: an hc call inside a
+  # `read` loop shares its stdin, and this list must not depend on that.
+  addresses=$(printf '%s' "$terminals" | jq -r '.[]?' 2>/dev/null) || return 1
+  for address in $addresses; do
+    [ -n "$address" ] || continue
+    fm_backend_hc_address_valid "$address" || return 1
+    fields=$(fm_backend_hc_get "$session:$address" | jq -r '[.labels["firstmate.task"] // "", .labels["firstmate.home"] // ""] | @tsv' 2>/dev/null) || return 1
+    task=${fields%%$'\t'*}
+    task_home=${fields#*$'\t'}
+    [ -n "$task" ] && [ "$task_home" = "$home" ] || return 1
+  done
+  return 0
+}
+
+# fm_backend_hc_app_present: name the space and the tab for a freshly created
+# task terminal, and keep this home's task tabs contiguous. Prints one warning
+# line per failed visual step and always returns 0: presentation never decides a
+# spawn. Never focuses anything, so creating a task does not steal focus.
+fm_backend_hc_app_present() {  # <target> <window-label>
+  local target=$1 label=$2 session address info space space_name tab tab_name tab_index tab_count
+  local want_space want_tab own_terminals space_terminals
+  fm_backend_hc_parse_target "$target" || return 0
+  session=$FM_BACKEND_HC_SESSION
+  address=$FM_BACKEND_HC_ADDRESS
+  fm_backend_hc_app_bin >/dev/null 2>&1 || return 0
+  info=$(fm_backend_hc_app_read_tab "$address" "$label" 2>/dev/null) || return 0
+  space=$(printf '%s' "$info" | jq -r '.space')
+  space_name=$(printf '%s' "$info" | jq -r '.space_name')
+  tab=$(printf '%s' "$info" | jq -r '.tab')
+  tab_name=$(printf '%s' "$info" | jq -r '.tab_name')
+  tab_index=$(printf '%s' "$info" | jq -r '.tab_index')
+  tab_count=$(printf '%s' "$info" | jq -r '.tab_count')
+  want_space=$(fm_backend_hc_app_workspace_label)
+  want_tab=$(fm_backend_hc_app_concise_task_label "$label")
+  space_terminals=$(printf '%s' "$info" | jq -c '.space_terminals')
+  own_terminals=$(printf '%s' "$info" | jq -c '.own_terminals')
+
+  if [ -n "$space" ] && [ "$space_name" != "$want_space" ] \
+    && fm_backend_hc_app_space_is_ours "$session" "$space_terminals"; then
+    fm_backend_hc_app_cli 'do' space.rename --id "$space" --name "$want_space" >/dev/null 2>&1 \
+      || echo "warning: Herdr App space $space could not be renamed to $want_space (presentation only)" >&2
+  fi
+  if [ -n "$tab" ] && [ "$tab_name" != "$want_tab" ] && [ "$own_terminals" = "[\"$address\"]" ]; then
+    fm_backend_hc_app_cli 'do' tab.rename --id "$tab" --name "$want_tab" >/dev/null 2>&1 \
+      || echo "warning: Herdr App tab $tab for $label could not be renamed (presentation only)" >&2
+  fi
+  case "$tab_index$tab_count" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  if [ "$tab_count" -gt 1 ] && [ "$tab_index" -ne $((tab_count - 1)) ] \
+    && [ "$own_terminals" = "[\"$address\"]" ]; then
+    fm_backend_hc_app_cli 'do' tab.move --id "$tab" --index "$((tab_count - 1))" >/dev/null 2>&1 \
+      || echo "warning: Herdr App tab $tab for $label could not be moved into the home's task block (presentation only)" >&2
+  fi
+  return 0
+}
+
+# fm_backend_hc_app_close_focus_restore: the multiplexer path's focus backstop
+# (docs/herdr-backend.md "Cleanup and focus safety"), in App terms. When the tab
+# being closed is the active one, the app has to put focus somewhere; this
+# restores the tab that sat immediately before it. It reads the app before the
+# close and acts only on ids it read, and it never moves focus when the closed
+# tab was not the active one.
+fm_backend_hc_app_close_focus_restore() {  # <address> <prior-tab-id>
+  local address=$1 prior=$2 info
+  [ -n "$prior" ] || return 0
+  fm_backend_hc_app_bin >/dev/null 2>&1 || return 0
+  info=$(fm_backend_hc_app_cli ls 2>/dev/null) || return 0
+  printf '%s' "$info" | jq -e --arg t "$prior" '[.spaces[]?.tabs[]? | select(.id == $t)] | length == 1' >/dev/null 2>&1 \
+    || return 0
+  printf '%s' "$info" | jq -e --arg a "$address" '[.spaces[]?.tabs[]? | select(any(.terminals[]?; .terminal == $a))] | length == 0' >/dev/null 2>&1 \
+    || return 0
+  fm_backend_hc_app_cli 'do' tab.select --id "$prior" >/dev/null 2>&1 || true
+}
+
+# fm_backend_hc_app_prior_tab: the neighbour to restore when <address>'s tab is
+# the active tab being closed: the tab immediately before it in its space. Empty
+# when the tab is not active or has no predecessor, so a close never moves focus
+# it was not already moving.
+fm_backend_hc_app_prior_tab() {  # <address>
+  local address=$1 ls_out active info index
+  fm_backend_hc_app_bin >/dev/null 2>&1 || return 1
+  ls_out=$(fm_backend_hc_app_cli ls 2>/dev/null) || return 1
+  info=$(fm_backend_hc_app_tab_info "$ls_out" "$address") || return 1
+  [ -n "$info" ] || return 1
+  active=$(fm_backend_hc_app_cli status 2>/dev/null | jq -r '.tab // empty' 2>/dev/null) || return 1
+  [ -n "$active" ] && [ "$active" = "$(printf '%s' "$info" | jq -r '.tab')" ] || return 1
+  index=$(printf '%s' "$info" | jq -r '.tab_index')
+  case "$index" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$index" -gt 0 ] || return 1
+  printf '%s' "$ls_out" | jq -r --arg s "$(printf '%s' "$info" | jq -r '.space')" --argjson i "$((index - 1))" \
+    '.spaces[] | select(.id == $s) | .tabs[$i].id // empty' 2>/dev/null
+}
+
 # fm_backend_hc_create_task: start a login shell terminal in <cwd> for
 # <window-label>, refusing a live duplicate in this home. Prints the address.
 # --no-parent and --outlive-parent keep the terminal independent of whichever
@@ -467,7 +669,7 @@ fm_backend_hc_busy_state() {  # <target>
 # gone. Already absent is a silent success; a terminal still present, a core
 # that cannot be read, or a terminal without this home's labels is a refusal.
 fm_backend_hc_kill() {  # <target> [unused] [expected-label]
-  local target=$1 expected=${3:-'*'} state
+  local target=$1 expected=${3:-'*'} state prior_tab=
   fm_backend_hc_parse_target "$target" || return 1
   state=$(fm_backend_hc_endpoint_state "$target" "$expected")
   case "$state" in
@@ -475,11 +677,17 @@ fm_backend_hc_kill() {  # <target> [unused] [expected-label]
     foreign) echo "error: hc terminal $target does not carry this task's labels; refusing to close it" >&2; return 1 ;;
     unreadable) echo "error: hc terminal $target could not be read, so it was not closed" >&2; return 1 ;;
   esac
+  # Read the focus backstop before the close: only a close of the ACTIVE tab can
+  # displace focus, and only then is there a neighbour to restore.
+  prior_tab=$(fm_backend_hc_app_prior_tab "$FM_BACKEND_HC_ADDRESS" 2>/dev/null) || prior_tab=
   [ "$state" != ready ] || fm_backend_hc_cli "$FM_BACKEND_HC_SESSION" kill --json "$FM_BACKEND_HC_ADDRESS" >/dev/null 2>&1 || true
   fm_backend_hc_cli "$FM_BACKEND_HC_SESSION" rm --json "$FM_BACKEND_HC_ADDRESS" >/dev/null 2>&1 || true
   state=$(fm_backend_hc_endpoint_state "$target")
   case "$state" in
-    absent) return 0 ;;
+    absent)
+      [ -z "$prior_tab" ] || fm_backend_hc_app_close_focus_restore "$FM_BACKEND_HC_ADDRESS" "$prior_tab" || true
+      return 0
+      ;;
     unreadable) echo "error: hc terminal $target could not be read after its close, so whether it survived is unknown" >&2 ;;
     *) echo "error: hc terminal $target is still present after its close" >&2 ;;
   esac
