@@ -255,6 +255,36 @@ def process_argv(pid):
     return [os.fsdecode(part) for part in raw.split(b'\0') if part]
 
 
+def pi_assistant_texts(path):
+    """Every assistant text block in a Pi session record, in file order.
+
+    A receipt must come from what the AGENT said. The same reader serves the
+    receipt path and any live check, so the two can never disagree about which
+    rows count as an answer.
+    """
+    texts = []
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return texts
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        message = row.get('message') or {}
+        if message.get('role') != 'assistant':
+            continue
+        content = message.get('content', [])
+        if isinstance(content, str):
+            texts.append(content)
+            continue
+        for part in content:
+            if isinstance(part, dict) and isinstance(part.get('text'), str):
+                texts.append(part['text'])
+    return texts
+
+
 def environ_of(pid):
     """The exact process's own initial environment; no value is stored or logged."""
     env = {}
@@ -1017,15 +1047,7 @@ def main():
                         native = b['identity']['native']
                         if b['identity']['family'] != 'pi' or native['kind'] != 'path' or Path(args.file).resolve() != Path(native['value']).resolve():
                             raise ValueError('Pi receipt должен происходить из привязанного native session path')
-                        found = False
-                        for line in Path(args.file).read_text().splitlines():
-                            row = json.loads(line)
-                            message = row.get('message') or {}
-                            if message.get('role') == 'assistant':
-                                content = message.get('content', [])
-                                texts = [content] if isinstance(content, str) else [c.get('text', '') for c in content if isinstance(c, dict)]
-                                found |= any(args.token in text for text in texts)
-                        if not found:
+                        if not any(args.token in text for text in pi_assistant_texts(args.file)):
                             raise ValueError('token в пользовательском prompt не подтверждает receipt агента')
                     elif not args.ack or args.ack == args.token or args.ack not in Path(args.file).read_text():
                         raise ValueError('нужна отдельно проверенная точная фраза ответа --ack, отличная от token')
