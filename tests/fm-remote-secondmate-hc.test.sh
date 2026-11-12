@@ -9,8 +9,8 @@
 # never starts or replaces a core.
 set -u
 
-# shellcheck source=tests/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-remote-secondmate-hc)
 ID=ios
@@ -177,6 +177,103 @@ test_secondary_remote_root_uses_its_owner_and_refuses_foreign_route() {
   pass "hc owner: /srv/firstmate-extra accepts its session under /srv/firstmate-primary ownership and refuses the primary's foreign route"
 }
 
+test_spawn_binds_prelaunch_send_and_abort_cleanup_to_secondmate_home() {
+  local parent="$TMP_ROOT/spawn-parent" secondmate="$TMP_ROOT/spawn-secondmate"
+  local id=hc-home-owner fakebin hcdir out rc send_calls kill_calls rm_calls
+  fm_test_spawn_home "$parent" pi
+  mkdir -p "$parent/user-home" "$secondmate/bin" "$secondmate/data" \
+    "$secondmate/config" "$secondmate/state/parent-route" \
+    "$secondmate/data/.parent-route" "$secondmate/projects"
+  printf '# Firstmate\n' > "$secondmate/AGENTS.md"
+  printf '%s\n' "$id" > "$secondmate/.fm-secondmate-home"
+  printf 'charter for %s\n' "$id" > "$secondmate/data/charter.md"
+  printf '%s\n' 'projects/' 'state/' 'data/' 'config/' '.no-mistakes/' > "$secondmate/.gitignore"
+  git -C "$secondmate" init -q -b main || fail 'could not initialize the secondmate home fixture'
+  fakebin=$(fm_test_make_spawn_fakebin "$TMP_ROOT/spawn-tools")
+  hcdir="$TMP_ROOT/spawn-hc"
+  mkdir -p "$hcdir"
+  cat > "$fakebin/pi" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) printf 'Pi 0.84.0\n' ;;
+  --help) printf 'Options: --tui-mode <mode> --approve\n' ;;
+  *) exit 0 ;;
+esac
+SH
+  cat > "$fakebin/herdr-core" <<'SH'
+#!/usr/bin/env bash
+set -u
+D=${FM_FAKE_HC_DIR:?}
+{
+  printf 'FM_HOME=%s HC_SESSION=%s' "${FM_HOME:-}" "${HC_SESSION:-}"
+  for a in "$@"; do printf '\x1f%s' "$a"; done
+  printf '\n'
+} >> "$D/log"
+cmd=${1:-}
+last=
+for a in "$@"; do last=$a; done
+case "$cmd" in
+  --version) printf 'hc 0.1.20\n' ;;
+  server) printf '{"running":true}\n' ;;
+  connect) printf '{"jsonrpc":"2.0","id":1,"result":{"generation":1}}\n' ;;
+  ls) printf '{"terminals":[]}\n' ;;
+  run)
+    task= home= cwd=
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --cwd) cwd=$2; shift 2 ;;
+        --label)
+          case "$2" in
+            firstmate.task=*) task=${2#*=} ;;
+            firstmate.home=*) home=${2#*=} ;;
+          esac
+          shift 2
+          ;;
+        *) shift ;;
+      esac
+    done
+    [ -n "$task" ] && [ -n "$home" ] || exit 4
+    jq -cn --arg task "$task" --arg home "$home" --arg cwd "$cwd" \
+      '{address:"t1",state:"live",labels:{"firstmate.task":$task,"firstmate.home":$home},cwd:$cwd,foreground:{name:"sh",argv:["/bin/sh"],cwd:$cwd,pid:99999}}' \
+      > "$D/t1.json"
+    printf '{"address":"t1"}\n'
+    ;;
+  get)
+    [ -f "$D/$last.json" ] || { printf '{"error":{"kind":"not_found"}}\n' >&2; exit 3; }
+    printf '%s\n' "$(<"$D/$last.json")"
+    ;;
+  send) printf 'injected prelaunch send failure\n' >&2; exit 1 ;;
+  kill) printf '{}\n' ;;
+  rm) rm -f "$D/$last.json"; printf '{}\n' ;;
+  *) exit 2 ;;
+esac
+SH
+  chmod +x "$fakebin/pi" "$fakebin/herdr-core"
+
+  out=$(FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$parent" HOME="$parent/user-home" \
+    FM_STATE_OVERRIDE="$secondmate/state/parent-route" \
+    FM_DATA_OVERRIDE="$secondmate/data/.parent-route" \
+    FM_PROJECTS_OVERRIDE="$secondmate/projects" FM_CONFIG_OVERRIDE="$secondmate/config" \
+    FM_SPAWN_NO_GUARD=1 FM_SKIP_SECONDMATE_SYNC=1 FM_SKIP_SECONDMATE_INHERIT=1 \
+    FM_HC_BIN="$fakebin/herdr-core" FM_FAKE_HC_DIR="$hcdir" HC_SESSION=fm-remote \
+    PATH="$fakebin:$PATH" \
+    "$ROOT/bin/fm-spawn.sh" "$id" "$secondmate" --secondmate --backend hc --harness pi 2>&1)
+  rc=$?
+  [ "$rc" -ne 0 ] || fail 'the injected prelaunch send failure should stop the spawn'
+  send_calls=$(grep $'\x1fsend\x1f' "$hcdir/log" || true)
+  kill_calls=$(grep $'\x1fkill\x1f' "$hcdir/log" || true)
+  rm_calls=$(grep $'\x1frm\x1f' "$hcdir/log" || true)
+  [ -n "$send_calls" ] || fail "the task-owned terminal rejected input before hc send was reached: $out"
+  [ -n "$kill_calls" ] || fail "failed prelaunch delivery did not reach guarded endpoint cleanup: $out"
+  [ -n "$rm_calls" ] || fail "guarded cleanup did not remove the failed-spawn endpoint: $out"
+  assert_contains "$send_calls" "FM_HOME=$secondmate" 'HC prelaunch send used the primary home identity'
+  assert_contains "$kill_calls" "FM_HOME=$secondmate" 'HC abort cleanup used the primary home identity'
+  assert_contains "$rm_calls" "FM_HOME=$secondmate" 'HC endpoint removal used the primary home identity'
+  [ ! -e "$hcdir/t1.json" ] || fail 'a failed prelaunch left its owned HC endpoint behind'
+  assert_not_contains "$out" 'could not close endpoint' 'guarded cleanup refused its own secondmate endpoint'
+  pass 'hc secondmate spawn: prelaunch input and failed-spawn cleanup use the secondmate home identity'
+}
+
 test_readiness_never_starts_a_core() {
   local out
   : > "$HOME_DIR/hc-calls"
@@ -207,3 +304,4 @@ test_readiness_never_starts_a_core
 test_tool_gate_accepts_the_release_name_alone
 test_secondary_remote_root_uses_its_owner_and_refuses_foreign_route
 test_readiness_never_starts_a_core
+test_spawn_binds_prelaunch_send_and_abort_cleanup_to_secondmate_home

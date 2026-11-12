@@ -2115,7 +2115,7 @@ spawn_abort_cleanup() {
     SPAWN_FRESH_ENDPOINT_OPENED=0
     local abort_tab_id=
     [ "$BACKEND" != zellij ] || abort_tab_id=${ZELLIJ_TAB_ID:-}
-    if fm_backend_kill "$BACKEND" "$T" "$abort_tab_id" "fm-$ID" 2>/dev/null; then
+    if FM_HOME="${HC_LABEL_HOME:-$FM_HOME}" fm_backend_kill "$BACKEND" "$T" "$abort_tab_id" "fm-$ID" 2>/dev/null; then
       SPAWN_ENDPOINT_CLOSED=1
     else
       echo "warning: could not close endpoint $T after the failed spawn of $ID; close it by hand so its slot returns to the pool" >&2
@@ -2130,7 +2130,7 @@ spawn_abort_cleanup() {
       SPAWN_FRESH_ENDPOINT_OPENED=0
       local abort_tab_id=
       [ "$BACKEND" != zellij ] || abort_tab_id=${ZELLIJ_TAB_ID:-}
-      if fm_backend_kill "$BACKEND" "$T" "$abort_tab_id" "fm-$ID" 2>/dev/null; then
+      if FM_HOME="${HC_LABEL_HOME:-$FM_HOME}" fm_backend_kill "$BACKEND" "$T" "$abort_tab_id" "fm-$ID" 2>/dev/null; then
         SPAWN_ENDPOINT_CLOSED=1
       else
         echo "warning: could not close endpoint $T after the failed spawn of $ID; close it by hand so its slot returns to the pool" >&2
@@ -5701,7 +5701,7 @@ spawn_send_text_line() { # <target> <text>
   rex) fm_backend_rex_send_text_line "$1" "$2" "$W" ;;
   t3code) fm_backend_t3code_send_literal "$1" "$2" ;;
   tern) fm_backend_tern_send_text_line "$1" "$2" "$W" ;;
-  hc) fm_backend_hc_send_text_line "$1" "$2" "$W" ;;
+  hc) FM_HOME="${HC_LABEL_HOME:-$FM_HOME}" fm_backend_hc_send_text_line "$1" "$2" "$W" ;;
   esac
 }
 spawn_current_path() { # <target>
@@ -5713,7 +5713,7 @@ spawn_current_path() { # <target>
   paseo) fm_backend_paseo_current_path "$1" "$W" ;;
   rex) fm_backend_rex_current_path "$1" "$W" ;;
   tern) fm_backend_tern_current_path "$1" "$W" ;;
-  hc) fm_backend_hc_current_path "$1" "$W" ;;
+  hc) FM_HOME="${HC_LABEL_HOME:-$FM_HOME}" fm_backend_hc_current_path "$1" "$W" ;;
   esac
 }
 spawn_send_literal() { # <target> <text>
@@ -5730,7 +5730,7 @@ spawn_send_literal() { # <target> <text>
   # hc has no paste without submit, and its keys cannot type the launch line's
   # `+` or `_`, so the line is pasted and submitted here and the Enter that
   # follows it is consumed below (docs/hc-backend.md "Limits").
-  hc) fm_backend_hc_send_text_line "$1" "$2" "$W" && SPAWN_HC_LINE_SUBMITTED=1 ;;
+  hc) FM_HOME="${HC_LABEL_HOME:-$FM_HOME}" fm_backend_hc_send_text_line "$1" "$2" "$W" && SPAWN_HC_LINE_SUBMITTED=1 ;;
   esac
 }
 SPAWN_HC_LINE_SUBMITTED=0
@@ -5749,7 +5749,7 @@ spawn_send_key() { # <target> <key>
     if [ "$2" = Enter ] && [ "$SPAWN_HC_LINE_SUBMITTED" = 1 ]; then
       SPAWN_HC_LINE_SUBMITTED=0
     else
-      fm_backend_hc_send_key "$1" "$2" "$W"
+      FM_HOME="${HC_LABEL_HOME:-$FM_HOME}" fm_backend_hc_send_key "$1" "$2" "$W"
     fi
     ;;
   esac
