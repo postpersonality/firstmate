@@ -3540,8 +3540,8 @@ test_discover_supervisor_target_herdr() {
 # --- hc supervisor discovery (fm-herdr-core-s3-app) --------------------------
 # A firstmate inside an hc terminal - including a Herdr.app terminal, which
 # carries the same core markers - must resolve its own terminal as the
-# supervisor target and hc as the backend, so the away daemon's supported-
-# backend check refuses loudly instead of silently steering firstmate:0 tmux.
+# supervisor target and hc as the backend, so away-mode injection reaches that
+# exact Core terminal instead of silently steering firstmate:0 tmux.
 test_discover_supervisor_hc() {
   local out
   out=$(FM_SUPERVISOR_TARGET='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' \
@@ -3578,14 +3578,13 @@ test_discover_supervisor_hc() {
     HC_TERMINAL_ID=t9 HC_TERMINAL_SOCKET=/tmp/fm-test.sock discover_supervisor_backend)
   [ "$out" = herdr ] || fail "herdr markers nested in an hc terminal must keep herdr: $out"
 
-  # The resolution is deliberately fail-closed: the away daemon's supported
-  # list does not name hc, so it refuses at startup with the supported set
-  # rather than silently steering the tmux fallback.
-  if fm_backend_list_contains "$FM_SUPERVISOR_SUPPORTED_BACKENDS" hc; then
-    fail "the away daemon must not list hc as a supported supervisor backend"
-  fi
+  # The away daemon accepts hc: injection, the busy guard, and the composer
+  # guard all dispatch through the generic per-backend primitives, so a
+  # resolved Core target must reach the daemon instead of being refused.
+  fm_backend_list_contains "$FM_SUPERVISOR_SUPPORTED_BACKENDS" hc \
+    || fail "the away daemon must list hc as a supported supervisor backend"
 
-  pass "discover_supervisor_{target,backend}: hc markers resolve <session>:<address> + hc; bare id, nested tmux/herdr keep their verdicts; supported list stays closed to hc"
+  pass "discover_supervisor_{target,backend}: hc markers resolve <session>:<address> + hc; bare id, nested tmux/herdr keep their verdicts; hc is daemon-supported"
 }
 
 # --- t3code supervisor discovery and busy verdict --------------------------

@@ -62,6 +62,9 @@ case "${1:-}" in
   list-windows)
     printf 'foreign:%s\nfm-mpf-lane-m8\nfm-lane-key\nfm-lane-ok\n' \
       "${FM_FAKE_TMUX_WINDOW:-fm-lost}"
+    # FM_FAKE_TMUX_EXTRA_WINDOW adds one exact non-numeric window name, so a
+    # tmux inventory can hold the same string a herdr-core terminal uses.
+    [ -z "${FM_FAKE_TMUX_EXTRA_WINDOW:-}" ] || printf '%s\n' "$FM_FAKE_TMUX_EXTRA_WINDOW"
     exit 0 ;;
 esac
 exit 0
@@ -90,6 +93,147 @@ setup_home() {  # <name> -> echoes home dir
   local home="$TMP_ROOT/$1-$RANDOM"
   mkdir -p "$home/state"
   printf '%s\n' "$home"
+}
+
+# make_hc_stub <fakebin> <dir>: a herdr-core CLI stub for the Core target
+# cases. It answers only what those paths read - `get --json <address>` from
+# <dir>/<address>.json (exit 3 not_found when absent), `read`, `keys`, `send`,
+# and `--version` - and logs every call with its HC_SESSION/HC_SOCKET pins.
+make_hc_stub() {  # <fakebin> <dir>
+  local fb=$1
+  cat > "$fb/hc" <<'SH'
+#!/usr/bin/env bash
+set -u
+D="${FAKE_HC_DIR:?}"
+{
+  printf 'HC_SESSION=%s HC_SOCKET=%s' "${HC_SESSION:-}" "${HC_SOCKET:-}"
+  for a in "$@"; do printf '\x1f%s' "$a"; done
+  printf '\n'
+} >> "$D/hc.log"
+cmd=${1:-}
+last=""
+for a in "$@"; do last=$a; done
+case "$cmd" in
+  --version) printf 'hc 0.1.20\n' ;;
+  get)
+    [ -f "$D/$last.json" ] || { printf '{"error":{"kind":"not_found"}}\n' >&2; exit 3; }
+    cat "$D/$last.json" ;;
+  read) printf '╭───╮\n│ > │\n╰───╯\n' ;;
+  keys|send) printf '{"started":true,"wait":{"status":"working"}}\n' ;;
+  *) printf '{}\n' ;;
+esac
+SH
+  chmod +x "$fb/hc"
+}
+
+# write_hc_terminal <dir> <address> <state>: the Core record `hc get` answers.
+write_hc_terminal() {  # <dir> <address> <state>
+  jq -n --arg a "$2" --arg s "$3" \
+    '{address: $a, state: $s, labels: {},
+      cwd: "/start", turn: 0, status: {app: "pi", state: "idle"},
+      foreground: {name: "pi", pid: 1, cwd: "/live"}}' > "$1/$2.json"
+}
+
+# A single-colon target is a tmux session:window AND a herdr-core
+# session:address. These cases pin the resolution contract: a live Core
+# terminal resolves without touching tmux, a live pair refuses as ambiguous,
+# an absent core is never started, and a prefixed target is refused unless that
+# named provider's own endpoint verifies.
+test_core_terminal_resolves_without_tmux() {
+  local dir fb home err log hclog rc sock
+  dir="$TMP_ROOT/core-live"; mkdir -p "$dir/runtime"
+  fb=$(make_stubs "$dir"); make_hc_stub "$fb"; home=$(setup_home corelive)
+  err="$dir/send.err"; log="$dir/tmux.log"; hclog="$dir/hc.log"; : > "$log"; : > "$hclog"
+  sock="$dir/core.sock"; fm_test_unix_socket "$sock" || fail "fixture core socket"
+  write_hc_terminal "$dir" t7 live
+
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" \
+    FAKE_HC_DIR="$dir" FM_HC_BIN="$fb/hc" FM_HC_SOCKET="$sock" XDG_RUNTIME_DIR="$dir/runtime" \
+    FM_FAKE_TMUX_DEAD_TARGET=default:t7 FM_SEND_SETTLE=0 \
+    "$SEND" default:t7 "hello core" >/dev/null 2>"$err"; rc=$?
+  expect_code 0 "$rc" "a live Core terminal should resolve and accept the steer"
+  assert_grep 'send' "$hclog" "the resolved Core target should be sent through hc"
+  assert_grep 'HC_SESSION=default' "$hclog" "the resolved target should pin its own Core session"
+  assert_no_grep 'send-keys' "$log" "a Core target must never fall through to tmux input"
+  pass "fm-send strict: a live herdr-core terminal resolves by verification, not by shape"
+}
+
+test_ambiguous_live_owner_refuses() {
+  local dir fb home err log hclog rc sock
+  dir="$TMP_ROOT/core-ambiguous"; mkdir -p "$dir/runtime"
+  fb=$(make_stubs "$dir"); make_hc_stub "$fb"; home=$(setup_home coreamb)
+  err="$dir/send.err"; log="$dir/tmux.log"; hclog="$dir/hc.log"; : > "$log"; : > "$hclog"
+  sock="$dir/core.sock"; fm_test_unix_socket "$sock" || fail "fixture core socket"
+  write_hc_terminal "$dir" t7 live
+
+  # The tmux stub answers display-message for default:t7, so both providers
+  # hold a live endpoint at that exact string.
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" \
+    FAKE_HC_DIR="$dir" FM_HC_BIN="$fb/hc" FM_HC_SOCKET="$sock" XDG_RUNTIME_DIR="$dir/runtime" \
+    FM_FAKE_TMUX_EXTRA_WINDOW=t7 FM_SEND_SETTLE=0 \
+    "$SEND" default:t7 "hello" >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "a target live in both providers should refuse"
+  assert_contains "$(cat "$err")" "ambiguous" "the refusal should name the ambiguity"
+  assert_contains "$(cat "$err")" "hc:default:t7" "the refusal should show the hc: prefix"
+  assert_contains "$(cat "$err")" "tmux:default:t7" "the refusal should show the tmux: prefix"
+  # The stub separates arguments with \x1f, so the pattern matches the `send`
+  # COMMAND and never the fixture path (which itself contains "fm-send-strict").
+  assert_no_grep $'\x1fsend' "$hclog" "an ambiguous target must not be delivered to Core"
+  assert_no_grep 'send-keys' "$log" "an ambiguous target must not be delivered to tmux"
+  pass "fm-send strict: a target live in two providers refuses instead of guessing"
+}
+
+test_dead_core_probe_never_starts_one() {
+  local dir fb home err hclog rc
+  dir="$TMP_ROOT/core-absent"; mkdir -p "$dir/runtime"
+  fb=$(make_stubs "$dir"); make_hc_stub "$fb"; home=$(setup_home coreabsent)
+  err="$dir/send.err"; hclog="$dir/hc.log"; : > "$hclog"
+
+  # No socket for this session exists in the fixture runtime dir, so the Core
+  # candidate is rejected without contacting hc at all (which would start one).
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$dir/tmux.log" \
+    FAKE_HC_DIR="$dir" FM_HC_BIN="$fb/hc" XDG_RUNTIME_DIR="$dir/runtime" FM_SEND_SETTLE=0 \
+    "$SEND" default:t7 "hello" >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "a Core-shaped target with no running core should refuse"
+  [ -s "$hclog" ] && fail "the Core-shaped probe contacted hc without a live core:"$'\n'"$(cat "$hclog")"
+  [ ! -e "$dir/runtime/herdr-core/default.sock" ] || fail "the probe created core state"
+  pass "fm-send strict: a Core-shaped target is probed only when its core is already running"
+}
+
+test_explicit_prefix_refuses_dead_core_endpoint() {
+  local dir fb home err log hclog rc sock
+  dir="$TMP_ROOT/core-prefix-dead"; mkdir -p "$dir/runtime"
+  fb=$(make_stubs "$dir"); make_hc_stub "$fb"; home=$(setup_home coreprefixdead)
+  err="$dir/send.err"; log="$dir/tmux.log"; hclog="$dir/hc.log"; : > "$log"; : > "$hclog"
+  sock="$dir/core.sock"; fm_test_unix_socket "$sock" || fail "fixture core socket"
+
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" \
+    FAKE_HC_DIR="$dir" FM_HC_BIN="$fb/hc" FM_HC_SOCKET="$sock" XDG_RUNTIME_DIR="$dir/runtime" \
+    FM_SEND_SETTLE=0 \
+    "$SEND" hc:default:t99 "hello" >/dev/null 2>"$err"; rc=$?
+  [ "$rc" -ne 0 ] || fail "an hc: prefix naming an absent terminal should refuse"
+  assert_contains "$(cat "$err")" "not a live hc endpoint" "the refusal should name the named provider"
+  assert_no_grep $'\x1fsend' "$hclog" "a refused Core prefix must not type into anything"
+  assert_no_grep 'send-keys' "$log" "a refused Core prefix must not reach tmux"
+  pass "fm-send strict: an hc: prefix is refused unless that core verifies the terminal"
+}
+
+test_explicit_hc_prefix_routes_to_core() {
+  local dir fb home err log hclog rc sock
+  dir="$TMP_ROOT/core-prefix"; mkdir -p "$dir/runtime"
+  fb=$(make_stubs "$dir"); make_hc_stub "$fb"; home=$(setup_home coreprefix)
+  err="$dir/send.err"; log="$dir/tmux.log"; hclog="$dir/hc.log"; : > "$log"; : > "$hclog"
+  sock="$dir/core.sock"; fm_test_unix_socket "$sock" || fail "fixture core socket"
+  write_hc_terminal "$dir" t12 live
+
+  PATH="$fb:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$home" FM_TMUX_LOG="$log" \
+    FAKE_HC_DIR="$dir" FM_HC_BIN="$fb/hc" FM_HC_SOCKET="$sock" XDG_RUNTIME_DIR="$dir/runtime" \
+    FM_SEND_SETTLE=0 \
+    "$SEND" hc:default:t12 "hello core" >/dev/null 2>"$err"; rc=$?
+  expect_code 0 "$rc" "an hc: prefix naming a live terminal should be delivered"
+  assert_grep 'send' "$hclog" "the prefixed target should be sent through hc"
+  [ -s "$log" ] && fail "a prefixed Core target still reached tmux:"$'\n'"$(cat "$log")"
+  pass "fm-send strict: an hc: prefix delivers to Core and never to tmux"
 }
 
 test_exact_lane_id_send_still_works() {
@@ -254,5 +398,10 @@ test_unset_fm_home_fails
 test_unresolvable_target_does_not_tmux_fallback
 test_prefixless_herdr_pane_id_fails
 test_unmatched_single_colon_target_must_exist
+test_core_terminal_resolves_without_tmux
+test_ambiguous_live_owner_refuses
+test_dead_core_probe_never_starts_one
+test_explicit_prefix_refuses_dead_core_endpoint
+test_explicit_hc_prefix_routes_to_core
 test_fm_prefixed_herdr_session_is_an_explicit_target
 test_healthy_fm_id_send_still_works

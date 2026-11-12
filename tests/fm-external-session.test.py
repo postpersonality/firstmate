@@ -13,6 +13,32 @@ ROOT = Path(sys.argv[1])
 sys.path.insert(0, str(ROOT / 'bin'))
 from fm_agent_process import process_sample
 
+# A live herdr-core socket: both bin/backends/hc.sh's core gate and
+# bin/fm-external-session.py's hc_core_live require a real connect, because any
+# hc call against a missing socket STARTS a core.
+CORE_LISTENER = '''
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.bind(sys.argv[1])
+s.listen(64)
+while True:
+    try:
+        conn, _ = s.accept()
+    except OSError:
+        break
+    conn.close()
+'''
+
+
+def core_socket(path):
+    listener = subprocess.Popen([sys.executable, '-c', CORE_LISTENER, str(path)])
+    for _ in range(200):
+        if path.exists():
+            return listener
+        time.sleep(0.05)
+    listener.terminate()
+    raise AssertionError(f'a fixture core socket was never bound at {path}')
+
 
 def call(args, ok=True, **kw):
     p = subprocess.run([str(a) for a in args], text=True, capture_output=True, timeout=90, env=env, **kw)
@@ -308,3 +334,134 @@ print(json.dumps(out))
             agent.terminate(); agent.wait(timeout=5)
         if replacement and replacement.poll() is None:
             replacement.terminate(); replacement.wait(timeout=5)
+
+# Herdr Core (herdr-core, the terminal core under Herdr.app) binds an existing
+# agent from ITS records, which differ from the multiplexer's: the terminal's
+# single foreground process plus the terminal's own identity, and no native
+# session registration. These cases pin that model and its refusals.
+with tempfile.TemporaryDirectory(prefix='fm-external-core-') as temp:
+    temp = Path(temp)
+    home = temp / 'home'
+    cwd = temp / 'user folder'
+    fakebin = temp / 'bin'
+    for path in (home / 'state', home / 'data', cwd, fakebin, temp / 'runtime'):
+        path.mkdir(parents=True)
+    (home / 'data/backlog.md').write_text('## In flight\n\n## Queued\n\n## Done\n')
+    marker = cwd / 'private.txt'
+    marker.write_text('uncommitted user material\n')
+    shutil.copy2('/bin/sleep', fakebin / 'agy')
+    core_sock = temp / 'core.sock'
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(('FM_', 'HERDR_', 'HC_', 'TASKS_AXI_', 'XDG_RUNTIME_DIR'))}
+    env.update(FM_HOME=str(home), PATH=str(fakebin) + ':' + os.environ['PATH'],
+               FM_GATE_REFUSE_BYPASS='1', XDG_RUNTIME_DIR=str(temp / 'runtime'),
+               FM_CONTROL_POLL='0.1', FM_CONTROL_EXIT_WAIT='2', FM_CONTROL_SETTLE_WAIT='0',
+               FM_SEND_SETTLE='0', FM_SEND_SLEEP='0.1', FM_SEND_RETRIES='1',
+               FM_TASK_INBOX_GRACE_SECS='0',
+               FM_HC_BIN=str(fakebin / 'hc'), FM_HC_SOCKET=str(core_sock))
+    config = temp / 'core.json'
+    log = temp / 'calls.jsonl'
+    env.update(TEST_HC_CONFIG=str(config), TEST_HC_LOG=str(log))
+    # A raw string: the fake's own source must reach disk with its escapes intact.
+    FAKE = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+p = Path(os.environ['TEST_HC_CONFIG'])
+c = json.loads(p.read_text())
+with open(os.environ['TEST_HC_LOG'], 'a') as f:
+    f.write(json.dumps(args) + '\n')
+labels = {'herdr.space': 'sp-core', 'herdr.tab': 'tb-core'}
+labels.update(c.get('labels', {}))
+rec = {'address': c.get('address', 't3'), 'state': c.get('state', 'live'), 'labels': labels,
+       'cwd': c['cwd'], 'turn': 0,
+       'status': {'app': c.get('app', 'agy'), 'state': c.get('status', 'idle')},
+       'foreground': {'name': 'agy', 'pid': c['pid'], 'cwd': c['cwd']}}
+if args[0] == '--version':
+    print('hc 0.1.20')
+elif args[0] == 'get':
+    if c.get('missing'):
+        print(json.dumps({'error': {'kind': 'not_found'}}), file=sys.stderr)
+        raise SystemExit(3)
+    print(json.dumps(rec))
+elif args[0] == 'ls':
+    print(json.dumps({'terminals': [{'address': rec['address'], 'state': rec['state']}]}))
+elif args[0] == 'read':
+    print('> ')
+elif args[0] == 'send':
+    c['typed'] = args[-1]
+    p.write_text(json.dumps(c))
+    print(json.dumps({'started': True, 'wait': {'status': 'working'}}))
+elif args[0] == 'keys':
+    print('{}')
+else:
+    raise SystemExit('unexpected operation: ' + repr(args))
+'''
+    (fakebin / 'hc').write_text(FAKE)
+    (fakebin / 'hc').chmod(0o755)
+    listener = core_socket(core_sock)
+    agent = subprocess.Popen([str(fakebin / 'agy'), '300'], cwd=cwd, env=env)
+    replacement = None
+    try:
+        save(config, {'pid': agent.pid, 'cwd': str(cwd)})
+        discovery = json.loads(attach('discover', '--session', 'test-core', '--backend', 'hc').stdout)
+        assert len(discovery) == 1 and discovery[0]['backend'] == 'hc', discovery
+        assert discovery[0]['family'] == 'agy' and discovery[0]['task'] is None
+        selection_args = ['inspect', '--backend', 'hc', '--session', 'test-core', '--pane', 't3',
+                          '--pid', str(agent.pid)]
+        identity = json.loads(attach(*selection_args).stdout)['identity']
+        assert identity['backend'] == 'hc' and identity['pane_id'] == 't3'
+        assert identity['native'] == {'kind': 'hc-terminal', 'value': 'test-core:t3'}
+        assert identity['space_id'] == 'sp-core' and identity['tab_id'] == 'tb-core'
+        selection = temp / 'selection.json'
+        selection.write_text(attach(*selection_args).stdout)
+        source = temp / 'authorization.txt'
+        source.write_text('explicit instruction for this live Core session')
+        proposed = temp / 'criteria.txt'
+        proposed.write_text('Answer the pending question in the bound session')
+        args = ['attach', 'core-research', '--selection', selection, '--source-file', source,
+                '--dod-file', proposed, '--title', 'Core research']
+        attach(*args)
+        bound = json.loads((home / 'state/core-research.external.json').read_text())
+        assert bound['identity']['backend'] == 'hc'
+        assert json.loads(attach('state', 'core-research').stdout)['identity'] == 'verified'
+        # Core's own `blocked` status is the question state, not a stall.
+        cfg(status='blocked')
+        assert json.loads(attach('state', 'core-research').stdout)['activity'] == 'waiting'
+        cfg(status='idle')
+        # A steer reaches the bound Core terminal through its recorded provider.
+        call([ROOT / 'bin/fm-send.sh', 'core-research', 'answer the pending question'])
+        assert json.loads(config.read_text())['typed'], 'the Core binding did not receive the steer'
+        # Core publishes no native session registration: a Pi transcript receipt
+        # has no source there, and the exact agent reply is the evidence instead.
+        attach('receipt', 'core-research', '--file', source, '--token', 'x', '--format', 'pi', ok=False)
+        # A different process in the same terminal is a lost binding, never repaired.
+        replacement = subprocess.Popen([str(fakebin / 'agy'), '300'], cwd=cwd, env=env)
+        cfg(pid=replacement.pid)
+        assert json.loads(attach('state', 'core-research').stdout)['identity'] != 'verified'
+        before = len(log.read_text().splitlines())
+        call([ROOT / 'bin/fm-send.sh', 'core-research', '--key', 'Enter'], ok=False)
+        after = [json.loads(line) for line in log.read_text().splitlines()[before:]]
+        assert not any(row[0] in ('send', 'keys') for row in after), after
+        replacement.terminate(); replacement.wait(timeout=5); replacement = None
+        cfg(pid=agent.pid)
+        # A terminal that already belongs to a task is never adopted.
+        cfg(labels={'firstmate.task': 'fm-someone-else'})
+        attach(*selection_args, ok=False)
+        cfg(labels={})
+        # Without a live core, discovery refuses AND contacts nothing: a probe
+        # must never start the core it is about to read.
+        env['FM_HC_SOCKET'] = str(temp / 'absent.sock')
+        log.write_text('')
+        attach('discover', '--session', 'test-core', '--backend', 'hc', ok=False)
+        assert log.read_text() == '', 'discovery contacted hc without a live core'
+        assert not (temp / 'absent.sock').exists(), 'discovery created core state'
+        env['FM_HC_SOCKET'] = str(core_sock)
+        assert marker.read_text() == 'uncommitted user material\n'
+        print('ok: Core binding, question state, steer delivery, Pi-receipt refusal, lost-process and unstarted-core guards')
+    finally:
+        if agent.poll() is None:
+            agent.terminate(); agent.wait(timeout=5)
+        if replacement and replacement.poll() is None:
+            replacement.terminate(); replacement.wait(timeout=5)
+        listener.terminate(); listener.wait(timeout=5)

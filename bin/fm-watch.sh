@@ -640,7 +640,10 @@ inbox_steer_check() {  # <window> <task>
       inbox_steer_escalate_unavailable "$w" "$task" "$rec"
       return 0
     fi
-    backend=herdr label=
+    # The binding names the provider it was proven on; an older binding with no
+    # backend field is a Herdr pane binding (the only shape that existed then).
+    backend=$(jq -r '.identity.backend // "herdr"' "$external_binding")
+    label=
     external_activity=$(jq -r '.activity' <<<"$external_observation")
   fi
   agent_state=$(fm_backend_agent_state "$backend" "$w" 2>/dev/null || true)

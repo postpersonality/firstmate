@@ -417,9 +417,13 @@ fm_test_reap_root_processes() {  # <root>
 }
 
 fm_test_cleanup() {
-  local d
+  local d pid
   fm_test_reap_watchers
   fm_test_reap_procevent_homes
+  for pid in "${FM_TEST_UNIX_SOCKET_PIDS[@]:-}"; do
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null || true
+  done
   for d in "${FM_TEST_CLEANUP_DIRS[@]:-}"; do
     [ -n "$d" ] && fm_test_remove_tree "$d"
   done
@@ -649,6 +653,38 @@ fm_fakebin() {
   local dir=$1 fakebin="$1/fakebin"
   mkdir -p "$fakebin"
   printf '%s\n' "$fakebin"
+}
+
+# fm_test_unix_socket <path>: bind a unix socket that accepts and immediately
+# closes connections, so a liveness probe requiring a real connect can be
+# exercised without a real service (bin/backends/hc.sh fm_backend_hc_core_live
+# and fm-external-session.py hc_core_live both refuse a stale socket file). The
+# listener's own command line carries <path>, so fm_test_reap_root_processes
+# ends it with the fixture root. Returns only once the socket accepts.
+FM_TEST_UNIX_SOCKET_PIDS=()
+fm_test_unix_socket() {  # <path>
+  local path=$1 i=0
+  rm -f "$path"
+  python3 - "$path" <<'PY' >/dev/null 2>&1 &
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.bind(sys.argv[1])
+s.listen(64)
+while True:
+    try:
+        conn, _ = s.accept()
+    except OSError:
+        break
+    conn.close()
+PY
+  FM_TEST_UNIX_SOCKET_PIDS+=("$!")
+  while [ "$i" -lt 200 ]; do
+    [ -S "$path" ] && return 0
+    sleep 0.05
+    i=$((i + 1))
+  done
+  printf 'not ok - fixture socket %s was never bound\n' "$path" >&2
+  return 1
 }
 
 fm_fake_exit0() {

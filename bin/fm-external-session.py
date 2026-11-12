@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -20,6 +22,19 @@ from fm_agent_process import process_sample, pane_sample
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = 'fm-external-session.v1'
 DOD = 'External DoD: '
+# Providers this owner can bind an existing agent on. `herdr` is the older
+# multiplexer (bin/backends/herdr.sh); `hc` is herdr-core, the terminal core
+# under Herdr.app (bin/backends/hc.sh). docs/herdr-core-migration.md owns the
+# mapping between their evidence models.
+BACKENDS = ('herdr', 'hc')
+# herdr-core status apps whose name is not already a firstmate harness family.
+# An app outside this table makes no family claim, so the process classifier
+# alone decides; a KNOWN app that contradicts it is an identity mismatch.
+HC_APP_FAMILY = {'claude-code': 'claude', 'codex-cli': 'codex', 'pi': 'pi',
+                 'pi-signed': 'pi-signed', 'codex': 'codex', 'cursor': 'cursor',
+                 'opencode': 'opencode', 'gemini': 'gemini', 'grok': 'grok',
+                 'kimi': 'kimi', 'omp': 'omp', 'agy': 'agy', 'hermes': 'hermes',
+                 'droid': 'droid', 'amp': 'amp'}
 
 
 class IdentityMismatch(ValueError):
@@ -98,6 +113,116 @@ def host_identity():
             'boot': Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
 
 
+def hc_bin():
+    """The resolved herdr-core binary, matching bin/backends/hc.sh's gate order."""
+    pinned = os.environ.get('FM_HC_BIN')
+    if pinned:
+        return pinned
+    for name in ('herdr-core', 'hc'):
+        found = shutil.which(name)
+        if found:
+            return found
+    raise ValueError("терминальный core herdr-core ('hc') не найден; привязка к Core невозможна")
+
+
+def hc_core_sock(session):
+    """The socket herdr-core uses for <session>, resolved without contacting it.
+
+    The layout is owned by bin/backends/hc.sh fm_backend_hc_core_sock; this
+    mirror keeps the same order so both never address different sockets.
+    """
+    pinned = os.environ.get('FM_HC_SOCKET')
+    if pinned:
+        return pinned
+    runtime = os.environ.get('XDG_RUNTIME_DIR')
+    if runtime:
+        return str(Path(runtime) / 'herdr-core' / f'{session}.sock')
+    state = os.environ.get('XDG_STATE_HOME') or str(Path.home() / '.local/state')
+    return str(Path(state) / 'herdr-core' / session / f'{session}.sock')
+
+
+def hc_core_live(session):
+    """A real connect to <session>'s own core socket, never liveness by file shape.
+
+    Every hc call against a missing socket STARTS a core, so a read-only probe
+    (discovery, binding verification, target resolution) must gate on this and
+    fail closed instead of creating one.
+    """
+    path = hc_core_sock(session)
+    if not Path(path).is_socket():
+        return False
+    probe = socket.socket(socket.AF_UNIX)
+    probe.settimeout(0.75)
+    try:
+        probe.connect(path)
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+
+
+def hc_env(session):
+    """Exactly <session>'s environment pins; inherited routing markers never win."""
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', session):
+        raise ValueError('недопустимая herdr-core session')
+    env = {k: v for k, v in os.environ.items()
+           if k not in ('HC_TERMINAL_ID', 'HC_TERMINAL_SOCKET', 'HC_SCOPE', 'HC_SOCKET')}
+    env['HC_SESSION'] = session
+    pinned = os.environ.get('FM_HC_SOCKET')
+    if pinned:
+        env['HC_SOCKET'] = pinned
+    return env
+
+
+def hc(session, *args):
+    """One herdr-core read in exactly <session>; no input is ever sent from here."""
+    return json.loads(run([hc_bin(), *args], env=hc_env(session)))
+
+
+def hc_terminal(session, address):
+    """`hc get` for one address, refusing to start the core it would read."""
+    if not re.fullmatch(r'[a-z][a-z0-9]*', address):
+        raise ValueError('недопустимый адрес терминала herdr-core')
+    if not hc_core_live(session):
+        raise ValueError(f"core herdr-core сессии '{session}' не отвечает; проверка без запуска нового core невозможна")
+    return hc(session, 'get', '--json', address)
+
+
+def hc_observation(session, address):
+    """Core's own record for one terminal plus the shared process classification.
+
+    Core reports one foreground process per terminal (docs/hc-backend.md
+    "Limits"), which is exactly the process the terminal is running; the harness
+    family still comes from the shared classifier, never from Core's label alone.
+    """
+    rec = hc_terminal(session, address)
+    if rec.get('state') != 'live':
+        raise ValueError('терминал herdr-core не активен')
+    foreground = rec.get('foreground') or {}
+    pid = foreground.get('pid')
+    if not isinstance(pid, int) or pid <= 1:
+        raise ValueError('терминал herdr-core не сообщил процесс')
+    sample = process_sample(pid)
+    if sample is None:
+        raise ValueError('процесс терминала не прочитан')
+    sample['name'] = foreground.get('name') or Path(sample.get('argv0') or '').name
+    rows = classified([sample])
+    if len(rows) != 1:
+        raise ValueError('классификация процесса терминала не получена')
+    labels = rec.get('labels') or {}
+    status = rec.get('status') or {}
+    agent = {'agent': status.get('app') or '',
+             'agent_status': status.get('state') or 'unknown',
+             'cwd': foreground.get('cwd') or rec.get('cwd'),
+             'terminal_id': address,
+             'tab_id': labels.get('herdr.tab') or '',
+             'space_id': labels.get('herdr.space') or '',
+             'turn': rec.get('turn'),
+             'pid': pid}
+    return agent, rows, rec
+
+
 def pane_observation(session, pane, require_agent=True):
     info = herdr(session, 'pane', 'process-info', '--pane', pane)
     data = pane_sample(info, pane)
@@ -121,7 +246,64 @@ def unmanaged(pid):
     return not any(row.startswith(b'FM_TASK_ID=') and row != b'FM_TASK_ID=' for row in raw)
 
 
-def inspect(session, pane, pid, parent_record=None, native_session=None):
+def inspect(backend, session, endpoint, pid, parent_record=None, native_session=None):
+    """Prove the exact process bound to <session>:<endpoint> on <backend>.
+
+    <endpoint> is a Herdr pane id for `herdr` and an hc terminal address
+    (`t12`) for `hc`. Both prove the SAME thing - the identity of the live
+    harness process at that terminal - from different structural records.
+    """
+    if backend == 'hc':
+        return inspect_hc(session, endpoint, pid)
+    if backend == 'herdr':
+        return inspect_herdr(session, endpoint, pid, parent_record, native_session)
+    raise ValueError(f'неизвестный backend привязки: {backend}')
+
+
+def inspect_hc(session, address, pid):
+    """Bind one live herdr-core terminal to the exact process Core reports.
+
+    Core publishes no native conversation registration the way Herdr's agent
+    registry does, so the binding's native identity is the terminal itself plus
+    the process evidence: Core's own record must name `pid` as that terminal's
+    single foreground process, with matching cwd. A different conversation
+    inside the same process is therefore not detectable from Core, which is why
+    the report's own reply is the confirmation evidence
+    (docs/herdr-core-migration.md "Binding an existing session to Core").
+    """
+    before = process_sample(pid)
+    if before is None:
+        raise ValueError('точный процесс отсутствует или его идентичность не прочитана')
+    agent, samples, record = hc_observation(session, address)
+    match = [p for p in samples if p['pid'] == pid and p['kind'] == 'agent']
+    if len(match) != 1:
+        raise IdentityMismatch('native-процесс не доказан в терминале herdr-core')
+    sample = match[0]
+    app = agent.get('agent') or ''
+    claimed = HC_APP_FAMILY.get(app)
+    if claimed and claimed != sample['family'] and not (sample['family'] == 'pi' and claimed == 'pi-signed'):
+        raise IdentityMismatch('семейство процесса противоречит записи herdr-core')
+    fields = ('pid', 'ticks', 'identity_paths', 'identity_files', 'cwd', 'argv0', 'name', 'cmdline_sha256')
+    after = process_sample(pid)
+    if after is None or any(before[k] != after[k] or before[k] != sample[k] for k in fields):
+        raise IdentityMismatch('процесс изменился во время проверки')
+    if agent['pid'] != pid:
+        raise IdentityMismatch('herdr-core называет другой процесс терминала')
+    if agent.get('cwd') != sample['cwd']:
+        raise IdentityMismatch('cwd процесса противоречит записи herdr-core')
+    if not agent.get('tab_id') or not agent.get('space_id'):
+        raise ValueError('терминал herdr-core не принадлежит пространству Herdr App')
+    if 'firstmate.task' in (record.get('labels') or {}):
+        raise ValueError('терминал уже принадлежит задаче Firstmate')
+    native = {'kind': 'hc-terminal', 'value': f'{session}:{address}'}
+    identity = {key: sample[key] for key in fields}
+    identity.update(host_identity(), backend='hc', family=sample['family'], session=session,
+                    pane_id=address, terminal_id=address, tab_id=agent['tab_id'],
+                    space_id=agent['space_id'], native=native)
+    return identity, agent
+
+
+def inspect_herdr(session, pane, pid, parent_record=None, native_session=None):
     before = process_sample(pid)
     if before is None:
         raise ValueError('точный процесс отсутствует или его идентичность не прочитана')
@@ -168,7 +350,7 @@ def inspect(session, pane, pid, parent_record=None, native_session=None):
     if agent.get('cwd') != sample['cwd']:
         raise IdentityMismatch('cwd процесса противоречит регистрации Herdr')
     identity = {key: sample[key] for key in fields}
-    identity.update(host_identity(), family=sample['family'], session=session, pane_id=pane,
+    identity.update(host_identity(), backend='herdr', family=sample['family'], session=session, pane_id=pane,
                     tab_id=agent['tab_id'], terminal_id=agent['terminal_id'], workspace_id=pane_info['workspace_id'], native=native)
     return identity, agent
 
@@ -276,8 +458,9 @@ class Home:
         if loss.exists() and read_json(loss).get('revision') == binding['revision']:
             return {'identity': 'lost', 'presence': 'unknown', 'detail': 'наблюдалась смена native session; нужно новое поручение'}
         try:
-            actual, agent = inspect(expected['session'], expected['pane_id'], expected['pid'],
-                                    expected['native'].get('record'), expected['native']['value'])
+            actual, agent = inspect(expected.get('backend', 'herdr'), expected['session'], expected['pane_id'],
+                                    expected['pid'], expected['native'].get('record'),
+                                    expected['native']['value'])
         except IdentityMismatch as exc:
             return {'identity': 'lost', 'presence': 'unknown', 'detail': str(exc)[:300] + '; нужно новое поручение'}
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
@@ -287,7 +470,12 @@ class Home:
                 atomic(loss, {'revision': binding['revision'], 'at': stamp(), 'native': actual['native']})
             return {'identity': 'lost', 'presence': 'unknown', 'detail': 'идентичность изменилась; нужно новое поручение'}
         raw = agent.get('agent_status', 'unknown')
-        activity = raw if raw in ('working', 'idle', 'done', 'waiting') else 'unknown'
+        # `blocked` is herdr-core's own word for a terminal waiting on the person
+        # (a permission prompt or a question) and maps onto the `waiting` activity
+        # Herdr reports for the same state; nothing else is inferred from prose.
+        activity = 'waiting' if raw == 'blocked' else raw
+        if activity not in ('working', 'idle', 'done', 'waiting'):
+            activity = 'unknown'
         if expected['native']['kind'] == 'agy-parent' and agent.get('agent_session', {}).get('value') != expected['native']['value']:
             activity = 'unknown'  # Child status does not describe the parent research.
         return {'identity': 'verified', 'presence': 'alive', 'activity': activity,
@@ -315,7 +503,9 @@ class Home:
     def attach(self, args):
         selected = read_json(args.selection)
         expected = selected.get('identity', selected)
-        identity, _ = inspect(expected['session'], expected['pane_id'], int(expected['pid']), expected['native'].get('record'), expected['native']['value'])
+        identity, _ = inspect(expected.get('backend', 'herdr'), expected['session'], expected['pane_id'],
+                              int(expected['pid']), expected['native'].get('record'),
+                              expected['native']['value'])
         if identity != expected:
             raise ValueError('выбранный процесс изменился; подключение отменено')
         if identity['pid'] == self.controller_pid() or not unmanaged(identity['pid']):
@@ -410,7 +600,7 @@ class Home:
             ob = self.observation(b)
             i = b['identity']
             result.append({'id': task, 'kind': 'external', 'origin': b['origin'], 'harness': i['family'],
-                           'project': i['cwd'], 'backend': 'herdr', 'external': {'binding': str(path), 'revision': b['revision'],
+                           'project': i['cwd'], 'backend': i.get('backend', 'herdr'), 'external': {'binding': str(path), 'revision': b['revision'],
                            'case': b['case'], 'identity': i, 'observation': ob},
                            'paths': {'status_log': {'path': str(self.state / f'{task}.status')}},
                            'endpoint': {'target': i['session'] + ':' + i['pane_id'],
@@ -420,7 +610,68 @@ class Home:
         return result
 
 
-def discover(home, session):
+def discover(home, backend, session):
+    if backend == 'hc':
+        return discover_hc(home, session)
+    if backend == 'herdr':
+        return discover_herdr(home, session)
+    raise ValueError(f'неизвестный backend привязки: {backend}')
+
+
+def discover_hc(home, session):
+    """Unmanaged live agents in one herdr-core session, from Core's own records.
+
+    Discovery never adopts an app window as proof of anything: only a terminal
+    Core reports as live, whose single foreground process the shared classifier
+    calls a harness, whose process carries no Firstmate owner, and that is not an
+    ancestor of this call. It reads and classifies; it never types or prompts.
+    """
+    if not hc_core_live(session):
+        raise ValueError(f"core herdr-core сессии '{session}' не отвечает; обнаружение без запуска нового core невозможно")
+    owned = set()
+    for path in home.state.glob('*.meta'):
+        if not path.is_symlink():
+            text = path.read_text()
+            sessions = re.findall(r'^hc_session=(.+)$', text, re.M)
+            if sessions == [session]:
+                owned.update(re.findall(r'^hc_terminal=(.+)$', text, re.M))
+    for path in home.state.glob('*.external.json'):
+        b = read_json(path)
+        i = b['identity']
+        if i.get('backend', 'herdr') == 'hc' and i['session'] == session and home.verify(b)['identity'] == 'verified':
+            owned.add(i['pane_id'])
+    ancestors = {home.controller_pid()}
+    pid = os.getpid()
+    while pid > 1:
+        ancestors.add(pid)
+        p = process_sample(pid)
+        if not p:
+            break
+        pid = p['ppid']
+    result = []
+    for term in (hc(session, 'ls', '--json').get('terminals') or []):
+        address = term.get('address')
+        if not address or address in owned or term.get('state') != 'live':
+            continue
+        try:
+            agent, rows, record = hc_observation(session, address)
+            labels = record.get('labels') or {}
+            if labels.get('firstmate.task'):
+                continue
+            for proc in rows:
+                if proc['kind'] != 'agent' or proc['pid'] in ancestors or not unmanaged(proc['pid']):
+                    continue
+                result.append({'family': proc['family'], 'cwd': proc['cwd'], 'pid': proc['pid'], 'ticks': proc['ticks'],
+                               'backend': 'hc', 'session': session, 'space': agent.get('space_id'),
+                               'space_label': labels.get('where'), 'tab': agent.get('tab_id'),
+                               'pane': address, 'terminal': address,
+                               'activity': agent.get('agent_status', 'unknown'), 'task': None})
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+            print(f"Discovery: терминал {session}:{address} не проверен; наличие агента неизвестно", file=sys.stderr)
+    return result
+
+
+def discover_herdr(home, session):
     # No scrollback, native transcripts or receipt files are read here.
     owned = set()
     for path in home.state.glob('*.meta'):
@@ -431,6 +682,8 @@ def discover(home, session):
                 owned.update(re.findall(r'^herdr_pane_id=(.+)$', text, re.M))
     for path in home.state.glob('*.external.json'):
         b = read_json(path)
+        if b['identity'].get('backend', 'herdr') != 'herdr':
+            continue
         if b['identity']['session'] == session and home.verify(b)['identity'] == 'verified':
             owned.add(b['identity']['pane_id'])
     ancestors = {home.controller_pid()}
@@ -464,10 +717,15 @@ def discover(home, session):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Точная привязка существующего агента Herdr; справка: fm-attach.sh --help')
+    parser = argparse.ArgumentParser(description='Точная привязка существующего агента Herdr или терминала herdr-core; справка: fm-attach.sh --help')
     sub = parser.add_subparsers(dest='command', required=True)
+    # --backend selects which provider owns <session>: the older herdr multiplexer
+    # (default, the shape every existing binding has) or herdr-core, whose
+    # --pane value is a terminal address such as t12.
     p = sub.add_parser('discover'); p.add_argument('--session', required=True)
+    p.add_argument('--backend', choices=BACKENDS, default='herdr')
     p = sub.add_parser('inspect'); p.add_argument('--session', required=True); p.add_argument('--pane', required=True)
+    p.add_argument('--backend', choices=BACKENDS, default='herdr')
     p.add_argument('--pid', type=int, required=True); p.add_argument('--parent-record'); p.add_argument('--native-session')
     p = sub.add_parser('attach'); p.add_argument('task'); p.add_argument('--selection', required=True)
     p.add_argument('--source-file', required=True); p.add_argument('--dod-file', required=True)
@@ -485,9 +743,10 @@ def main():
     args = parser.parse_args()
     home = Home()
     if args.command == 'discover':
-        result = discover(home, args.session)
+        result = discover(home, args.backend, args.session)
     elif args.command == 'inspect':
-        identity, _ = inspect(args.session, args.pane, args.pid, args.parent_record, args.native_session)
+        identity, _ = inspect(args.backend, args.session, args.pane, args.pid,
+                              args.parent_record, args.native_session)
         result = {'identity': identity, 'observed_at': stamp()}
     elif args.command == 'attach':
         result = home.attach(args)
@@ -512,6 +771,8 @@ def main():
                     receipt = evidence(args.file, args.token)
                     if args.format == 'pi':
                         native = b['identity']['native']
+                        if b['identity'].get('backend', 'herdr') == 'hc':
+                            raise ValueError('herdr-core не публикует регистрацию native session, поэтому Pi-receipt на Core невозможен; используйте --format ack-file с точной фразой ответа агента')
                         if b['identity']['family'] != 'pi' or native['kind'] != 'path' or Path(args.file).resolve() != Path(native['value']).resolve():
                             raise ValueError('Pi receipt должен происходить из привязанного native session path')
                         found = False

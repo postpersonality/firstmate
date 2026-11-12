@@ -390,6 +390,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/herdr-core-migration.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/codex-app-backend.md",
       "audience": "operator-current"
     },

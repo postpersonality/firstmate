@@ -3,6 +3,7 @@
 hc is an experimental session-provider backend for herdr-core, the terminal core under Herdr.app.
 It provides task terminals while Treehouse continues to provide git worktrees, the same split tmux uses.
 herdr-core is not Herdr 1: the `herdr` backend ([`herdr-backend.md`](herdr-backend.md)) talks to the `herdr` multiplexer, and the two share no socket, id space, or CLI.
+hc is the successor of that multiplexer support; [`herdr-core-migration.md`](herdr-core-migration.md) owns the capability map between them, the Core evidence model for binding an existing session, and the switching and rollback steps for one home.
 [`configuration.md`](configuration.md#runtime-backend-configbackend--fm_backend) owns shared selection and metadata semantics.
 This page owns operator setup and supported limits; the adapter header in `bin/backends/hc.sh` explains implementation decisions.
 [`verification/runtime-backends.md`](verification/runtime-backends.md#hc) records what was exercised against a real core.
@@ -86,6 +87,24 @@ hc_terminal=<address>
 Every adapter call sets exactly the recorded `HC_SESSION` and drops any inherited `HC_SOCKET`, which hc would otherwise prefer, so a task keeps reaching its own core even when the caller's environment names another one.
 `FM_HC_SOCKET` is the deliberate socket pin tests and labs use instead of an inherited `HC_SOCKET`.
 An input, capture, or close that carries the task label refuses a terminal whose `firstmate.task` or `firstmate.home` label does not match, and a close without a label still refuses a terminal that lacks this home's labels.
+
+## Reaching a Core endpoint
+
+A task's address is `<hc session>:<terminal address>`, such as `default:t7`; `bin/fm-backend.sh` owns the metadata contract and this page's "Task shape and metadata" owns the labels.
+Two things about addressing are specific to Core:
+
+- A single-colon target is ambiguous between providers: it is a tmux `session:window` and a herdr-core `session:address`.
+  `bin/fm-send.sh` resolves it by verification, probing Core only for a well-formed address whose session's own core is already answering, and refuses when two live owners exist.
+  The explicit `hc:`/`tmux:`/`herdr:` prefixes settle it directly.
+- Nothing here probes a core that is not already running: any `hc` call against a missing socket starts a core, so `fm_backend_hc_core_live` gates every read-only probe on a real connect first.
+
+[`herdr-core-migration.md`](herdr-core-migration.md) "Choosing the right system" owns the full precedence.
+
+## Lifecycle and existing sessions
+
+`bin/fm-control.sh interrupt|exit|relaunch` works on a Core task; `fm_control_backend_state_verified` accepts hc because `hc get` distinguishes a live terminal from a not-found or finished one, and absence is proven only by the recorded session's own answering core.
+`bin/fm-attach.sh --backend hc` binds an agent the user already runs in a Core terminal; [`herdr-core-migration.md`](herdr-core-migration.md) "Binding an existing session to Core" owns what Core can and cannot prove, including why receipts there are exact-reply acknowledgements rather than transcript reads.
+The away-mode supervisor accepts hc through the same generic injection dispatch as tmux.
 
 ## Operations
 

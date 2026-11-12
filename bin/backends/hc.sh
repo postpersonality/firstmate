@@ -124,6 +124,48 @@ EOF
   return 0
 }
 
+# fm_backend_hc_core_sock: the socket hc uses for <session>, resolved WITHOUT
+# contacting hc, because any hc call starts a missing core. This adapter owns
+# the layout (measured on hc 0.1.14 through 0.1.20); bin/fm-backend.sh's
+# fm_backend_detect_hc_core_sock delegates here so detection and every later
+# contact address the same socket. FM_HC_SOCKET is the deliberate pin used by
+# tests and the lab instead of an inherited HC_SOCKET.
+fm_backend_hc_core_sock() {  # <session>
+  local session=${1:-default}
+  if [ -n "${FM_HC_SOCKET:-}" ]; then
+    printf '%s' "$FM_HC_SOCKET"
+  elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    printf '%s/herdr-core/%s.sock' "$XDG_RUNTIME_DIR" "$session"
+  else
+    printf '%s/herdr-core/%s/%s.sock' "${XDG_STATE_HOME:-$HOME/.local/state}" "$session" "$session"
+  fi
+}
+
+# fm_backend_hc_core_live: something is accepting connections on <session>'s
+# core socket right now - a real connect, never liveness by file shape, because
+# a stale socket file would only make hc start a replacement core on contact.
+# A read-only probe that must not create state gates on this before any hc
+# call (fm-send.sh's Core target resolution, discovery, detection).
+fm_backend_hc_core_live() {  # <session>
+  local sock
+  sock=$(fm_backend_hc_core_sock "${1:-}")
+  [ -n "$sock" ] && [ -S "$sock" ] || return 1
+  if declare -F fm_backend_unix_sock_live >/dev/null 2>&1; then
+    fm_backend_unix_sock_live "$sock"
+    return
+  fi
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - "$sock" <<'PY' >/dev/null 2>&1
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(0.75)
+try:
+    s.connect(sys.argv[1])
+except OSError:
+    sys.exit(1)
+PY
+}
+
 # fm_backend_hc_env_run: run the resolved binary with exactly <session>'s env
 # pins. Ambient HC_TERMINAL_* routing markers are always stripped. An
 # inherited HC_SOCKET is stripped because hc lets it win over HC_SESSION;
@@ -442,6 +484,25 @@ fm_backend_hc_kill() {  # <target> [unused] [expected-label]
     *) echo "error: hc terminal $target is still present after its close" >&2 ;;
   esac
   return 1
+}
+
+# fm_backend_hc_endpoint_absence_recheck: whether the RECORDED session's own
+# core can prove <target> gone. Proof needs a live socket for exactly that
+# session first: a started replacement core would answer not-found about
+# terminals it never held, which proves nothing. Prints
+# missing|dead|alive|unknown for bin/fm-control-lib.sh's one absence verdict.
+# `missing` here is fm_backend_hc_agent_state's vocabulary: a structured
+# not_found, or a terminal whose program ended and can never host the agent
+# again - the same evidence a closed tmux window gives.
+fm_backend_hc_endpoint_absence_recheck() {  # <target>
+  fm_backend_hc_parse_target "${1:-}" || { printf 'unknown'; return 0; }
+  fm_backend_hc_core_live "$FM_BACKEND_HC_SESSION" || { printf 'unknown'; return 0; }
+  case "$(fm_backend_hc_agent_state "$1")" in
+    missing) printf 'missing' ;;
+    alive) printf 'alive' ;;
+    dead) printf 'dead' ;;
+    *) printf 'unknown' ;;
+  esac
 }
 
 # fm_backend_hc_agent_state: recovery-grade state (vocabulary owned by

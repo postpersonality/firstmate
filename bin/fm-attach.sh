@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Привязка явно выбранного существующего Herdr агента; FM_HOME обязателен.
+# Привязка явно выбранного существующего агента Herdr или терминала herdr-core;
+# FM_HOME обязателен.
 #
-# Usage: fm-attach.sh discover --session <name>
-#        fm-attach.sh inspect --session <name> --pane <pane> --pid <pid>
+# Usage: fm-attach.sh discover --session <name> [--backend herdr|hc]
+#        fm-attach.sh inspect --session <name> --pane <pane|t-address> --pid <pid>
+#                           [--backend herdr|hc]
 #                           [--parent-record <AGY-launcher-json> --native-session <known-parent-id>]
 #        fm-attach.sh attach <task> --selection <inspect-json> --source-file <поручение>
 #                           --dod-file <критерии> --title <название> [--context <контекст>]
@@ -43,6 +45,15 @@
 # Терминальный API не даёт атомарной доставки PID: guard выполняется перед каждым
 # вводом текста/клавиши, но остаётся интервал между проверкой и действием API.
 # Лабораторные вызовы идут только через fm-herdr-lab.sh run с явной session.
+# --backend herdr (по умолчанию) — старый мультиплексор, где --pane это pane id;
+# --backend hc — herdr-core под Herdr App, где --pane это адрес терминала (t12),
+# а привязка доказывается записью самого Core: терминал live, его единственный
+# foreground-процесс — указанный pid с тем же cwd, метки пространства Herdr App на
+# месте, и терминал не принадлежит ни одной задаче Firstmate. Core не публикует
+# регистрацию native session, поэтому receipt на Core — только ack-file (точная
+# фраза ответа агента), а Pi-транскрипт недоступен; смена разговора внутри того же
+# процесса из Core не видна и подтверждается только ответом самого агента.
+# Чтение Core не запускает его: при отсутствующем сокете проверка отказывает.
 set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 case "${1:-}" in

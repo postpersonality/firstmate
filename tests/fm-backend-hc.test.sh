@@ -360,6 +360,50 @@ test_required_tool_check_uses_the_adapter_resolver() {
   pass "hc: the bootstrap tool check resolves hc exactly as the adapter does"
 }
 
+# The control plane may claim an agent stopped only from a recovery-grade
+# reading, and "gone" only from the RECORDED session's own answering core: a
+# replacement core the probe started itself would answer not-found about
+# terminals it never held, which proves nothing.
+hc_control() {  # <script>
+  FM_TEST_ROOT="$FM_TEST_ROOT" hc_shell ". \"\$FM_TEST_ROOT/bin/fm-control-lib.sh\"
+    $1"
+}
+
+test_control_capabilities_and_absence_proof() {
+  local out sock tag
+  setup_case control
+  tag=$(hometag_of)
+  write_terminal "$D" t4 live "fm-c1" "$tag" 2.1.312 pi
+  write_terminal "$D" t5 finished "fm-c2" "$tag" "" ""
+
+  out=$(hc_control 'fm_control_backend_state_verified hc && echo state-verified
+    fm_control_backend_relaunch_supported hc && echo relaunch-supported
+    fm_control_absence_recheck_applies hc unreadable && echo unreadable-rechecked' 2>&1)
+  assert_contains "$out" state-verified "hc must have a recovery-grade state classifier"
+  assert_contains "$out" relaunch-supported "hc must be able to host a replacement agent"
+  assert_contains "$out" unreadable-rechecked "an unreachable hc read must go through the absence proof"
+
+  # No core socket: nothing may be contacted, and absence is unproven.
+  : > "$D/log"
+  out=$(hc_control 'fm_backend_hc_endpoint_absence_recheck fmtest:t4; echo
+    fm_control_endpoint_absence_verdict hc fmtest:t4 /nonexistent.meta' 2>&1)
+  assert_contains "$out" unknown "an absent core socket must prove nothing"
+  assert_contains "$out" "unproven"$'\t' "an absent core socket must be reported as unproven absence"
+  assert_equals "$(cat "$D/log")" "" "an absence proof must never contact hc without a live socket"
+
+  # Live core: its own answers prove aliveness and absence.
+  sock="$D/core.sock"
+  fm_test_unix_socket "$sock" || fail "fixture core socket"
+  out=$(FM_HC_SOCKET="$sock" hc_control 'fm_backend_hc_endpoint_absence_recheck fmtest:t4; echo
+    fm_backend_hc_endpoint_absence_recheck fmtest:t5; echo
+    fm_backend_hc_endpoint_absence_recheck fmtest:t404; echo
+    fm_control_endpoint_absence_verdict hc fmtest:t404 /nonexistent.meta' 2>&1)
+  assert_contains "$out" alive "a live terminal with an agent must read alive"
+  assert_contains "$out" missing "a finished terminal must read missing"
+  assert_contains "$out" "gone"$'\t' "a not-found terminal on its own live core must prove absence"
+  pass "hc: control capabilities and absence proof come from the recorded core only"
+}
+
 fm_test_run \
   test_hc_is_spawn_capable_and_needs_app_signals \
   test_required_tool_check_uses_the_adapter_resolver \
@@ -376,4 +420,5 @@ fm_test_run \
   test_endpoint_validation_binds_hc_meta \
   test_container_ensure_gates_binary_version_and_generation \
   test_send_text_submit_confirms_through_send_wait \
-  test_send_delimiters_and_binary_socket_pins
+  test_send_delimiters_and_binary_socket_pins \
+  test_control_capabilities_and_absence_proof

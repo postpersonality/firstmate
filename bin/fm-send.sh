@@ -7,6 +7,15 @@
 #   target. fm-send refuses unresolved guesses rather than falling back to a
 #   tmux window search, because a "successful" send to the wrong endpoint is
 #   worse than a loud failure.
+#   An explicit target's provider is decided by VERIFICATION, never shape
+#   alone: "<session>:<window>" is a tmux window and, identically,
+#   "<session>:<address>" is a herdr-core terminal, so a single-colon target is
+#   probed in both (hc only for a well-formed Core address whose session's core
+#   is already answering, because any hc call starts a missing core) and two
+#   live owners refuse as ambiguous. Name the provider explicitly to settle it:
+#   "hc:<session>:<address>", "tmux:<session>:<window>", or
+#   "herdr:<session>:<pane>". Recorded task and lane targets are unaffected:
+#   their meta already names the backend.
 # The text must be nonempty: an empty or whitespace-only message is refused
 # before anything is marked, recorded, or submitted, because an empty marked
 # secondmate request delivers only marker and correlation bytes and leaves the
@@ -360,6 +369,43 @@ fm_send_count_colons() { # <string>
   printf '%s' $((${#s} - ${#no_colons}))
 }
 
+# fm_send_explicit_backend_prefix: an explicit "<backend>:<target>" escape
+# hatch for an outside-home endpoint whose SHAPE is ambiguous between
+# providers. A single colon means a tmux session:window and, identically, a
+# herdr-core <session>:<address>, so "tmux:work:0" and "hc:default:t12" state
+# which provider the caller means instead of guessing. Sets
+# FM_SEND_PREFIX_BACKEND and FM_SEND_PREFIX_TARGET (never through a command
+# substitution, which would discard the second value) and returns 0 only for a
+# prefixed target.
+# herdr keeps its own two-part session:pane form, so its prefix is accepted
+# only for symmetry with the other two.
+FM_SEND_PREFIX_BACKEND=
+FM_SEND_PREFIX_TARGET=
+fm_send_explicit_backend_prefix() { # <raw>
+  FM_SEND_PREFIX_BACKEND=
+  FM_SEND_PREFIX_TARGET=
+  case "${1:-}" in
+    hc:*|tmux:*|herdr:*)
+      [ -n "${1#*:}" ] || return 1
+      FM_SEND_PREFIX_BACKEND=${1%%:*}
+      FM_SEND_PREFIX_TARGET=${1#*:}
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# fm_send_hc_target_candidate: <raw> is BOTH a well-formed herdr-core target
+# ("<session>:<t-address>") and names a session whose core is answering on its
+# own socket right now. The socket gate is what keeps resolution read-only:
+# any hc call against a missing socket STARTS a core, so nothing here may
+# contact hc without one (bin/backends/hc.sh fm_backend_hc_core_live).
+fm_send_hc_target_candidate() { # <raw>
+  fm_backend_source hc >/dev/null 2>&1 || return 1
+  fm_backend_hc_parse_target "$1" || return 1
+  fm_backend_hc_core_live "$FM_BACKEND_HC_SESSION"
+}
+
 # When an explicit outside-home target has no recorded harness, detect kiro
 # from the live pane's foreground process group so the kiro-only composer
 # rules apply (fm_composer_kiro_scope). The live e2e guard owns why this
@@ -387,7 +433,8 @@ EOF
 }
 
 fm_send_resolve_target() { # <raw-target>
-  local raw=$1 meta pane_meta target backend assumed colons id session hint
+  local raw=$1 meta pane_meta target backend colons id session hint
+  local prefix hc_candidate=0 tmux_live=0 hc_live=0
 
   RESOLVED_TARGET=""
   TARGET_BACKEND=""
@@ -409,7 +456,10 @@ fm_send_resolve_target() { # <raw-target>
     EXTERNAL_REVISION=$(jq -er '.revision' "$meta") || return 1
     RESOLVED_TARGET=$(jq -er '.identity | .session + ":" + .pane_id' "$meta") || return 1
     TARGET_HARNESS=$(jq -er '.identity.family' "$meta") || return 1
-    TARGET_BACKEND=herdr TARGET_META=$meta TARGET_SELECTOR=1
+    # The binding names the provider it was proven on; an older binding with no
+    # backend field is a Herdr pane binding (the only shape that existed then).
+    TARGET_BACKEND=$(jq -r '.identity.backend // "herdr"' "$meta") || return 1
+    TARGET_META=$meta TARGET_SELECTOR=1
     case "$raw" in *:*) TARGET_SELECTOR= ;; esac
     RESOLUTION_TRIED="external binding=$meta"
     return 0
@@ -482,22 +532,73 @@ fm_send_resolve_target() { # <raw-target>
     return 0
   fi
 
+  # An explicit "<backend>:<target>" prefix settles a shape that is genuinely
+  # ambiguous between providers, and is refused unless that named backend's own
+  # endpoint can be verified. A recorded task/lane still wins above: this is the
+  # escape hatch for endpoints outside this home only.
+  if fm_send_explicit_backend_prefix "$raw"; then
+    prefix=$FM_SEND_PREFIX_BACKEND
+    if ! fm_backend_target_exists "$prefix" "$FM_SEND_PREFIX_TARGET"; then
+      echo "error: explicit target '$raw' is not a live $prefix endpoint (tried metadata window/terminal lookup; backend=$prefix named by its own prefix). Prefixes are hc:, tmux:, and herdr:; use fm-<id> for a recorded task/lane." >&2
+      return 1
+    fi
+    RESOLVED_TARGET=$FM_SEND_PREFIX_TARGET
+    TARGET_BACKEND=$prefix
+    RESOLUTION_TRIED="meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=$prefix from its explicit prefix; endpoint=verified"
+    return 0
+  fi
+
   case "$raw" in
   *:*)
     colons=$(fm_send_count_colons "$raw")
     if [ "$colons" -ge 2 ]; then
-      assumed=herdr
-    else
-      assumed=tmux
+      if ! fm_backend_target_exists herdr "$raw"; then
+        echo "error: explicit target '$raw' is not a live herdr endpoint (tried meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=herdr). Use fm-<id> for a recorded task/lane, or pass a target whose backend endpoint can be verified." >&2
+        return 1
+      fi
+      RESOLVED_TARGET=$raw
+      TARGET_BACKEND=herdr
+      RESOLUTION_TRIED="meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=herdr; endpoint=verified"
+      return 0
     fi
-    if ! fm_backend_target_exists "$assumed" "$raw"; then
-      echo "error: explicit target '$raw' is not a live $assumed endpoint (tried meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=$assumed). Use fm-<id> for a recorded task/lane, or pass a target whose backend endpoint can be verified." >&2
+    # A single colon is a tmux session:window AND a herdr-core
+    # <session>:<address>. Resolve by verification rather than by shape, so a
+    # real Core terminal is never mistaken for a tmux window: probe hc only for
+    # a well-formed Core target whose session's core is already answering (a
+    # probe must never start one), and probe tmux as before. Exactly one
+    # verified owner wins; two owners refuse rather than guess.
+    hc_candidate=0 tmux_live=0 hc_live=0
+    fm_send_hc_target_candidate "$raw" && hc_candidate=1
+    if [ "$hc_candidate" = 1 ] && fm_backend_target_exists hc "$raw"; then
+      hc_live=1
+    fi
+    if fm_backend_target_exists tmux "$raw"; then
+      tmux_live=1
+    fi
+    case "$hc_live$tmux_live" in
+      10)
+        RESOLVED_TARGET=$raw
+        TARGET_BACKEND=hc
+        RESOLUTION_TRIED="meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=hc; core=running; endpoint=verified"
+        return 0
+        ;;
+      01)
+        RESOLVED_TARGET=$raw
+        TARGET_BACKEND=tmux
+        RESOLUTION_TRIED="meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=tmux; endpoint=verified"
+        return 0
+        ;;
+      11)
+        echo "error: explicit target '$raw' is live as both a tmux window and a herdr-core terminal, so it is ambiguous; say which one you mean with the hc: or tmux: prefix (hc:$raw / tmux:$raw), or target a recorded task with fm-<id>" >&2
+        return 1
+        ;;
+    esac
+    if [ "$hc_candidate" = 1 ]; then
+      echo "error: explicit target '$raw' is neither a live herdr-core terminal in the running session '${raw%%:*}' nor a live tmux session:window (tried metadata window/terminal lookup; backends=hc,tmux). Use fm-<id> for a recorded task/lane, or prefix the target with hc:/tmux: to name the provider." >&2
       return 1
     fi
-    RESOLVED_TARGET=$raw
-    TARGET_BACKEND=$assumed
-    RESOLUTION_TRIED="meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=$assumed; endpoint=verified"
-    return 0
+    echo "error: explicit target '$raw' is not a live tmux endpoint (tried meta=$STATE/$raw.meta; metadata window/terminal lookup; backend=tmux). Use fm-<id> for a recorded task/lane, or pass a target whose backend endpoint can be verified." >&2
+    return 1
     ;;
   esac
 
@@ -1177,7 +1278,9 @@ else
         exit 1
       fi
       CURRENT_INBOX_TARGET=$T
-      CURRENT_INBOX_BACKEND=herdr
+      # The binding names the provider it was proven on; a binding created before
+      # that field existed is a Herdr pane binding.
+      CURRENT_INBOX_BACKEND=$(jq -r '.identity.backend // "herdr"' "$TARGET_META")
     elif [ -f "$TARGET_META" ]; then
       CURRENT_INBOX_TARGET=$(fm_backend_target_of_meta "$TARGET_META")
       CURRENT_INBOX_BACKEND=$(fm_backend_of_meta "$TARGET_META")

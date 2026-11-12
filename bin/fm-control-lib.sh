@@ -357,14 +357,17 @@ fm_control_backend_supports_key() {  # <backend> <key>
 }
 
 # Whether <backend> has a recovery-grade agent-state classifier. tmux, herdr,
-# rex, and t3code implement fm_backend_agent_state; zellij, orca, cmux, and paseo report
+# rex, t3code, and hc implement fm_backend_agent_state; zellij, orca, cmux, and paseo report
 # `unverified`, and tern's `tern process` classifier answers for display but is
 # not promoted to this list, so no reading of theirs can prove an agent stopped.
+# hc qualifies for the same reason tmux and herdr do: `hc get` distinguishes a
+# live terminal from a not-found or finished one, and the terminal's foreground
+# process is classified by the shared owner rather than by Core's own label.
 # The control plane refuses a stop-proving verb there instead of reporting an
 # unprovable transition as success.
 fm_control_backend_state_verified() {  # <backend>
   case "${1-}" in
-    tmux|herdr|rex|t3code) return 0 ;;
+    tmux|herdr|rex|t3code|hc) return 0 ;;
   esac
   return 1
 }
@@ -389,10 +392,13 @@ fm_control_backend_exit_supported() {  # <backend>
 # relaunch promises. So t3code has no replacement to launch and a relaunch
 # is refused before anything is stopped (docs/t3code-backend.md "Active
 # limits"). zellij, orca, cmux, and paseo never reach this table: they fail
-# fm_control_backend_state_verified first.
+# fm_control_backend_state_verified first, and hc is session-provider-only
+# exactly like tmux: an existing terminal can host the replacement launch line,
+# and a proven-gone one is re-created by the launch owner like any other
+# provider.
 fm_control_backend_relaunch_supported() {  # <backend>
   case "${1-}" in
-    tmux|herdr|rex) return 0 ;;
+    tmux|herdr|rex|hc) return 0 ;;
   esac
   return 1
 }
@@ -403,11 +409,14 @@ fm_control_backend_relaunch_supported() {  # <backend>
 # passive reads never start a server, so a stopped server - which ends every
 # session on it - reads as unreachable rather than not-found, and only the
 # recheck (which may start the personal server) can turn that into a proof.
-# Passive readers keep the raw state.
+# hc joins it for the other half of that trade: its recheck refuses to start a
+# core, so a stopped core reads as unreachable too, and only a live socket for
+# the RECORDED session (bin/backends/hc.sh fm_backend_hc_core_live) can turn
+# that reading into a proof. Passive readers keep the raw state.
 fm_control_absence_recheck_applies() {  # <backend> <raw-state>
   case "${2-}" in
     missing) return 0 ;;
-    unreadable) [ "${1-}" = rex ] ;;
+    unreadable) case "${1-}" in rex|hc) return 0 ;; esac ;;
     *) return 1 ;;
   esac
 }
@@ -500,6 +509,17 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target> [meta]
         alive) printf 'alive\t' ;;
         missing) printf 'gone\t' ;;
         *) printf 'unproven\tthe T3 server could not be reached to re-read thread %s' "$target" ;;
+      esac
+      ;;
+    hc)
+      # The recorded session's own core must be answering before it can testify:
+      # a started replacement core would answer not-found about terminals it
+      # never held. A live core's not-found (or finished target) is then proof.
+      case "$(fm_backend_hc_endpoint_absence_recheck "$target")" in
+        dead) printf 'dead\t' ;;
+        alive) printf 'alive\t' ;;
+        missing) printf 'gone\t' ;;
+        *) printf 'unproven\tthe herdr-core session recorded for %s is not answering on its own socket, or its terminal could not be classified' "$target" ;;
       esac
       ;;
     *)

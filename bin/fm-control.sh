@@ -393,7 +393,9 @@ if [ -f "$EXTERNAL_BINDING" ]; then
     fi
   fi
   fm_external_verify "$EXTERNAL_BINDING" >/dev/null || exit 1
-  BACKEND=herdr
+  # The binding names the provider it was proven on; an older binding with no
+  # backend field is a Herdr pane binding (the only shape that existed then).
+  BACKEND=$(jq -r '.identity.backend // "herdr"' "$EXTERNAL_BINDING") || exit 1
   T=$(jq -er '.identity | .session + ":" + .pane_id' "$EXTERNAL_BINDING")
   RECORDED_HARNESS=$(jq -er '.identity.family' "$EXTERNAL_BINDING")
   KIND=external WT='' LABEL=''

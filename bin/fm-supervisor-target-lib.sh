@@ -48,10 +48,9 @@ fm_supervisor_in_rex() {
 #      Herdr app's terminals; compose the "<session>:<terminal-address>"
 #      target bin/backends/hc.sh records in meta's window= (session from
 #      $HC_SESSION, defaulting to "default"). Checked after tmux, herdr, and
-#      Rex, whose nested surfaces carry their own innermost markers. The away
-#      daemon does not support hc endpoints yet - resolving one here lets the
-#      supported-backend check fail loudly instead of silently mis-targeting
-#      the tmux fallback.
+#      Rex, whose nested surfaces carry their own innermost markers. An hc target
+#      resolves to the daemon-supported hc backend (bin/fm-supervise-daemon.sh),
+#      so a firstmate running in a Core terminal never falls back to tmux.
 #   4d. The live T3 thread running in this home (discover_supervisor_t3code_thread)
 #      - T3 puts nothing into the agent's environment, so this is a cwd match
 #      over T3's live threads, consulted only when t3code is explicitly
@@ -112,9 +111,11 @@ discover_supervisor_t3code_thread() {
 #   2. $TMUX_PANE set - tmux.
 #   3. $HERDR_ENV=1 (with $HERDR_PANE_ID present) - herdr.
 #   4. TERM_PROGRAM=rex (with $REX_SESSION and $REX_BLOCK present) - rex.
-#   4c. $HC_TERMINAL_ID (with $HC_TERMINAL_SOCKET present) - hc. The away
-#      daemon refuses hc today; resolving it here fails closed at the
-#      supported-backend check instead of steering tmux's firstmate:0.
+#   4c. $HC_TERMINAL_ID (with $HC_TERMINAL_SOCKET present) - hc, a herdr-core
+#      terminal (including every Herdr app terminal). The away daemon accepts it
+#      through the same generic injection dispatch as tmux (bin/fm-supervise-daemon.sh
+#      FM_SUPERVISOR_SUPPORTED_BACKENDS), so firstmate's own pane is never
+#      mis-addressed as tmux's firstmate:0.
 #   4d. A live T3 thread in this home - t3code (stderr quiet here; the target
 #      resolver reports an ambiguity once).
 #   5. FM_SUPERVISOR_BACKEND_DEFAULT (tmux) - matches the target fallback. Returns 1.

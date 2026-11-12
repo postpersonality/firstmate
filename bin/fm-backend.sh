@@ -305,14 +305,18 @@ fm_backend_detect_hc_usable() {
 
 # fm_backend_detect_hc_core_sock: the socket of the core the hc adapter
 # reaches for a new spawn, resolved WITHOUT contacting hc (any hc call starts
-# a missing core). FM_HC_SOCKET is the adapter's deliberate pin; otherwise
-# hc's own layout for ${HC_SESSION:-default}, measured on hc 0.1.14:
-# $XDG_RUNTIME_DIR/herdr-core/<session>.sock when XDG_RUNTIME_DIR is set,
-# else ${XDG_STATE_HOME:-$HOME/.local/state}/herdr-core/<session>/<session>.sock.
-# A layout this misses only fails the liveness probe - no switch, never a
-# wrong or newly started core.
+# a missing core). The layout itself is owned by the adapter
+# (bin/backends/hc.sh fm_backend_hc_core_sock, measured on hc 0.1.14 through
+# 0.1.20), which every caller here has already sourced through
+# fm_backend_detect_hc_usable; the inline copy below only answers a caller that
+# could not load the adapter at all, so detection never depends on a layout it
+# cannot read. FM_HC_SOCKET is the adapter's deliberate pin.
 fm_backend_detect_hc_core_sock() {
   local session=${HC_SESSION:-default}
+  if declare -F fm_backend_hc_core_sock >/dev/null 2>&1; then
+    fm_backend_hc_core_sock "$session"
+    return
+  fi
   if [ -n "${FM_HC_SOCKET:-}" ]; then
     printf '%s' "$FM_HC_SOCKET"
   elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then
