@@ -100,7 +100,7 @@ Records already created on Core keep their `backend=hc` and stay addressable, ex
 
 ## Known limits
 
-- Remote secondmates over Core's `hc machine` transport are not implemented; the guarded remote contract is multiplexer-only until that is decided.
+- Remote secondmates use the existing SSH/`fm-on` transport on every backend, including Core; a separate Core machine transport (`hc machine`) is not needed and is not used. The live half of that route needs a real remote host, so its verification here is the deterministic transport fixture plus the existing relaunch/parent-binding suites.
 - The app's sidebar, project groups, and layout presets remain app-owned; only the space name, tab name, tab order, and the post-close focus backstop are driven.
 - Core exposes no event stream to this repository, so supervision polls, exactly as it does on tmux.
 - Core reports one foreground process per terminal, so a launcher's harness is found through the process group on the same machine only.

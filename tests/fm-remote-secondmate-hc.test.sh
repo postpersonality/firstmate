@@ -26,12 +26,18 @@ printf '# home\n' > "$TARGET_HOME/AGENTS.md"
 # A fake herdr-core/hc CLI that records calls. The adapter's `--version` gate is
 # a local binary read, so it is allowed; anything that would touch a core from a
 # readiness check is a contract failure.
+# The fake answers the adapter's version gate, which is a local binary read.
 cat > "$FAKEBIN/herdr-core" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FM_FAKE_HC_LOG:?}"
-exit 1
+case "${1:-}" in
+  --version) printf 'hc %s\n' "${FM_FAKE_HC_VERSION:-0.1.20}" ;;
+  *) exit 1 ;;
+esac
 SH
 chmod +x "$FAKEBIN/herdr-core"
+# `hc` is an alias the adapter also accepts; a case below runs WITHOUT it, so
+# nothing here may depend on the alias being installed.
 cp "$FAKEBIN/herdr-core" "$FAKEBIN/hc"
 chmod +x "$FAKEBIN/hc"
 
@@ -73,6 +79,37 @@ doctor() {  # <args...>
   HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$TARGET_HOME" \
     FM_FAKE_HC_LOG="$HOME_DIR/hc-calls" XDG_RUNTIME_DIR="$RUN_DIR" \
     PATH="$FAKEBIN:$PATH" "$ROOT/bin/fm-remote-doctor.sh" "$@"
+}
+
+test_tool_gate_accepts_the_release_name_alone() {
+  local out bin_only
+  # A hermetic PATH with ONLY the `herdr-core` release name: no `hc` alias, and
+  # no real installed binary that could mask the gap.
+  bin_only="$TMP_ROOT/bin-core-only"
+  mkdir -p "$bin_only"
+  cp "$FAKEBIN/herdr-core" "$bin_only/herdr-core"
+  chmod +x "$bin_only/herdr-core"
+  for needed in bash env jq git id uname sed grep awk tr cat printf dirname basename mkdir rm mktemp date sort head tail cut sha256sum shasum python3; do
+    real=$(command -v "$needed" 2>/dev/null || true)
+    [ -z "$real" ] || ln -sf "$real" "$bin_only/$needed" 2>/dev/null || true
+  done
+  : > "$HOME_DIR/hc-calls"
+  out=$(HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$TARGET_HOME" \
+    FM_FAKE_HC_LOG="$HOME_DIR/hc-calls" XDG_RUNTIME_DIR="$RUN_DIR" \
+    PATH="$bin_only" "$ROOT/bin/fm-remote-doctor.sh" --backend hc 2>&1) || true
+  # This host deliberately lacks the other required tools, so the run reports a
+  # gap and stops before the readiness checks; the FACT under test is that the
+  # Core tool gate resolved the release name alone.
+  printf '%s' "$out" | grep -Fq "required hc=$bin_only/herdr-core" \
+    || fail "the tool gate did not accept the herdr-core release name alone: $out"
+  printf '%s' "$out" | grep -Fq 'MISSING' \
+    && printf '%s' "$out" | grep -q 'required hc=.*MISSING' \
+    && fail "the Core tool gate reported the release name missing: $out"
+  grep -qx -- '--version' "$HOME_DIR/hc-calls" \
+    || fail "the adapter's version gate was not run against herdr-core: $(cat "$HOME_DIR/hc-calls")"
+  grep -v -- '--version' "$HOME_DIR/hc-calls" > "$HOME_DIR/hc-touches" || true
+  [ -s "$HOME_DIR/hc-touches" ] && fail "the alias-free gate touched a core: $(cat "$HOME_DIR/hc-touches")"
+  pass "hc tool gate: the herdr-core release name alone satisfies the required-tool and version gate"
 }
 
 test_route_accepts_the_code_root_session() {
@@ -132,3 +169,4 @@ test_readiness_never_starts_a_core() {
 test_route_accepts_the_code_root_session
 test_route_refuses_another_code_root_and_a_moved_endpoint
 test_readiness_never_starts_a_core
+test_tool_gate_accepts_the_release_name_alone

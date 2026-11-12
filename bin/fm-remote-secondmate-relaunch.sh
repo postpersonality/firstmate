@@ -76,6 +76,34 @@ NEW_HARNESS=$(printf '%s\n' "$RELAUNCH_OUT" | sed -n 's/^harness=//p' | tail -1)
 NEW_MODEL=$(printf '%s\n' "$RELAUNCH_OUT" | sed -n 's/^model=//p' | tail -1)
 NEW_EFFORT=$(printf '%s\n' "$RELAUNCH_OUT" | sed -n 's/^effort=//p' | tail -1)
 [ -n "$NEW_HARNESS" ] || die "the host's route confirmation carried no harness to record"
+# The confirmation must describe the route THIS home recorded, not another
+# endpoint and not another code root's session: recording a harness change
+# against a moved or foreign endpoint would leave the parent following an
+# endpoint it no longer owns. Every backend it can carry is checked the same way.
+RECORDED_BACKEND=$(fm_meta_get "$META" remote_backend)
+[ -n "$RECORDED_BACKEND" ] || RECORDED_BACKEND=herdr
+REPORTED_BACKEND=$(printf '%s\n' "$RELAUNCH_OUT" | sed -n 's/^backend=//p' | tail -1)
+[ "$REPORTED_BACKEND" = "$RECORDED_BACKEND" ] \
+  || die "the host relaunched $ID on backend '${REPORTED_BACKEND:-missing}', but this home records '$RECORDED_BACKEND'; preserved the route for reconciliation"
+RECORDED_TARGET=$(fm_meta_get "$META" remote_target)
+REPORTED_TARGET=$(printf '%s\n' "$RELAUNCH_OUT" | sed -n 's/^target=//p' | tail -1)
+if [ -n "$RECORDED_TARGET" ] && [ "$REPORTED_TARGET" != "$RECORDED_TARGET" ]; then
+  die "the host confirmed endpoint '${REPORTED_TARGET:-missing}', but this home records '$RECORDED_TARGET'; preserved the route for reconciliation"
+fi
+case "$RECORDED_BACKEND" in
+  hc)
+    RECORDED_SESSION=$(fm_meta_get "$META" remote_hc_session)
+    REPORTED_SESSION=$(printf '%s\n' "$RELAUNCH_OUT" | sed -n 's/^hc_session=//p' | tail -1)
+    ;;
+  herdr)
+    RECORDED_SESSION=$(fm_meta_get "$META" remote_herdr_session)
+    REPORTED_SESSION=$(printf '%s\n' "$RELAUNCH_OUT" | sed -n 's/^herdr_session=//p' | tail -1)
+    ;;
+  *) RECORDED_SESSION='' REPORTED_SESSION='' ;;
+esac
+if [ -n "$RECORDED_SESSION" ] && [ "$REPORTED_SESSION" != "$RECORDED_SESSION" ]; then
+  die "the host confirmed session '${REPORTED_SESSION:-missing}', but this home records '$RECORDED_SESSION' for that endpoint; preserved the route for reconciliation"
+fi
 
 META_LOCK=$(fm_meta_lock_path "$META") || die "metadata lock path is invalid for $ID"
 fm_lock_acquire_wait "$META_LOCK"

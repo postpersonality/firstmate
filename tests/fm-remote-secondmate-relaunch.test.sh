@@ -84,12 +84,26 @@ case "$FM_FAKE_RELAUNCH_MODE" in
     effort=medium
     ;;
 esac
-printf 'relaunched %s harness=%s from=pi model=%s effort=%s backend=herdr endpoint=fm-remote:w1:p1 worktree=/srv/fm-home\n' \
-  "$id" "$harness" "$model" "$effort"
+fake_backend=${FM_FAKE_RELAUNCH_BACKEND:-herdr}
+case "$fake_backend" in
+  hc)
+    fake_target=${FM_FAKE_RELAUNCH_TARGET:-fm-remote:t7}
+    fake_session=${FM_FAKE_RELAUNCH_SESSION:-fm-remote}
+    ;;
+  *)
+    fake_target=${FM_FAKE_RELAUNCH_TARGET:-fm-remote:w1:p1}
+    fake_session=${FM_FAKE_RELAUNCH_SESSION:-fm-remote}
+    ;;
+esac
+printf 'relaunched %s harness=%s from=pi model=%s effort=%s backend=%s endpoint=%s worktree=/srv/fm-home\n' \
+  "$id" "$harness" "$model" "$effort" "$fake_backend" "$fake_target"
 printf 'schema=fm-remote-secondmate-control.v1\n'
-printf 'backend=herdr\n'
-printf 'target=fm-remote:w1:p1\n'
-printf 'herdr_session=fm-remote\n'
+printf 'backend=%s\n' "$fake_backend"
+printf 'target=%s\n' "$fake_target"
+case "$fake_backend" in
+  hc) printf 'hc_session=%s\n' "$fake_session" ;;
+  *) printf 'herdr_session=%s\n' "$fake_session" ;;
+esac
 printf 'harness=%s\n' "$harness"
 printf 'model=%s\n' "$model"
 printf 'effort=%s\n' "$effort"
@@ -97,9 +111,36 @@ printf 'effort=%s\n' "$effort"
 SH
 chmod +x "$FAKEBIN/fake-ssh"
 
+# The same parent record on the Core route: one code root's own session and one
+# terminal inside it.
+reset_meta_hc() {
+  fm_write_meta "$HOME_DIR/state/ios.meta" \
+    "window=remote:ios" \
+    "endpoint_task_id=ios" \
+    "worktree=/srv/fm-home" \
+    "project=/srv/fm" \
+    "harness=pi" \
+    "kind=secondmate" \
+    "mode=secondmate" \
+    "yolo=off" \
+    "model=openai-codex/gpt-5.6-sol" \
+    "effort=medium" \
+    "home=/srv/fm-home" \
+    "projects=alpha" \
+    "remote_host=remote-mac" \
+    "remote_root=/srv/fm" \
+    "remote_backend=hc" \
+    "remote_hc_session=fm-remote" \
+    "remote_hc_terminal=t7" \
+    "remote_target=fm-remote:t7"
+}
+
 run_relaunch() {  # <args...>
   env FM_HOME="$HOME_DIR" FM_SSH_BIN="$FAKEBIN/fake-ssh" \
     FM_FAKE_RELAUNCH_MODE="${FM_FAKE_RELAUNCH_MODE:-}" \
+    FM_FAKE_RELAUNCH_BACKEND="${FM_FAKE_RELAUNCH_BACKEND:-}" \
+    FM_FAKE_RELAUNCH_SESSION="${FM_FAKE_RELAUNCH_SESSION:-}" \
+    FM_FAKE_RELAUNCH_TARGET="${FM_FAKE_RELAUNCH_TARGET:-}" \
     FM_FAKE_SSH_LOG="${FM_FAKE_SSH_LOG:-}" \
     "$ROOT/bin/fm-remote-secondmate-relaunch.sh" "$@" 2>&1
 }
@@ -217,3 +258,35 @@ rm "$HOME_DIR/config/crew-effort"
 pass "the worker effort pin refuses a different remote relaunch effort before the host and fills an omitted one"
 
 echo "ALL TESTS PASSED"
+
+# --- the Core route relaunches through the same wrapper ---------------------
+reset_meta_hc
+FM_FAKE_RELAUNCH_BACKEND=hc
+OUT=$(run_relaunch ios claude claude-opus-5-5 medium); RC=$?
+unset FM_FAKE_RELAUNCH_BACKEND
+expect_code 0 "$RC" "a confirmed relaunch on the Core route should succeed"$'\n'"$OUT"
+assert_grep 'harness=claude' "$HOME_DIR/state/ios.meta" \
+  "the Core route did not record the confirmed harness"
+assert_grep 'remote_backend=hc' "$HOME_DIR/state/ios.meta" \
+  "the Core route backend was not preserved for follow-up reads and sends"
+assert_grep 'remote_hc_session=fm-remote' "$HOME_DIR/state/ios.meta" \
+  "the Core route session was not preserved"
+assert_grep 'remote_target=fm-remote:t7' "$HOME_DIR/state/ios.meta" \
+  "the Core route endpoint was not preserved"
+assert_grep 'remote_hc_terminal=t7' "$HOME_DIR/state/ios.meta" \
+  "the Core route terminal was not preserved"
+pass "a remote relaunch on the Core route records the confirmed runtime and keeps the same endpoint"
+
+# --- a host that confirms another code root's session is refused ------------
+reset_meta_hc
+cp "$HOME_DIR/state/ios.meta" "$TMP/ios-hc-before.meta"
+FM_FAKE_RELAUNCH_BACKEND=hc
+FM_FAKE_RELAUNCH_SESSION=fm-remote-0123456789abcdef
+OUT=$(run_relaunch ios claude claude-opus-5-5 medium); RC=$?
+unset FM_FAKE_RELAUNCH_BACKEND FM_FAKE_RELAUNCH_SESSION
+[ "$RC" -ne 0 ] || fail "a relaunch confirming another code root's session must be refused"
+assert_contains "$OUT" "records 'fm-remote' for that endpoint" \
+  "the refusal should name the session this home records"
+cmp -s "$TMP/ios-hc-before.meta" "$HOME_DIR/state/ios.meta" \
+  || fail "a refused Core relaunch changed the parent's route record"
+pass "a Core relaunch that confirms a foreign or moved endpoint is refused and changes nothing"

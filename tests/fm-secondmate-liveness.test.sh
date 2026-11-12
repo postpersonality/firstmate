@@ -951,7 +951,7 @@ test_remote_full_probe_rex_backend_drift() {
     || fail "a herdr route under a rex record must be reported, got: $out"
 
   out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND=tmux)
-  [ "$out" = "skipped|alive|0|||alive remote endpoint is recorded on backend 'tmux'; migrate or retire it explicitly" ] \
+  [ "$out" = "skipped|alive|0|||alive remote endpoint is recorded on backend 'tmux'; a remote endpoint runs only on herdr, rex, or hc, so migrate or retire it explicitly" ] \
     || fail "an unsupported remote backend must be reported, got: $out"
   pass "full probe: remote backend drift is reported, never migrated"
 }
@@ -1014,6 +1014,33 @@ test_relaunch_waits_for_other_mates_relaunch_lock
 test_sweep_refuses_relaunch_on_ledger_errors
 test_remote_poll_probe_maps_states
 test_remote_poll_probe_unreachable_preserves_route
+# The remote route allowlist decides whether recovery keeps a mate alive. Core
+# belongs in it exactly like the multiplexer and Rex, and anything else must
+# still be reported instead of adopted.
+test_remote_full_probe_hc_route() {
+  local w out
+  w=$(make_remote_probe_world_rex probe-hc)
+  sed -i.bak '/^remote_backend=/d;/^remote_rex_/d' "$w/home/state/rsm1.meta"
+  rm -f "$w/home/state/rsm1.meta.bak"
+  printf 'remote_backend=hc\nremote_hc_session=fm-remote\nremote_target=fm-remote:t7\nremote_hc_terminal=t7\n' \
+    >> "$w/home/state/rsm1.meta"
+
+  out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND=hc)
+  [ "$out" = 'alive|alive|0|||' ] || fail "a live hc route must stay alive, got: $out"
+  grep -q -- '--backend hc' "$w/ssh.log" \
+    || fail "the readiness gate did not ask the remote doctor about hc: $(cat "$w/ssh.log")"
+
+  out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND=herdr)
+  [ "$out" = "skipped|alive|0|||alive remote endpoint runs on backend 'herdr', but this home recorded 'hc'; migrate or retire it explicitly" ] \
+    || fail "a herdr route under an hc record must be reported, got: $out"
+
+  out=$(probe_remote "$w" full FM_FAKE_ROUTE_BACKEND=tmux)
+  [ "$out" = "skipped|alive|0|||alive remote endpoint is recorded on backend 'tmux'; a remote endpoint runs only on herdr, rex, or hc, so migrate or retire it explicitly" ] \
+    || fail "an unsupported backend must still be reported, got: $out"
+  pass "full probe: an hc route stays alive, and backend drift is still reported"
+}
+
+test_remote_full_probe_hc_route
 test_remote_full_probe_rex_route
 test_remote_full_probe_rex_backend_drift
 test_remote_full_probe_rex_readiness_verdicts
