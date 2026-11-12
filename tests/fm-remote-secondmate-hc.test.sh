@@ -296,6 +296,7 @@ test_hc_relaunch_uses_secondmate_home_for_control() {
 #!/usr/bin/env bash
 {
   printf 'FM_HOME=%s\n' "${FM_HOME:-}"
+  printf 'HC_LABEL_HOME=%s\n' "${HC_LABEL_HOME:-}"
   printf 'FM_ROOT_OVERRIDE=%s\n' "${FM_ROOT_OVERRIDE:-}"
   printf 'FM_STATE_OVERRIDE=%s\n' "${FM_STATE_OVERRIDE:-}"
   printf 'FM_DATA_OVERRIDE=%s\n' "${FM_DATA_OVERRIDE:-}"
@@ -310,7 +311,8 @@ SH
     FM_CONFIG_OVERRIDE="$home/config" FM_FAKE_CONTROL_LOG="$control_log" \
     "$fake_root/bin/fm-remote-secondmate-control.sh" relaunch "$id" pi openai-codex/gpt-6-luna xhigh 2>&1)
   assert_contains "$out" 'target=fm-remote-046fafda74bf37ae:t7' 'the host-local relaunch should retain its recorded Core target'
-  assert_contains "$(cat "$control_log")" "FM_HOME=$home" 'HC control must validate labels as the secondmate home'
+  assert_contains "$(cat "$control_log")" 'FM_HOME=/srv/firstmate-extra' 'HC relaunch must retain the code root as the active home'
+  assert_contains "$(cat "$control_log")" "HC_LABEL_HOME=$home" 'HC control must validate labels as the secondmate home'
   assert_contains "$(cat "$control_log")" 'FM_ROOT_OVERRIDE=/srv/firstmate-extra' 'HC control must retain the remote code-root identity'
   assert_contains "$(cat "$control_log")" "FM_STATE_OVERRIDE=$home/state/parent-route" 'HC control must retain the parent-route state owner'
   ID=$old_id TARGET_HOME=$old_home

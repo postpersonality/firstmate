@@ -269,29 +269,35 @@ test_capture_and_current_path_read_the_recorded_terminal() {
 }
 
 test_pi_empty_composer_uses_core_identity() {
-  local tag out before after
+  local tag out before after label_home
   setup_case composer-pi
-  tag=$(hometag_of)
+  label_home="$D/secondmate-home"
+  mkdir -p "$label_home"
+  printf '%s\n' hc-relaunch-owner > "$label_home/.fm-secondmate-home"
+  tag=$(FM_HOME="$label_home" FM_ROOT_OVERRIDE="$HOMEDIR" bash -c \
+    '. "'"$FM_TEST_ROOT"'/bin/fm-backend.sh"; fm_backend_source hc; fm_backend_hometag')
   write_terminal "$D" t1 live fm-a1 "$tag" pi pi
   jq '. + {status:{app:"pi",state:"done"}}' "$D/t1.json" > "$D/t1.json.tmp" \
     || fail 'could not add the Core Pi/done identity fixture'
   mv "$D/t1.json.tmp" "$D/t1.json" || fail 'could not publish the Core Pi/done identity fixture'
   printf '%s\n' 'transcript' '────────────────────────' '' '────────────────────────' ' footer' > "$D/t1.screen"
 
-  out=$(hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
-  assert_equals "$out" empty 'Core-reported idle Pi identity should prove its separated empty composer'
+  out=$(HC_LABEL_HOME='' hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  assert_equals "$out" unknown 'the code-root home must not prove a secondmate terminal empty'
+  out=$(HC_LABEL_HOME="$label_home" hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  assert_equals "$out" empty 'Core-reported idle Pi identity should prove its separated empty composer in the label home'
 
   jq '.status.state="blocked"' "$D/t1.json" > "$D/t1.json.tmp" \
     || fail 'could not set the blocked Pi state fixture'
   mv "$D/t1.json.tmp" "$D/t1.json" || fail 'could not publish the blocked Pi state fixture'
-  out=$(hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  out=$(HC_LABEL_HOME="$label_home" hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
   assert_equals "$out" unknown 'a blocked Pi must not prove an empty composer'
 
   jq '.status.state="done"' "$D/t1.json" > "$D/t1.json.tmp" \
     || fail 'could not restore the idle Pi state fixture'
   mv "$D/t1.json.tmp" "$D/t1.json" || fail 'could not publish the restored Pi state fixture'
   printf '%s\n' 'transcript' '────────────────────────' 'typed draft' '────────────────────────' ' footer' > "$D/t1.screen"
-  out=$(hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  out=$(HC_LABEL_HOME="$label_home" hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
   assert_equals "$out" pending 'real text in the Pi composer must remain pending'
 
   printf '%s\n' 'transcript' '────────────────────────' '' '────────────────────────' ' footer' > "$D/t1.screen"
@@ -299,11 +305,11 @@ test_pi_empty_composer_uses_core_identity() {
     || fail 'could not change the terminal owner fixture'
   mv "$D/t1.json.tmp" "$D/t1.json" || fail 'could not publish the changed terminal owner fixture'
   before=$(grep -c $'\x1fread\x1f' "$D/log" || true)
-  out=$(hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  out=$(HC_LABEL_HOME="$label_home" hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
   after=$(grep -c $'\x1fread\x1f' "$D/log" || true)
   assert_equals "$out" unknown 'a foreign terminal must not provide composer identity'
   assert_equals "$after" "$before" 'a foreign terminal must not be read for composer classification'
-  pass 'hc composer: idle Pi Core identity proves only the separated empty composer; blocked, typed, and foreign cases remain safe'
+  pass 'hc composer: Pi identity uses the explicit label home; blocked, typed, and foreign cases remain safe'
 }
 
 test_endpoint_validation_binds_hc_meta() {

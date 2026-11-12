@@ -230,8 +230,19 @@ fm_backend_hc_parse_target() {  # <target>
   FM_BACKEND_HC_ADDRESS=${target#*:}
 }
 
+# HC terminal labels identify the task home, while host-local remote control
+# keeps FM_HOME bound to the code root for secondmate safety checks. This
+# override changes only label derivation; it never changes session routing.
+fm_backend_hc_home_tag() {
+  if [ -n "${HC_LABEL_HOME:-}" ]; then
+    FM_HOME="$HC_LABEL_HOME" fm_backend_hometag
+  else
+    fm_backend_hometag
+  fi
+}
+
 fm_backend_hc_scoped_label() {  # <window-label>
-  printf '%s-%s' "$(fm_backend_hometag)" "$1"
+  printf '%s-%s' "$(fm_backend_hc_home_tag)" "$1"
 }
 
 # fm_backend_hc_get: `hc get --json` of the parsed target. Status 3 is hc's
@@ -259,7 +270,7 @@ fm_backend_hc_endpoint_state() {  # <target> [expected-label]
   IFS=$'\t' read -r state task home <<EOF
 $fields
 EOF
-  if [ -n "$expected" ] && { [ "$home" != "$(fm_backend_hometag)" ] \
+  if [ -n "$expected" ] && { [ "$home" != "$(fm_backend_hc_home_tag)" ] \
     || { [ "$expected" = '*' ] && [ -z "$task" ]; } \
     || { [ "$expected" != '*' ] && [ "$task" != "$expected" ]; }; }; then
     printf 'foreign'
@@ -421,7 +432,7 @@ fm_backend_hc_app_read_tab() {  # <address> [expected-label]
 # any foreign one makes the space not ours, so a shared space is never renamed.
 fm_backend_hc_app_space_is_ours() {  # <session> <space-terminals-json-array>
   local session=$1 terminals=$2 address addresses home fields task task_home
-  home=$(fm_backend_hometag)
+  home=$(fm_backend_hc_home_tag)
   # Read the list once, then iterate a plain word list: an hc call inside a
   # `read` loop shares its stdin, and this list must not depend on that.
   addresses=$(printf '%s' "$terminals" | jq -r '.[]?' 2>/dev/null) || return 1
@@ -523,7 +534,7 @@ fm_backend_hc_app_prior_tab() {  # <address>
 # into any parent.
 fm_backend_hc_create_task() {  # <session> <window-label> <cwd>
   local session=$1 label=$2 cwd=$3 home scoped dup out address
-  home=$(fm_backend_hometag)
+  home=$(fm_backend_hc_home_tag)
   scoped=$(fm_backend_hc_scoped_label "$label")
   dup=$(fm_backend_hc_cli "$session" ls --json --label "firstmate.task=$label" --label "firstmate.home=$home" 2>/dev/null) \
     || { echo "error: 'hc ls' failed for session '$session'; cannot create $label" >&2; return 1; }
@@ -604,7 +615,7 @@ fm_backend_hc_composer_identity() {  # <target> [expected-label] -> agent<TAB>st
   IFS=$'\t' read -r state app app_state foreground task home <<EOF
 $fields
 EOF
-  [ "$state" = live ] && [ "$home" = "$(fm_backend_hometag)" ] \
+  [ "$state" = live ] && [ "$home" = "$(fm_backend_hc_home_tag)" ] \
     || { printf 'probe-absent'; return 0; }
   if [ -n "$expected" ]; then
     if [ "$expected" = '*' ]; then
