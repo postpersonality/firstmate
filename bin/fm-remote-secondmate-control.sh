@@ -367,7 +367,7 @@ cmd_launch() {
 # re-resolve it here would silently drift the mate onto another runtime. `default`
 # explicitly clears an absent parent pin; `-` remains its compatibility spelling.
 cmd_relaunch() {
-  local id=$1 harness=$2 model=$3 effort=$4 effort_pin=${5:-}
+  local id=$1 harness=$2 model=$3 effort=$4 effort_pin=${5:-} control_home
   local -a control_args relaunch_env
 
   validate_id "$id"
@@ -390,7 +390,11 @@ cmd_relaunch() {
   # in its backend's dedicated session placement, and the parent already owns
   # both convergence legs, so the host-local spawn must not re-sync or
   # re-inherit against this host's own Firstmate copy.
-  relaunch_env=(FM_HOME="$FM_ROOT" FM_ROOT_OVERRIDE="$FM_ROOT"
+  # Core terminal labels bind the HC control plane to the secondmate home;
+  # retain the code root separately so session identity remains host-local.
+  control_home=$FM_ROOT
+  [ "$REMOTE_ENDPOINT_BACKEND" != hc ] || control_home=$TARGET_HOME
+  relaunch_env=(FM_HOME="$control_home" FM_ROOT_OVERRIDE="$FM_ROOT"
     FM_STATE_OVERRIDE="$CONTROL_STATE" FM_DATA_OVERRIDE="$CONTROL_DATA"
     FM_CONFIG_OVERRIDE="$TARGET_HOME/config" FM_SKIP_SECONDMATE_INHERIT=1
     FM_SKIP_SECONDMATE_SYNC=1 FM_WORKER_EFFORT_PIN_OVERRIDE="$effort_pin")

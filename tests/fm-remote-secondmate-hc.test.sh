@@ -274,6 +274,49 @@ SH
   pass 'hc secondmate spawn: prelaunch input and failed-spawn cleanup use the secondmate home identity'
 }
 
+test_hc_relaunch_uses_secondmate_home_for_control() {
+  local old_id=$ID old_home=$TARGET_HOME id=hc-relaunch-home home="$TMP_ROOT/relaunch-home"
+  local fake_root="$TMP_ROOT/relaunch-code" identity_home="$TMP_ROOT/relaunch-identity"
+  local session=fm-remote-046fafda74bf37ae control_log out source name
+  mkdir -p "$home/bin" "$home/data" "$home/config" "$home/state/parent-route" \
+    "$home/data/.parent-route" "$home/projects" "$fake_root/bin" "$identity_home/.firstmate"
+  printf '%s\n' "$id" > "$home/.fm-secondmate-home"
+  printf '# Firstmate\n' > "$home/AGENTS.md"
+  printf '/srv/firstmate-primary\n' > "$identity_home/.firstmate/remote-herdr-owner"
+  ID=$id TARGET_HOME=$home
+  write_route "$session" t7
+
+  for source in "$ROOT"/bin/*.sh; do
+    name=${source##*/}
+    [ "$name" = fm-control.sh ] && continue
+    ln -s "$source" "$fake_root/bin/$name" || fail "could not link $name into the remote-control fixture"
+  done
+  ln -s "$ROOT/bin/backends" "$fake_root/bin/backends" || fail 'could not link backend fixtures'
+  cat > "$fake_root/bin/fm-control.sh" <<'SH'
+#!/usr/bin/env bash
+{
+  printf 'FM_HOME=%s\n' "${FM_HOME:-}"
+  printf 'FM_ROOT_OVERRIDE=%s\n' "${FM_ROOT_OVERRIDE:-}"
+  printf 'FM_STATE_OVERRIDE=%s\n' "${FM_STATE_OVERRIDE:-}"
+  printf 'FM_DATA_OVERRIDE=%s\n' "${FM_DATA_OVERRIDE:-}"
+  printf 'FM_CONFIG_OVERRIDE=%s\n' "${FM_CONFIG_OVERRIDE:-}"
+  printf 'args=%s\n' "$*"
+} > "${FM_FAKE_CONTROL_LOG:?}"
+SH
+  chmod +x "$fake_root/bin/fm-control.sh"
+  control_log="$TMP_ROOT/relaunch-control-env"
+  out=$(HOME="$identity_home" FM_HOME="$home" FM_ROOT_OVERRIDE=/srv/firstmate-extra \
+    FM_STATE_OVERRIDE="$home/state/parent-route" FM_DATA_OVERRIDE="$home/data/.parent-route" \
+    FM_CONFIG_OVERRIDE="$home/config" FM_FAKE_CONTROL_LOG="$control_log" \
+    "$fake_root/bin/fm-remote-secondmate-control.sh" relaunch "$id" pi openai-codex/gpt-6-luna xhigh 2>&1)
+  assert_contains "$out" 'target=fm-remote-046fafda74bf37ae:t7' 'the host-local relaunch should retain its recorded Core target'
+  assert_contains "$(cat "$control_log")" "FM_HOME=$home" 'HC control must validate labels as the secondmate home'
+  assert_contains "$(cat "$control_log")" 'FM_ROOT_OVERRIDE=/srv/firstmate-extra' 'HC control must retain the remote code-root identity'
+  assert_contains "$(cat "$control_log")" "FM_STATE_OVERRIDE=$home/state/parent-route" 'HC control must retain the parent-route state owner'
+  ID=$old_id TARGET_HOME=$old_home
+  pass 'hc remote relaunch: lifecycle control uses the secondmate home while retaining the remote code root and route state'
+}
+
 test_readiness_never_starts_a_core() {
   local out
   : > "$HOME_DIR/hc-calls"
@@ -303,5 +346,6 @@ test_route_refuses_another_code_root_and_a_moved_endpoint
 test_readiness_never_starts_a_core
 test_tool_gate_accepts_the_release_name_alone
 test_secondary_remote_root_uses_its_owner_and_refuses_foreign_route
+test_hc_relaunch_uses_secondmate_home_for_control
 test_readiness_never_starts_a_core
 test_spawn_binds_prelaunch_send_and_abort_cleanup_to_secondmate_home

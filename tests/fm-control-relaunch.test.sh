@@ -2875,8 +2875,8 @@ test_reclaim_refuses_an_unreadable_endpoint() {
 
   out=$(run_spawn "$dir" rl63 --relaunch --harness claude); rc=$?
   expect_code 1 "$rc" "an unreadable endpoint must still refuse"
-  assert_contains "$out" "positively agent-free endpoint" \
-    "only a POSITIVELY proven agent-free endpoint may be relaunched into"
+  assert_contains "$out" "tmux absence cannot be proven from a task record" \
+    "an unreadable tmux endpoint must be refused because its recorded socket identity is unavailable"
   assert_absent "$dir/fake/created-windows" \
     "a refused relaunch must not create an endpoint"
   [ ! -s "$dir/fake/literal" ] || fail "a refused relaunch must launch nothing"

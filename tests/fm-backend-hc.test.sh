@@ -45,7 +45,9 @@ case "$cmd" in
     cat "$D/$last.json"
     ;;
   rm) [ -e "$D/rm-sticks" ] || rm -f "$D/$last.json"; printf '{}\n' ;;
-  read) printf 'screen of %s\n' "$last" ;;
+  read)
+    if [ -f "$D/$last.screen" ]; then cat "$D/$last.screen"; else printf 'screen of %s\n' "$last"; fi
+    ;;
   send)
     if [ -f "$D/send.exit" ]; then
       printf '{"error":{"kind":"%s"}}\n' "$(cat "$D/send.kind" 2>/dev/null || echo blocked)" >&2
@@ -264,6 +266,44 @@ test_capture_and_current_path_read_the_recorded_terminal() {
   assert_contains "$(cat "$D/log")" $'read\x1f--lines\x1f40\x1ft1' "capture asks for the requested history"
   assert_contains "$(cat "$D/log")" $'read\x1f--lines\x1f0\x1ft1' "visible capture reads the screen only"
   pass "hc: capture, visible capture, and current path read the recorded terminal"
+}
+
+test_pi_empty_composer_uses_core_identity() {
+  local tag out before after
+  setup_case composer-pi
+  tag=$(hometag_of)
+  write_terminal "$D" t1 live fm-a1 "$tag" pi pi
+  jq '. + {status:{app:"pi",state:"done"}}' "$D/t1.json" > "$D/t1.json.tmp" \
+    || fail 'could not add the Core Pi/done identity fixture'
+  mv "$D/t1.json.tmp" "$D/t1.json" || fail 'could not publish the Core Pi/done identity fixture'
+  printf '%s\n' 'transcript' '────────────────────────' '' '────────────────────────' ' footer' > "$D/t1.screen"
+
+  out=$(hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  assert_equals "$out" empty 'Core-reported idle Pi identity should prove its separated empty composer'
+
+  jq '.status.state="blocked"' "$D/t1.json" > "$D/t1.json.tmp" \
+    || fail 'could not set the blocked Pi state fixture'
+  mv "$D/t1.json.tmp" "$D/t1.json" || fail 'could not publish the blocked Pi state fixture'
+  out=$(hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  assert_equals "$out" unknown 'a blocked Pi must not prove an empty composer'
+
+  jq '.status.state="done"' "$D/t1.json" > "$D/t1.json.tmp" \
+    || fail 'could not restore the idle Pi state fixture'
+  mv "$D/t1.json.tmp" "$D/t1.json" || fail 'could not publish the restored Pi state fixture'
+  printf '%s\n' 'transcript' '────────────────────────' 'typed draft' '────────────────────────' ' footer' > "$D/t1.screen"
+  out=$(hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  assert_equals "$out" pending 'real text in the Pi composer must remain pending'
+
+  printf '%s\n' 'transcript' '────────────────────────' '' '────────────────────────' ' footer' > "$D/t1.screen"
+  jq '.labels["firstmate.task"]="fm-other"' "$D/t1.json" > "$D/t1.json.tmp" \
+    || fail 'could not change the terminal owner fixture'
+  mv "$D/t1.json.tmp" "$D/t1.json" || fail 'could not publish the changed terminal owner fixture'
+  before=$(grep -c $'\x1fread\x1f' "$D/log" || true)
+  out=$(hc_shell 'fm_backend_hc_composer_state fmtest:t1 fm-a1')
+  after=$(grep -c $'\x1fread\x1f' "$D/log" || true)
+  assert_equals "$out" unknown 'a foreign terminal must not provide composer identity'
+  assert_equals "$after" "$before" 'a foreign terminal must not be read for composer classification'
+  pass 'hc composer: idle Pi Core identity proves only the separated empty composer; blocked, typed, and foreign cases remain safe'
 }
 
 test_endpoint_validation_binds_hc_meta() {
@@ -576,6 +616,7 @@ fm_test_run \
   test_kill_proves_the_terminal_is_gone \
   test_kill_refuses_another_tasks_terminal \
   test_capture_and_current_path_read_the_recorded_terminal \
+  test_pi_empty_composer_uses_core_identity \
   test_endpoint_validation_binds_hc_meta \
   test_container_ensure_gates_binary_version_and_generation \
   test_send_text_submit_confirms_through_send_wait \

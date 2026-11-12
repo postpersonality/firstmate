@@ -591,14 +591,43 @@ fm_backend_hc_current_path() {  # <target> [expected-label]
 }
 
 fm_backend_hc_composer_caps() {
-  printf 'styled=0\ncursor=0\nidentity=0\nrows=%s\n' "$FM_COMPOSER_CAPTURE_LINES"
+  printf 'styled=0\ncursor=0\nidentity=1\nrows=%s\n' "$FM_COMPOSER_CAPTURE_LINES"
+}
+
+fm_backend_hc_composer_identity() {  # <target> [expected-label] -> agent<TAB>status | probe-absent
+  local target=$1 expected=${2:-} json fields state app app_state foreground task home
+  fm_backend_hc_target_ready "$target" "$expected" || { printf 'probe-absent'; return 0; }
+  json=$(fm_backend_hc_get "$target") || { printf 'probe-absent'; return 0; }
+  fields=$(printf '%s' "$json" | jq -r '[.state // "", .status.app // "", .status.state // "",
+    .foreground.name // "", .labels["firstmate.task"] // "", .labels["firstmate.home"] // ""] | @tsv' 2>/dev/null) \
+    || { printf 'probe-absent'; return 0; }
+  IFS=$'\t' read -r state app app_state foreground task home <<EOF
+$fields
+EOF
+  [ "$state" = live ] && [ "$home" = "$(fm_backend_hometag)" ] \
+    || { printf 'probe-absent'; return 0; }
+  if [ -n "$expected" ]; then
+    if [ "$expected" = '*' ]; then
+      [ -n "$task" ] || { printf 'probe-absent'; return 0; }
+    else
+      [ "$task" = "$expected" ] || { printf 'probe-absent'; return 0; }
+    fi
+  fi
+  [ "$app" = pi ] && [ "$foreground" = pi ] \
+    || { printf 'probe-absent'; return 0; }
+  case "$app_state" in idle|done|working|blocked) ;; *) printf 'probe-absent'; return 0 ;; esac
+  printf 'pi\t%s' "$app_state"
 }
 
 fm_backend_hc_composer_state() {  # <target> [expected-label] -> empty|pending|pending-unproven|unknown
-  local cap verdict
+  local cap caps verdict identity
   cap=$(fm_backend_hc_visible_capture "$1" "${2:-}") || { printf 'unknown'; return 0; }
-  verdict=$(fm_composer_classify_screen "$(fm_backend_hc_composer_caps)" "$cap")
-  [ "$verdict" != need-identity ] || verdict=unknown
+  caps=$(fm_backend_hc_composer_caps)
+  verdict=$(fm_composer_classify_screen "$caps" "$cap")
+  if [ "$verdict" = need-identity ]; then
+    identity=$(fm_backend_hc_composer_identity "$1" "${2:-}")
+    verdict=$(fm_composer_classify_screen "$caps" "$cap" '' "$identity")
+  fi
   printf '%s' "$verdict"
 }
 
