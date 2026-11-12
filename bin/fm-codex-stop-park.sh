@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Codex 0.163.0 model-free supervision. Native SessionStart registers the
+# Codex 0.163.0 and 0.167.2 model-free supervision. Native SessionStart registers the
 # session; asynchronous Stop owns one foreground arm and queues only a real
 # wake through `codex queue --thread`. This works in embedded CLI mode without
 # an app-server daemon. No terminal injection or separate event selector.
@@ -16,6 +16,8 @@
 # Homes without the opt-in, unsupported versions, manual session starts,
 # workers, and foreign session owners retain the existing foreground
 # checkpoint and turn-end guard.
+# A verified native Stop can recover a missing registration for its own live
+# lock, so an adapter update does not require restarting that session.
 #
 # state/.codex-park-session binds selection to the native session and fleet
 # lock PID. state/.codex-park.lock is the shared lock library's single-flight
@@ -85,7 +87,10 @@ verified_cli() {
     fi
     case "$executable" in */codex) ;; *) continue ;; esac
     [ -x "$executable" ] || return 1
-    [ "$("$executable" --version 2>/dev/null)" = 'codex-cli 0.163.0' ] || return 1
+    case "$("$executable" --version 2>/dev/null)" in
+      'codex-cli 0.163.0'|'codex-cli 0.167.2') ;;
+      *) return 1 ;;
+    esac
     CODEX_COMMAND=$executable
     return 0
   done < <(fm_harness_ancestry_pids)
@@ -100,6 +105,21 @@ registered() {
   [ -n "$registered_session" ] && [ "$registered_pid" = "$(cat "$STATE/.lock" 2>/dev/null)" ] || return 1
   [ -z "$SESSION" ] || [ "$SESSION" = "$registered_session" ] || return 1
   [ "$(cat "$FALLBACK" 2>/dev/null)" != "$registered_session" ]
+}
+
+native_session() {
+  local transcript
+  transcript=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // empty' 2>/dev/null)
+  [ -n "$SESSION" ] && opted_in && [ "$(cat "$FALLBACK" 2>/dev/null)" != "$SESSION" ] \
+    && fm_primary_root_matches "$FM_ROOT" && verified_cli \
+    && [ -f "$transcript" ] \
+    && head -n 1 "$transcript" | jq -e --arg session "$SESSION" \
+      '.type == "session_meta" and .payload.id == $session and .payload.originator == "codex-tui"' >/dev/null 2>&1
+}
+
+register_session() {
+  printf '%s\n%s\n' "$SESSION" "$(cat "$STATE/.lock")" > "$SESSION_FILE.tmp.$$" \
+    && mv -f "$SESSION_FILE.tmp.$$" "$SESSION_FILE"
 }
 
 capable() {
@@ -180,21 +200,23 @@ SESSION=$(printf '%s' "$PAYLOAD" | jq -r '.session_id // empty' 2>/dev/null)
 case "$SESSION" in ''|*[!A-Za-z0-9-]*) SESSION= ;; esac
 
 if [ "$MODE" = --session-start ]; then
-  transcript=$(printf '%s' "$PAYLOAD" | jq -r '.transcript_path // empty' 2>/dev/null)
-  if [ -n "$SESSION" ] && opted_in && [ "$(cat "$FALLBACK" 2>/dev/null)" != "$SESSION" ] \
-    && fm_primary_root_matches "$FM_ROOT" && verified_cli \
-    && [ -f "$transcript" ] \
-    && head -n 1 "$transcript" | jq -e --arg session "$SESSION" \
-      '.type == "session_meta" and .payload.id == $session and .payload.originator == "codex-tui"' >/dev/null 2>&1; then
+  if native_session; then
     export FM_CODEX_PARK_SESSION="$SESSION"
+    # Native hooks can retain a parent Codex's environment; the verified event owns this id.
+    export CODEX_THREAD_ID="$SESSION"
   fi
   printf '%s' "$PAYLOAD" | "$SCRIPT_DIR/fm-sessionstart-run.sh"
   rc=$?
   if [ -n "${FM_CODEX_PARK_SESSION:-}" ] && fm_session_lock_owned_by_self "$STATE"; then
-    printf '%s\n%s\n' "$SESSION" "$(cat "$STATE/.lock")" > "$SESSION_FILE.tmp.$$" \
-      && mv -f "$SESSION_FILE.tmp.$$" "$SESSION_FILE"
+    register_session
   fi
   exit "$rc"
+fi
+
+if ! registered && native_session && fm_primary_scope_matches "$FM_ROOT" "$STATE" \
+  && fm_session_lock_owned_by_self "$STATE"; then
+  export CODEX_THREAD_ID="$SESSION"
+  "$SCRIPT_DIR/fm-lock.sh" >/dev/null 2>&1 && register_session
 fi
 
 if [ "$MODE" = --guard ]; then

@@ -89,7 +89,7 @@ mkdir -p "$CODE/bin"
 git init -q "$CODE"
 git -C "$CODE" commit -q --allow-empty -m init
 : > "$CODE/AGENTS.md"
-cp "$ROOT/bin/fm-codex-stop-park.sh" "$ROOT/bin/fm-harness.sh" "$ROOT"/bin/*-lib.sh "$CODE/bin/"
+cp "$ROOT/bin/fm-codex-stop-park.sh" "$ROOT/bin/fm-harness.sh" "$ROOT/bin/fm-lock.sh" "$ROOT"/bin/*-lib.sh "$CODE/bin/"
 PARK="$CODE/bin/fm-codex-stop-park.sh"
 
 # The arm fixture reads its behavior from the home: `wake` reports a signal at
@@ -116,6 +116,7 @@ cat > "$CODE/bin/fm-sessionstart-run.sh" <<'SH'
 #!/usr/bin/env bash
 cat > "$FM_HOME/sessionstart-payload"
 printf '%s\n' "${FM_CODEX_PARK_SESSION:-}" > "$FM_HOME/sessionstart-park-session"
+printf '%s\n' "${CODEX_THREAD_ID:-}" > "$FM_HOME/sessionstart-thread"
 SH
 cat > "$CODE/bin/fm-turnend-guard.sh" <<'SH'
 #!/usr/bin/env bash
@@ -195,7 +196,7 @@ test_unconfigured_home_keeps_the_foreground_checkpoint() {
 
 test_version_gate_selects_only_the_verified_cli() {
   local home out version
-  for version in 0.163.0 0.164.0; do
+  for version in 0.163.0 0.167.2 0.164.0 0.167.3; do
     home=$(make_home "version-$version" opted-in)
     out=$(under_codex "$home" '
       printf "%s" "{\"session_id\":\"$SESSION_ID\",\"transcript_path\":\"$FM_HOME/transcript.jsonl\"}" \
@@ -203,13 +204,15 @@ test_version_gate_selects_only_the_verified_cli() {
       "$PARK" --capable; echo "capable=$?"
       '"$REGISTER"'
       "$PARK" --capable; echo "registered-capable=$?"
-    ' FM_FAKE_CODEX_VERSION="$version" 2>&1)
+    ' FM_FAKE_CODEX_VERSION="$version" CODEX_THREAD_ID=retained-parent-thread 2>&1)
     assert_contains "$out" "session-start=0" "session start under codex-cli $version: $out"
-    if [ "$version" = 0.163.0 ]; then
+    if [ "$version" = 0.163.0 ] || [ "$version" = 0.167.2 ]; then
       assert_equals "$SESSION_ID" "$(sed -n 1p "$home/state/.codex-park-session" 2>/dev/null)" \
         "the verified CLI's native session start must register the session"
       assert_equals "$SESSION_ID" "$(cat "$home/sessionstart-park-session")" \
         "the verified CLI's session start must select the park"
+      assert_equals "$SESSION_ID" "$(cat "$home/sessionstart-thread")" \
+        "the verified native payload must replace an inherited parent thread id"
       assert_contains "$out" "capable=0" "a registered verified session must be capable: $out"
     else
       assert_equals "" "$(cat "$home/sessionstart-park-session")" \
@@ -219,6 +222,34 @@ test_version_gate_selects_only_the_verified_cli() {
     fi
   done
   pass "the park is selected only for the verified codex-cli version"
+}
+
+test_native_stop_recovers_missing_registration() {
+  local home out variant
+  for variant in native missing-transcript foreign fallback; do
+    home=$(make_home "recover-$variant" opted-in)
+    out=$(under_codex "$home" '
+      case "$VARIANT" in
+        missing-transcript) rm "$FM_HOME/transcript.jsonl" ;;
+        foreign) printf "99999999\n" > "$FM_HOME/state/.lock" ;;
+        fallback) printf "%s\n" "$SESSION_ID" > "$FM_HOME/state/.codex-park-fallback" ;;
+      esac
+      printf "%s" "{\"session_id\":\"$SESSION_ID\",\"transcript_path\":\"$FM_HOME/transcript.jsonl\"}" \
+        | "$PARK"; echo "stop=$?"
+    ' VARIANT="$variant" CODEX_THREAD_ID=retained-parent-thread FM_FAKE_CODEX_VERSION=0.167.2 2>&1)
+    assert_contains "$out" "stop=0" "native Stop recovery: $out"
+    if [ "$variant" = native ]; then
+      assert_equals "$SESSION_ID" "$(sed -n 1p "$home/state/.codex-park-session" 2>/dev/null)" \
+        "a verified native Stop must recover the missing registration"
+      assert_equals "$SESSION_ID" "$(cat "$home/state/.lock-session" 2>/dev/null)" \
+        "Stop recovery must record its own native thread through fm-lock"
+      assert_equals 1 "$(queue_count "$home")" "the recovered park must deliver the real wake"
+    else
+      assert_absent "$home/state/.codex-park-session" "an ineligible Stop must not register"
+      assert_equals 0 "$(arm_count "$home")" "an ineligible Stop must not arm"
+    fi
+  done
+  pass "native Stop recovers a missing registration without bypassing transcript, ownership or fallback gates"
 }
 
 test_single_flight_claim_admits_one_park() {
@@ -531,6 +562,7 @@ test_host_quiet_boundary_retains_the_watcher() {
 
 test_unconfigured_home_keeps_the_foreground_checkpoint
 test_version_gate_selects_only_the_verified_cli
+test_native_stop_recovers_missing_registration
 test_single_flight_claim_admits_one_park
 test_stop_rearms_after_a_delivering_park_releases_its_claim delivered 1
 test_stop_rearms_after_a_delivering_park_releases_its_claim delivering 4

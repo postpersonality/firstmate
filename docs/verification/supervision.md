@@ -1034,6 +1034,22 @@ The safe command-channel contract is covered without a notification by `tests/fm
 
 ## Codex native model-free park (2026-10-19)
 
+Rechecked on Linux x86_64 with `codex-cli 0.167.2` on 2026-11-12 using an isolated home, the tracked hooks, and a registered custom check:
+
+```sh
+codex --no-daemon --no-alt-screen --dangerously-bypass-hook-trust \
+  -a never -s workspace-write -c 'model_reasoning_effort="xhigh"' \
+  -C "$FM_HOME" '<isolated supervision smoke prompt>'
+bash tests/fm-codex-stop-park.test.sh
+bash tests/fm-session-lock-ancestry.test.sh
+```
+
+The native session and lock sidecar recorded the same thread id, the asynchronous Stop recorded `outcome=waiting`, and the real custom check reached the model through the native queue with `outcome=delivered`.
+The native transcript recorded `Firstmate watcher wake: ... CODEX01672_LIVE_WAKE` followed by the model's `SMOKE_TRANSPORT_WAKE_1 CODEX01672_LIVE_WAKE`, without a new user message between them.
+The next Stop started a replacement park and resurfaced the unacknowledged wake.
+Nested tool execution failed with `app-server socket directory must be a user-owned directory with mode 0700`; this probe verifies waiting, delivery and model continuation, not successful tool handling or acknowledgement.
+The earlier complete native handling evidence below remains scoped to 0.163.0.
+
 Verified on macOS arm64 with `codex-cli 0.163.0` in an isolated named Herdr lab, using the tracked project hooks and an embedded native TUI:
 
 ```sh
