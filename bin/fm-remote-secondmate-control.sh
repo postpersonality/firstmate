@@ -115,7 +115,7 @@ validate_home() { # <id>
 meta_path() { printf '%s/%s.meta\n' "$CONTROL_STATE" "$1"; }
 
 remote_endpoint_load() {
-  local id=$1 herdr_session rex_server
+  local id=$1 herdr_session rex_server hc_session
   REMOTE_ENDPOINT_ERROR=
   REMOTE_ENDPOINT_META=$(meta_path "$id")
   if ! fm_backend_validate_task_endpoint "$REMOTE_ENDPOINT_META" "$id" 2>/dev/null; then
@@ -158,8 +158,30 @@ remote_endpoint_load() {
           ;;
       esac
       ;;
+    hc)
+      # The validator above already binds hc_session/hc_terminal and the
+      # <session>:<address> target. The remote contract adds the same namespace
+      # gate the multiplexer route uses: the recorded session must be THIS code
+      # root's own, so one code root never drives another's endpoint.
+      if ! remote_herdr_session_resolve; then
+        REMOTE_ENDPOINT_ERROR="no SHA-256 tool resolves to name the herdr-core session for code root $FM_ROOT"
+        return 1
+      fi
+      hc_session=$(fm_backend_meta_exact_value "$REMOTE_ENDPOINT_META" hc_session 2>/dev/null || true)
+      if [ "$hc_session" != "$REMOTE_HERDR_SESSION" ]; then
+        REMOTE_ENDPOINT_ERROR="remote secondmate $id endpoint is recorded in herdr-core session '${hc_session:-missing}', expected '$REMOTE_HERDR_SESSION'; refusing access until it is explicitly migrated"
+        return 1
+      fi
+      case "$REMOTE_ENDPOINT_TARGET" in
+        "$REMOTE_HERDR_SESSION":t?*) ;;
+        *)
+          REMOTE_ENDPOINT_ERROR="remote secondmate $id endpoint target '$REMOTE_ENDPOINT_TARGET' is outside herdr-core session '$REMOTE_HERDR_SESSION'; refusing access until it is explicitly migrated"
+          return 1
+          ;;
+      esac
+      ;;
     *)
-      REMOTE_ENDPOINT_ERROR="remote secondmate $id endpoint is recorded on backend '$REMOTE_ENDPOINT_BACKEND'; a remote secondmate runs only on herdr or rex; refusing access until it is explicitly migrated"
+      REMOTE_ENDPOINT_ERROR="remote secondmate $id endpoint is recorded on backend '$REMOTE_ENDPOINT_BACKEND'; a remote secondmate runs only on herdr, rex, or hc; refusing access until it is explicitly migrated"
       return 1
       ;;
   esac
@@ -224,6 +246,9 @@ print_route() { # <id>
       printf 'rex_session_id=%s\n' "$rex_session_id"
       printf 'rex_server=%s\n' "$rex_server"
       ;;
+    hc)
+      printf 'hc_session=%s\n' "$REMOTE_HERDR_SESSION"
+      ;;
   esac
   printf 'harness=%s\n' "$harness"
   printf 'model=%s\n' "$model"
@@ -263,7 +288,7 @@ cmd_launch() {
   # GUI login session, and a persistent `rex server start` server is a
   # detached daemon no SSH session owns. bin/fm-remote-doctor.sh is the
   # readiness owner for whichever backend the parent selected.
-  case "$selected_backend" in herdr|rex) ;; *) die "a remote secondmate runs only on the herdr or rex backend, not '$selected_backend'" ;; esac
+  case "$selected_backend" in herdr|rex|hc) ;; *) die "a remote secondmate runs only on the herdr, rex, or hc backend, not '$selected_backend'" ;; esac
   mkdir -p "$CONTROL_STATE" "$CONTROL_DATA"
   meta=$(meta_path "$id")
   if [ -f "$meta" ]; then
@@ -308,6 +333,13 @@ cmd_launch() {
   if [ "$selected_backend" = herdr ]; then
     remote_herdr_session_resolve || die "no SHA-256 tool resolves to name the Herdr session for code root $FM_ROOT"
     launch_env=("HERDR_SESSION=$REMOTE_HERDR_SESSION" "${launch_env[@]}")
+  fi
+  if [ "$selected_backend" = hc ]; then
+    # The host-local spawn creates the terminal in THIS code root's Core session,
+    # exactly as the multiplexer path pins HERDR_SESSION, so readiness,
+    # validation and later control all name the same session.
+    remote_herdr_session_resolve || die "no SHA-256 tool resolves to name the herdr-core session for code root $FM_ROOT"
+    launch_env=("HC_SESSION=$REMOTE_HERDR_SESSION" "${launch_env[@]}")
   fi
   if ! out=$(env "${launch_env[@]}" "$SCRIPT_DIR/fm-spawn.sh" "${ARGS[@]}" 2>&1); then
     [ -z "$out" ] || printf '%s\n' "$out" >&2

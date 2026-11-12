@@ -1602,11 +1602,11 @@ spawn_remote_secondmate() {
   fi
   case "${backend:--}" in
   -) backend=herdr ;;
-  herdr | rex) ;;
+  herdr | rex | hc) ;;
   *)
     fm_lock_release "$registry_lock" || true
     fm_lock_release "$SPAWN_TASK_LOCK" || true
-    echo "error: a remote secondmate runs only on the herdr or rex backend, not '$backend'" >&2
+    echo "error: a remote secondmate runs only on the herdr, rex, or hc backend, not '$backend'" >&2
     return 1
     ;;
   esac
@@ -1728,6 +1728,8 @@ spawn_remote_secondmate() {
   remote_herdr_session=
   remote_rex_session_id=
   remote_rex_server=
+  remote_hc_session=
+  remote_hc_terminal=
   case "$remote_backend" in
     herdr)
       remote_herdr_session=$(printf '%s\n' "$out" | sed -n 's/^herdr_session=//p' | tail -1)
@@ -1756,6 +1758,27 @@ spawn_remote_secondmate() {
         fm_lock_release "$registry_lock" || true
         fm_lock_release "$SPAWN_TASK_LOCK" || true
         echo "error: remote launch returned malformed Rex route metadata (session '${remote_rex_session_id:-missing}', server '${remote_rex_server:-missing}', target '${remote_target:-missing}'); preserving the remote route for reconciliation" >&2
+        return 1
+      fi
+      ;;
+    hc)
+      remote_hc_session=$(printf '%s\n' "$out" | sed -n 's/^hc_session=//p' | tail -1)
+      remote_hc_terminal=${remote_target#*:}
+      # The Core route pins the SAME per-code-root session namespace the
+      # multiplexer route owns (bin/fm-remote-herdr-identity-lib.sh), and its
+      # target must be that session's terminal address. A session from another
+      # namespace, a foreign endpoint, or a bare address is not a route this
+      # contract launched.
+      remote_hc_ok=1
+      fm_remote_herdr_session_name_valid "$remote_hc_session" || remote_hc_ok=0
+      [ "${remote_target%%:*}" = "$remote_hc_session" ] || remote_hc_ok=0
+      case "$remote_hc_terminal" in t?*) ;; *) remote_hc_ok=0 ;; esac
+      case "$remote_hc_terminal" in *[!0-9a-z]*) remote_hc_ok=0 ;; esac
+      if [ "$remote_hc_ok" -ne 1 ]; then
+        fm_lock_release "$remote_lock" || true
+        fm_lock_release "$registry_lock" || true
+        fm_lock_release "$SPAWN_TASK_LOCK" || true
+        echo "error: remote launch returned malformed herdr-core route metadata (session '${remote_hc_session:-missing}', target '${remote_target:-missing}'); preserving the remote route for reconciliation" >&2
         return 1
       fi
       ;;
@@ -1791,6 +1814,10 @@ spawn_remote_secondmate() {
       rex)
         echo "remote_rex_session_id=$remote_rex_session_id"
         echo "remote_rex_server=$remote_rex_server"
+        ;;
+      hc)
+        echo "remote_hc_session=$remote_hc_session"
+        echo "remote_hc_terminal=$remote_hc_terminal"
         ;;
     esac
     echo "remote_target=$remote_target"

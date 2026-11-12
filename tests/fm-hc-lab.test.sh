@@ -164,7 +164,7 @@ for patch in \
   write_terminals "$TERMINALS" "$patch"
   refuse 'FLEET-STATE TRIPWIRE FAILED' bash "$LAB" teardown "$session"
   [ -d "$FM_HC_LAB_DIR/$session" ] || fail "a real change removed evidence: $patch"
-  rm -rf "$FM_HC_LAB_DIR/$session"
+  rm -rf "${FM_HC_LAB_DIR:?}/$session"
 done
 printf 'ok - a rename, label, process, membership, lifecycle or unknown-field change still refuses\n'
 

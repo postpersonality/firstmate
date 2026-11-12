@@ -133,10 +133,10 @@ while [ "$#" -gt 0 ]; do
     --automatic) AUTOMATIC=1 ;;
     --backend)
       shift
-      case "${1:-}" in herdr | rex | any) DOCTOR_BACKEND=$1 ;; *) usage ;; esac
+      case "${1:-}" in herdr | rex | hc | any) DOCTOR_BACKEND=$1 ;; *) usage ;; esac
       ;;
     --backend=*)
-      case "${1#--backend=}" in herdr | rex | any) DOCTOR_BACKEND=${1#--backend=} ;; *) usage ;; esac
+      case "${1#--backend=}" in herdr | rex | hc | any) DOCTOR_BACKEND=${1#--backend=} ;; *) usage ;; esac
       ;;
     --worker-tool-probe)
       [ "${FM_REMOTE_JOB_ACTIVE:-}" = 1 ] || { printf 'error: worker tool probe requires the remote job worker\n' >&2; exit 64; }
@@ -158,12 +158,14 @@ if [ "$DOCTOR_BACKEND" = any ]; then
     DOCTOR_BACKEND=herdr
   elif command -v rex >/dev/null 2>&1; then
     DOCTOR_BACKEND=rex
+  elif command -v herdr-core >/dev/null 2>&1 || command -v hc >/dev/null 2>&1; then
+    DOCTOR_BACKEND=hc
   else
     DOCTOR_BACKEND=none
   fi
 fi
 case "$DOCTOR_BACKEND" in
-  herdr | rex) REQUIRED_TOOLS=(git jq "$DOCTOR_BACKEND" tasks-axi treehouse) ;;
+  herdr | rex | hc) REQUIRED_TOOLS=(git jq "$DOCTOR_BACKEND" tasks-axi treehouse) ;;
   *) REQUIRED_TOOLS=(git jq backend tasks-axi treehouse) ;;
 esac
 if [ "$DOCTOR_BACKEND" = herdr ] && [ "$MODE" != worker-tool-probe ]; then
@@ -174,6 +176,11 @@ if [ "$DOCTOR_BACKEND" = herdr ] && [ "$MODE" != worker-tool-probe ]; then
   HERDR_OWNER_DIR=$FM_REMOTE_HERDR_OWNER_DIR
   HERDR_OWNER_FILE=$FM_REMOTE_HERDR_OWNER_FILE
   HERDR_OWNER_ROOT=$FM_REMOTE_HERDR_OWNER_ROOT
+fi
+if [ "$DOCTOR_BACKEND" = hc ] && [ "$MODE" != worker-tool-probe ]; then
+  fm_remote_herdr_identity "$FM_ROOT" \
+    || { printf 'error: no SHA-256 tool resolves to name the herdr-core session for code root %s\n' "$FM_ROOT" >&2; exit 1; }
+  HC_SESSION_NAME=$FM_REMOTE_HERDR_SESSION
 fi
 LAUNCH_AGENT_PLIST="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.plist"
 LAUNCH_AGENT_LOG="$LAUNCH_AGENT_LOG_DIR/$LAUNCH_AGENT_LABEL.log"
@@ -603,7 +610,7 @@ report_required_tools_from_worker() {
   # probe reports `backend=MISSING` rather than resolving differently.
   local -a probe_args=(--worker-tool-probe)
   case "$DOCTOR_BACKEND" in
-    herdr | rex) probe_args+=(--backend "$DOCTOR_BACKEND") ;;
+    herdr | rex | hc) probe_args+=(--backend "$DOCTOR_BACKEND") ;;
   esac
   if ! job_id=$(fm_remote_job_stage "${HOME:-}" "$FM_ROOT" "${FM_HOME:-}" \
     fm-remote-doctor.sh "${probe_args[@]}" </dev/null); then
@@ -628,7 +635,7 @@ report_required_tools_from_worker() {
     fact=${line#required }
     name=${fact%%=*}
     value=${fact#*=}
-    case "$name" in git | jq | herdr | rex | backend | tasks-axi | treehouse | harness) ;; *) valid=0; continue ;; esac
+    case "$name" in git | jq | herdr | rex | hc | backend | tasks-axi | treehouse | harness) ;; *) valid=0; continue ;; esac
     case "$seen" in *" $name "*) valid=0; continue ;; esac
     seen="$seen$name "
     count=$((count + 1))
@@ -736,7 +743,7 @@ check_herdr() {
 # Reported only when no supported backend CLI resolves at all: one session-
 # provider gap rather than one gap per missing CLI.
 check_backend() {
-  record backend "human: neither the herdr nor the rex CLI resolves on the remote runtime PATH" \
+  record backend "human: none of the herdr, rex, or herdr-core CLIs resolves on the remote runtime PATH" \
     "install herdr from https://herdr.dev or Rex on that account, or add a ~/.local/bin wrapper for one; a remote second mate needs one session-provider backend"
 }
 
@@ -1055,6 +1062,60 @@ check_entrypoint_link() {
     "rerun this command with --fix to create it"
 }
 
+# --- herdr-core (hc) ---------------------------------------------------------
+# Core starts on ANY contact, so this doctor never calls it from a read path: it
+# resolves the code-root session's socket and proves liveness with a real
+# connect (bin/backends/hc.sh fm_backend_hc_core_live), and it reports an absent
+# or stale socket instead of starting one. The authorized launch path is what
+# creates a core.
+hc_adapter_load() {
+  [ -z "${FM_REMOTE_DOCTOR_HC_LOADED:-}" ] || return 0
+  [ -f "$SCRIPT_DIR/fm-backend.sh" ] && [ -f "$SCRIPT_DIR/backends/hc.sh" ] || return 1
+  # shellcheck source=bin/fm-backend.sh
+  . "$SCRIPT_DIR/fm-backend.sh" || return 1
+  fm_backend_source hc || return 1
+  FM_REMOTE_DOCTOR_HC_LOADED=1
+}
+
+check_hc() {
+  if ! command -v herdr-core >/dev/null 2>&1 && ! command -v hc >/dev/null 2>&1; then
+    record hc "human: neither herdr-core nor its hc alias resolves on the remote runtime PATH" \
+      "install Herdr Core on that account (bin/fm-install-hc.sh owns the pinned install), then rerun this command"
+    return 0
+  fi
+  if ! hc_adapter_load; then
+    record hc "human: the herdr-core adapter could not be loaded from $SCRIPT_DIR" \
+      "restore this host's Firstmate checkout, then rerun this command"
+    return 0
+  fi
+  if ! fm_backend_hc_version_check >/dev/null 2>&1; then
+    record hc "human: the installed herdr-core does not report 'hc x.y.z' at or above the verified minimum" \
+      "update Herdr Core on that account (bin/fm-install-hc.sh), then rerun this command"
+    return 0
+  fi
+  record hc "ok: $(fm_backend_hc_bin)"
+}
+
+check_hc_core() {
+  local sock
+  if ! hc_adapter_load; then
+    record hc-core "human: the herdr-core adapter could not be loaded from $SCRIPT_DIR" \
+      "restore this host's Firstmate checkout, then rerun this command"
+    return 0
+  fi
+  if fm_backend_hc_core_live "$HC_SESSION_NAME"; then
+    record hc-core "ok: session $HC_SESSION_NAME answers on its own socket"
+    return 0
+  fi
+  sock=$(fm_backend_hc_core_sock "$HC_SESSION_NAME" 2>/dev/null || true)
+  if [ -n "$sock" ] && { [ -e "$sock" ] || [ -L "$sock" ]; }; then
+    record hc-core "human: session $HC_SESSION_NAME has a socket at $sock that refuses connections, and this check never starts or replaces a core" \
+      "start that session's core from an authorized launch, or remove nothing and investigate the stale socket yourself"
+    return 0
+  fi
+  record hc-core "ok: no core is running for session $HC_SESSION_NAME yet; the authorized launch starts it"
+}
+
 run_checks() { # <resolved-login-shell>
   local shell=$1
   CHECK_NAMES=()
@@ -1063,6 +1124,7 @@ run_checks() { # <resolved-login-shell>
   case "$DOCTOR_BACKEND" in
     herdr) check_herdr ;;
     rex) check_rex ;;
+    hc) check_hc ;;
     *) check_backend ;;
   esac
   check_gui_session
@@ -1076,6 +1138,7 @@ run_checks() { # <resolved-login-shell>
       check_herdr_server
       ;;
     rex) check_rex_server ;;
+    hc) check_hc_core ;;
   esac
   check_entrypoint_link
 }
