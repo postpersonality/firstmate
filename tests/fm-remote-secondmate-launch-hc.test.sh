@@ -3,11 +3,11 @@
 # herdr-core route, over the deterministic SSH boundary.
 #
 # A remote second mate is launched by this home's fm-spawn, which hands the
-# launch to the remote host and then validates exactly what the host reports.
-# The fake SSH here answers only that launch call, so the assertions cover the
-# spawn-side parsing/validation branch a seeded route cannot: what a valid hc
-# reply records, and what a foreign or moved reply must refuse while keeping the
-# route for reconciliation. No SSH target, no Core, no new infrastructure.
+# launch to the remote host and then validates the host-owned route report. The
+# fake SSH answers that launch call with the session proved by the separate
+# secondary-owner control test; this covers parent-side publication and an
+# ordinary consumer without duplicating host-side ownership logic. No SSH target,
+# no Core, no new infrastructure.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -24,7 +24,7 @@ mkdir -p "$PARENT/state" "$PARENT/data" "$PARENT/config" "$PARENT/projects"
 printf 'pi\n' > "$PARENT/config/secondmate-harness"
 printf 'tmux\n' > "$PARENT/config/backend"
 printf '## In flight\n\n## Queued\n\n## Done\n' > "$PARENT/data/backlog.md"
-printf -- '- %s - Remote mate (host: remote-mac; root: /srv/fm; home: /srv/fm-home; scope: remote work; projects: alpha; added 2026-01-01)\n' \
+printf -- '- %s - Remote mate (host: remote-mac; root: /srv/firstmate-extra; home: /srv/fm-home; scope: remote work; projects: alpha; added 2026-01-01)\n' \
   "$ID" > "$PARENT/data/secondmates.md"
 
 # The fake SSH answers the launch handshake the way a healthy Core host does.
@@ -53,14 +53,14 @@ case "$decoded" in
     ;;
   *fm-remote-secondmate-control.sh*launch*)
     case "${FM_FAKE_HC_REPLY:-ok}" in
-      foreign)
-        printf 'backend=hc\ntarget=fm-remote-0123456789abcdef:t7\nhc_session=fm-remote-0123456789abcdef\nharness=pi\nmodel=default\neffort=default\n'
+      invalid)
+        printf 'backend=hc\ntarget=fm-remote-not-a-root-id:t7\nhc_session=fm-remote-not-a-root-id\nharness=pi\nmodel=default\neffort=default\n'
         ;;
       moved)
-        printf 'backend=hc\ntarget=fm-remote:t9\nhc_session=fm-remote\nharness=pi\nmodel=default\neffort=default\n'
+        printf 'backend=hc\ntarget=fm-remote-046fafda74bf37ae:t9\nhc_session=fm-remote-046fafda74bf37ae\nharness=pi\nmodel=default\neffort=default\n'
         ;;
       *)
-        printf 'backend=hc\ntarget=fm-remote:t7\nhc_session=fm-remote\nharness=pi\nmodel=default\neffort=default\n'
+        printf 'backend=hc\ntarget=fm-remote-046fafda74bf37ae:t7\nhc_session=fm-remote-046fafda74bf37ae\nharness=pi\nmodel=default\neffort=default\n'
         ;;
     esac
     exit 0
@@ -85,11 +85,11 @@ test_valid_hc_launch_records_the_route() {
   out=$(spawn env) || fail "a valid hc remote launch should succeed: $out"
   assert_grep "remote_backend=hc" "$PARENT/state/$ID.meta" \
     "the launch did not record the hc backend"
-  assert_grep "remote_hc_session=fm-remote" "$PARENT/state/$ID.meta" \
-    "the launch did not record the Core session"
+  assert_grep "remote_hc_session=fm-remote-046fafda74bf37ae" "$PARENT/state/$ID.meta" \
+    "the launch did not record the remote-owned Core session"
   assert_grep "remote_hc_terminal=t7" "$PARENT/state/$ID.meta" \
     "the launch did not record the Core terminal"
-  assert_grep "remote_target=fm-remote:t7" "$PARENT/state/$ID.meta" \
+  assert_grep "remote_target=fm-remote-046fafda74bf37ae:t7" "$PARENT/state/$ID.meta" \
     "the launch did not record the endpoint"
   # The published parent record is a ROUTE, and every later consumer reads these
   # four fields: recovery compares remote_backend, and send/control dispatch to
@@ -100,6 +100,8 @@ test_valid_hc_launch_records_the_route() {
   target=$(sed -n 's/^remote_target=//p' "$PARENT/state/$ID.meta" | tail -1)
   [ -n "$session" ] && [ -n "$terminal" ] && [ -n "$target" ] \
     || fail "the recorded route is missing a field later consumers read"
+  [ "$session" = fm-remote-046fafda74bf37ae ] \
+    || fail "the launch did not use /srv/firstmate-extra's host-owned session (got '$session')"
   [ "$target" = "$session:$terminal" ] \
     || fail "the recorded endpoint '$target' does not name its own session and terminal"
   assert_grep "window=remote:$ID" "$PARENT/state/$ID.meta" \
@@ -120,20 +122,20 @@ test_valid_hc_launch_records_the_route() {
   pass "remote hc launch: a valid host reply records backend, session, terminal, and an ordinary send consumes the published route"
 }
 
-test_foreign_or_moved_reply_is_refused_and_preserved() {
+test_invalid_reply_is_refused_and_preserved() {
   local out
   rm -f "$PARENT/state/$ID.meta"
   out=$(spawn env) || fail "the baseline hc launch for preservation setup failed: $out"
   cp "$PARENT/state/$ID.meta" "$TMP_ROOT/route-before-refusal.meta"
 
-  # A changed session belongs to another code root. Refuse it without replacing
-  # the already-published valid route; callers can still use that route to
-  # reconcile the host rather than losing their only endpoint record.
-  out=$(spawn env FM_FAKE_HC_REPLY=foreign) && fail "a foreign session reply was accepted: $out"
+  # Reject malformed route data without replacing the already-published valid
+  # route. The actual foreign-owner refusal belongs to the host-side control
+  # check in fm-remote-secondmate-hc.test.sh.
+  out=$(spawn env FM_FAKE_HC_REPLY=invalid) && fail "an invalid session reply was accepted: $out"
   assert_contains "$out" "malformed herdr-core route metadata" \
-    "the foreign-session refusal did not name the route"
+    "the invalid-session refusal did not name the route"
   cmp -s "$TMP_ROOT/route-before-refusal.meta" "$PARENT/state/$ID.meta" \
-    || fail "a refused changed-session reply overwrote the existing route"
+    || fail "a refused invalid route reply overwrote the existing route"
 
   # A fresh launch may legitimately land on a different terminal inside its own
   # session. The published endpoint must then describe that endpoint coherently;
@@ -141,12 +143,12 @@ test_foreign_or_moved_reply_is_refused_and_preserved() {
   # wrapper regression in fm-remote-secondmate-relaunch.test.sh.
   rm -f "$PARENT/state/$ID.meta"
   out=$(spawn env FM_FAKE_HC_REPLY=moved) || fail "a fresh launch on another terminal of its own session was refused: $out"
-  assert_grep "remote_target=fm-remote:t9" "$PARENT/state/$ID.meta" \
+  assert_grep "remote_target=fm-remote-046fafda74bf37ae:t9" "$PARENT/state/$ID.meta" \
     "the fresh launch did not record the endpoint the host reported"
-  assert_grep "remote_hc_session=fm-remote" "$PARENT/state/$ID.meta" \
+  assert_grep "remote_hc_session=fm-remote-046fafda74bf37ae" "$PARENT/state/$ID.meta" \
     "the fresh launch lost the session identity"
-  pass "remote hc launch: a changed unowned session is refused without changing the existing route, and a fresh own-session endpoint records coherently"
+  pass "remote hc launch: invalid route data is refused without changing the existing route, and a fresh own-session endpoint records coherently"
 }
 
 test_valid_hc_launch_records_the_route
-test_foreign_or_moved_reply_is_refused_and_preserved
+test_invalid_reply_is_refused_and_preserved

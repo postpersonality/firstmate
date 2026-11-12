@@ -70,7 +70,7 @@ write_route() {  # <hc-session> <hc-terminal> [window]
 }
 
 control() {  # <args...>
-  HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$TARGET_HOME" \
+  HOME="$HOME_DIR" FM_ROOT_OVERRIDE="${FM_TEST_ROOT_OVERRIDE:-$ROOT}" FM_HOME="$TARGET_HOME" \
     FM_FAKE_HC_LOG="$HOME_DIR/hc-calls" XDG_RUNTIME_DIR="$RUN_DIR" \
     PATH="$FAKEBIN:$PATH" "$ROOT/bin/fm-remote-secondmate-control.sh" "$@"
 }
@@ -142,6 +142,41 @@ test_route_refuses_another_code_root_and_a_moved_endpoint() {
   pass "hc route: another code root's session and a moved endpoint are both refused"
 }
 
+test_secondary_remote_root_uses_its_owner_and_refuses_foreign_route() {
+  local out secondary_session owner_file route_file owner_backup route_backup
+  local owner_was_present=0 route_was_present=0
+  owner_file="$HOME_DIR/.firstmate/remote-herdr-owner"
+  route_file="$TARGET_HOME/state/parent-route/$ID.meta"
+  owner_backup="$TMP_ROOT/remote-herdr-owner.before-secondary-test"
+  route_backup="$TMP_ROOT/route.before-secondary-test"
+  if [ -f "$owner_file" ]; then cp "$owner_file" "$owner_backup"; owner_was_present=1; fi
+  if [ -f "$route_file" ]; then cp "$route_file" "$route_backup"; route_was_present=1; fi
+  # The shared account's primary service belongs to /srv/firstmate-primary.
+  # A remote code root /srv/firstmate-extra must use its root-derived session,
+  # not the primary's fm-remote and not the caller's local code-root identity.
+  printf '%s\n' /srv/firstmate-primary > "$HOME_DIR/.firstmate/remote-herdr-owner"
+  secondary_session=fm-remote-046fafda74bf37ae
+  write_route "$secondary_session" t7
+  if ! out=$(FM_TEST_ROOT_OVERRIDE=/srv/firstmate-extra control route "$ID" 2>&1); then
+    fail "the secondary remote code root's own hc route was refused: $out"
+  fi
+  printf '%s' "$out" | grep -Fq "hc_session=$secondary_session" \
+    || fail "the secondary remote route did not report its owner-derived session: $out"
+
+  write_route fm-remote t7
+  if out=$(FM_TEST_ROOT_OVERRIDE=/srv/firstmate-extra control route "$ID" 2>&1); then
+    fail "the secondary remote root accepted the primary owner's hc route: $out"
+  fi
+  printf '%s' "$out" | grep -Fq "expected '$secondary_session'" \
+    || fail "the foreign-route refusal did not name the remote owner's expected session: $out"
+
+  # Restore every shared fixture input so readiness and other route checks can
+  # run after this test without inheriting the secondary owner's context.
+  if [ "$owner_was_present" -eq 1 ]; then cp "$owner_backup" "$owner_file"; else rm -f "$owner_file"; fi
+  if [ "$route_was_present" -eq 1 ]; then cp "$route_backup" "$route_file"; else rm -f "$route_file"; fi
+  pass "hc owner: /srv/firstmate-extra accepts its session under /srv/firstmate-primary ownership and refuses the primary's foreign route"
+}
+
 test_readiness_never_starts_a_core() {
   local out
   : > "$HOME_DIR/hc-calls"
@@ -170,3 +205,5 @@ test_route_accepts_the_code_root_session
 test_route_refuses_another_code_root_and_a_moved_endpoint
 test_readiness_never_starts_a_core
 test_tool_gate_accepts_the_release_name_alone
+test_secondary_remote_root_uses_its_owner_and_refuses_foreign_route
+test_readiness_never_starts_a_core

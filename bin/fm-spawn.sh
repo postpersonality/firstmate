@@ -1771,13 +1771,9 @@ spawn_remote_secondmate() {
       # contract launched.
       remote_hc_ok=1
       fm_remote_herdr_session_name_valid "$remote_hc_session" || remote_hc_ok=0
-      # The namespace check alone cannot tell this code root's session from
-      # another root's, so the reply must name the session THIS root owns.
-      if ! fm_remote_herdr_identity "$FM_ROOT" >/dev/null 2>&1; then
-        remote_hc_ok=0
-      elif [ "$remote_hc_session" != "$FM_REMOTE_HERDR_SESSION" ]; then
-        remote_hc_ok=0
-      fi
+      # Ownership is host-local: fm-remote-secondmate-control.sh resolves the
+      # remote code root's owner and validates the endpoint before it emits this
+      # SSH reply. The parent must not compare that session with its own root.
       [ "${remote_target%%:*}" = "$remote_hc_session" ] || remote_hc_ok=0
       case "$remote_hc_terminal" in t?*) ;; *) remote_hc_ok=0 ;; esac
       case "$remote_hc_terminal" in *[!0-9a-z]*) remote_hc_ok=0 ;; esac
