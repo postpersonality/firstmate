@@ -568,11 +568,12 @@ cmd_update() {
 }
 
 cmd_retire() {
-  local id=$1 force=${2:-} recorded_server current_server
+  local id=$1 force=${2:-} recorded_server current_server hc_label_home=
   validate_id "$id"
   validate_home "$id"
   [ -z "$force" ] || [ "$force" = --force ] || usage
   remote_endpoint_require "$id"
+  [ "$REMOTE_ENDPOINT_BACKEND" != hc ] || hc_label_home=$TARGET_HOME
   if [ "$REMOTE_ENDPOINT_BACKEND" = rex ]; then
     recorded_server=$(fm_backend_meta_exact_value "$REMOTE_ENDPOINT_META" rex_server)
     if ! fm_backend_source rex || ! current_server=$(fm_backend_rex_server_endpoint) \
@@ -586,12 +587,12 @@ cmd_retire() {
     FM_HOME="$FM_ROOT" FM_ROOT_OVERRIDE="$FM_ROOT" \
       FM_STATE_OVERRIDE="$CONTROL_STATE" FM_DATA_OVERRIDE="$CONTROL_DATA" \
       FM_CONFIG_OVERRIDE="$TARGET_HOME/config" FM_TEARDOWN_GUARD_DONE=1 \
-      "$SCRIPT_DIR/fm-teardown.sh" "$id" --force
+      HC_LABEL_HOME="$hc_label_home" "$SCRIPT_DIR/fm-teardown.sh" "$id" --force
   else
     FM_HOME="$FM_ROOT" FM_ROOT_OVERRIDE="$FM_ROOT" \
       FM_STATE_OVERRIDE="$CONTROL_STATE" FM_DATA_OVERRIDE="$CONTROL_DATA" \
       FM_CONFIG_OVERRIDE="$TARGET_HOME/config" FM_TEARDOWN_GUARD_DONE=1 \
-      "$SCRIPT_DIR/fm-teardown.sh" "$id"
+      HC_LABEL_HOME="$hc_label_home" "$SCRIPT_DIR/fm-teardown.sh" "$id"
   fi
 }
 

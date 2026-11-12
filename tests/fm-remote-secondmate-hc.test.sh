@@ -319,6 +319,58 @@ SH
   pass 'hc remote relaunch: lifecycle control uses the secondmate home while retaining the remote code root and route state'
 }
 
+test_hc_retire_uses_secondmate_home_for_label_guard() {
+  local old_id=$ID old_home=$TARGET_HOME id=hc-retire-home home="$TMP_ROOT/retire-home"
+  local fake_root="$TMP_ROOT/retire-code" identity_home="$TMP_ROOT/retire-identity"
+  local session=fm-remote-046fafda74bf37ae control_log out source name
+  mkdir -p "$home/bin" "$home/data" "$home/config" "$home/state/parent-route" \
+    "$home/data/.parent-route" "$home/projects" "$fake_root/bin" "$identity_home/.firstmate"
+  printf '%s\n' "$id" > "$home/.fm-secondmate-home"
+  printf '# Firstmate\n' > "$home/AGENTS.md"
+  printf '/srv/firstmate-primary\n' > "$identity_home/.firstmate/remote-herdr-owner"
+  ID=$id TARGET_HOME=$home
+  write_route "$session" t7
+
+  for source in "$ROOT"/bin/*.sh; do
+    name=${source##*/}
+    case "$name" in fm-control.sh|fm-guard.sh|fm-teardown.sh) continue ;; esac
+    ln -s "$source" "$fake_root/bin/$name" || fail "could not link $name into the remote-retire fixture"
+  done
+  ln -s "$ROOT/bin/backends" "$fake_root/bin/backends" || fail 'could not link backend fixtures'
+  cat > "$fake_root/bin/fm-guard.sh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  cat > "$fake_root/bin/fm-teardown.sh" <<'SH'
+#!/usr/bin/env bash
+{
+  printf 'FM_HOME=%s\n' "${FM_HOME:-}"
+  printf 'HC_LABEL_HOME=%s\n' "${HC_LABEL_HOME:-}"
+  printf 'FM_ROOT_OVERRIDE=%s\n' "${FM_ROOT_OVERRIDE:-}"
+  printf 'FM_STATE_OVERRIDE=%s\n' "${FM_STATE_OVERRIDE:-}"
+  printf 'FM_DATA_OVERRIDE=%s\n' "${FM_DATA_OVERRIDE:-}"
+  printf 'FM_CONFIG_OVERRIDE=%s\n' "${FM_CONFIG_OVERRIDE:-}"
+  printf 'args=%s\n' "$*"
+} > "${FM_FAKE_CONTROL_LOG:?}"
+printf 'teardown_called\n'
+SH
+  chmod +x "$fake_root/bin/fm-guard.sh" "$fake_root/bin/fm-teardown.sh"
+  control_log="$TMP_ROOT/retire-control-env"
+  out=$(HOME="$identity_home" FM_HOME="$home" FM_ROOT_OVERRIDE=/srv/firstmate-extra \
+    FM_STATE_OVERRIDE="$home/state/parent-route" FM_DATA_OVERRIDE="$home/data/.parent-route" \
+    FM_CONFIG_OVERRIDE="$home/config" FM_FAKE_CONTROL_LOG="$control_log" \
+    "$fake_root/bin/fm-remote-secondmate-control.sh" retire "$id" 2>&1) \
+    || fail "the recorded hc route could not enter guarded retirement: $out"
+  assert_contains "$out" 'teardown_called' 'the ordinary retire path did not invoke guarded teardown'
+  assert_contains "$(cat "$control_log")" 'FM_HOME=/srv/firstmate-extra' 'HC retirement must keep code-root identity active'
+  assert_contains "$(cat "$control_log")" "HC_LABEL_HOME=$home" 'HC retirement must validate labels as the secondmate home'
+  assert_contains "$(cat "$control_log")" 'FM_ROOT_OVERRIDE=/srv/firstmate-extra' 'HC retirement must retain remote code-root identity'
+  assert_contains "$(cat "$control_log")" "FM_STATE_OVERRIDE=$home/state/parent-route" 'HC retirement must retain parent-route state ownership'
+  assert_contains "$(cat "$control_log")" "args=$id" 'HC retirement must use the ordinary guarded teardown without force'
+  ID=$old_id TARGET_HOME=$old_home
+  pass 'hc remote retirement: guarded close uses the secondmate label home and preserves code-root identity'
+}
+
 test_readiness_never_starts_a_core() {
   local out
   : > "$HOME_DIR/hc-calls"
@@ -349,5 +401,6 @@ test_readiness_never_starts_a_core
 test_tool_gate_accepts_the_release_name_alone
 test_secondary_remote_root_uses_its_owner_and_refuses_foreign_route
 test_hc_relaunch_uses_secondmate_home_for_control
+test_hc_retire_uses_secondmate_home_for_label_guard
 test_readiness_never_starts_a_core
 test_spawn_binds_prelaunch_send_and_abort_cleanup_to_secondmate_home
