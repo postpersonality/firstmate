@@ -106,3 +106,73 @@ printf 'changed state\n' >> "$XDG_STATE_HOME/herdr-core/state"
 refuse 'FLEET-STATE TRIPWIRE FAILED' bash "$LAB" teardown fm-hclab-content
 [ -d "$FM_HC_LAB_DIR/fm-hclab-content" ] || fail 'a real content change removed evidence'
 printf 'ok - a real content change still fails verification\n'
+
+# The real core's terminal inventory is rewritten while agents work. ONLY its own
+# activity fields may differ between the baseline and the check; everything that
+# identifies a terminal, or that a person would notice (names, labels, lifecycle,
+# membership, processes), still refuses.
+TERMINALS="$XDG_STATE_HOME/herdr-core/terminals.json"
+write_terminals() {  # <file> [python-dict-patch]
+  python3 - "$1" "${2:-}" <<'PY'
+import json, sys
+base = {"terminals": [
+    {"address": "t1", "state": "live", "turn": 9, "news": 7, "status_ms": 1000,
+     "labels": {"herdr.space": "sp-a", "herdr.tab": "tb-a"},
+     "title": "⠦ fix login", "pid": 4242, "start_ms": 900,
+     "cwd": "/work/app", "argv": ["claude"], "exit_code": None,
+     "status": {"app": "claude", "state": "working"}},
+    {"address": "t2", "state": "live", "turn": 0, "news": 0, "status_ms": 5,
+     "labels": {}, "title": "⠧ shell", "pid": 4343, "start_ms": 910,
+     "cwd": "/work/other", "argv": ["nu"], "exit_code": None},
+]}
+if sys.argv[2]:
+    exec(sys.argv[2], {"data": base})
+with open(sys.argv[1], "w") as handle:
+    json.dump(base, handle)
+PY
+}
+
+# 1. Normal activity and a spinner animation are not damage.
+write_terminals "$TERMINALS"
+bash "$LAB" provision fm-hclab-activity
+write_terminals "$TERMINALS" '
+data["terminals"][0]["turn"] = 10
+data["terminals"][0]["news"] = 9
+data["terminals"][0]["status_ms"] = 2000
+data["terminals"][0]["status"]["state"] = "done"
+data["terminals"][0]["title"] = "⠧ fix login"
+data["terminals"][1]["title"] = "⠋ shell"
+'
+bash "$LAB" teardown fm-hclab-activity || fail 'normal activity and a spinner were treated as damage'
+[ ! -e "$FM_HC_LAB_DIR/fm-hclab-activity" ] || fail 'activity-only teardown retained the session'
+printf 'ok - core activity and spinner animation are not damage\n'
+
+for patch in \
+  'data["terminals"][0]["title"] = "refactor login"' \
+  'data["terminals"][0]["labels"]["herdr.tab"] = "tb-renamed"' \
+  'data["terminals"][0]["pid"] = 9999' \
+  'data["terminals"].append({"address": "t3", "state": "live"})' \
+  'data["terminals"][0]["state"] = "finished"' \
+  'data["terminals"][0]["exit_code"] = 1' \
+  'data["terminals"][0]["unmodelled"] = 1' \
+  'data["terminals"][0]["status"]["unmodelled_nested"] = 1' \
+  'data["terminals"][0]["extra"] = {"state": "working", "turn": 1}' \
+  'data["terminals"][0]["status"]["state"] = "blocked"'; do
+  write_terminals "$TERMINALS"
+  bash "$LAB" provision "fm-hclab-diff-$(printf '%s' "$patch" | cksum | cut -d' ' -f1)"
+  session="fm-hclab-diff-$(printf '%s' "$patch" | cksum | cut -d' ' -f1)"
+  write_terminals "$TERMINALS" "$patch"
+  refuse 'FLEET-STATE TRIPWIRE FAILED' bash "$LAB" teardown "$session"
+  [ -d "$FM_HC_LAB_DIR/$session" ] || fail "a real change removed evidence: $patch"
+  rm -rf "$FM_HC_LAB_DIR/$session"
+done
+printf 'ok - a rename, label, process, membership, lifecycle or unknown-field change still refuses\n'
+
+write_terminals "$TERMINALS"
+bash "$LAB" provision fm-hclab-corrupt
+printf '{"terminals": [' > "$TERMINALS"
+refuse 'refusing unverified teardown' bash "$LAB" teardown fm-hclab-corrupt
+[ -d "$FM_HC_LAB_DIR/fm-hclab-corrupt" ] || fail 'corrupted inventory removed evidence'
+rm -rf "$FM_HC_LAB_DIR/fm-hclab-corrupt"
+write_terminals "$TERMINALS"
+printf 'ok - a corrupted core inventory never verifies\n'

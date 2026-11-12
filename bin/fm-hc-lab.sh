@@ -183,10 +183,97 @@ fm_hclab_file_digest() { # <path>
   printf '%s' "$line"
 }
 
+# fm_hclab_terminals_digest <path>: the digest of a core terminal inventory with
+# ONLY its own activity fields normalised.
+#
+# The real core rewrites `terminals.json` continuously: a running agent's `turn`
+# and `news` counters advance, `status_ms` moves, its reported state flips between
+# working/idle/done, and a title carries an animated braille spinner. Comparing
+# those bytes makes any parallel supervision look like lab damage, which is a
+# false alarm rather than protection. This normalisation is deliberately narrow:
+# turn/news/status_ms, an activity-only `state`/`status` word, and a leading
+# spinner in a title. Everything else stays in the digest exactly as stored -
+# terminal identity, membership, root pid/start/cwd/argv, labels, lifecycle state,
+# exit/finished marks, real names, real title text and every unknown field - so a
+# rename, a label change, a replaced process, an added or removed terminal, or any
+# unmodelled edit still fails verification. Unreadable JSON is refused, never
+# skipped. What this proves is that the core's stable identity and content did not
+# change; it is not a proof about any counter-driven input of another process.
+fm_hclab_terminals_digest() { # <path>
+  local path=$1
+  if ! command -v python3 >/dev/null 2>&1; then
+    fm_hclab_error "python3 is required to compare the core's terminal inventory"
+    return 1
+  fi
+  python3 - "$path" <<'PY'
+import hashlib
+import json
+import re
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "rb") as handle:
+        data = json.load(handle)
+except (OSError, ValueError) as error:
+    print(f"lab tripwire: core terminal inventory unreadable ({error})", file=sys.stderr)
+    sys.exit(1)
+
+ACTIVITY = {"working", "idle", "done"}
+SPINNER = re.compile("^[\u2800-\u28ff]\\s*")
+
+
+def refuse(reason):
+    print(f"lab tripwire: core terminal inventory shape not provable ({reason})", file=sys.stderr)
+    raise SystemExit(1)
+
+
+# Schema positions only. The inventory's identity and every unknown branch stay
+# byte-identical in the digest; a nested field that merely happens to be called
+# state, turn or title is never rewritten.
+if not isinstance(data, dict):
+    refuse("root is not an object")
+# The installed core keeps `terminals` as an object keyed by its own numeric id;
+# a list form is accepted too, because that is what the CLI prints. Anything else
+# is an unprovable shape.
+terminals = data.get("terminals")
+if isinstance(terminals, dict):
+    entries = list(terminals.values())
+elif isinstance(terminals, list):
+    entries = terminals
+else:
+    refuse("terminals is neither an object nor a list")
+for terminal in entries:
+    if not isinstance(terminal, dict):
+        refuse("a terminal is not an object")
+    for key in ("turn", "news", "status_ms"):
+        value = terminal.get(key)
+        # The installed core stores these as integers and leaves status_ms null
+        # until a status is reported; both are activity, anything else is a shape
+        # this comparison does not model and must be refused rather than guessed.
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            refuse(f"{key} is not a number")
+        terminal[key] = 0
+    title = terminal.get("title")
+    if isinstance(title, str):
+        terminal["title"] = SPINNER.sub("", title)
+    status = terminal.get("status")
+    if isinstance(status, dict):
+        state = status.get("state")
+        if isinstance(state, str) and state in ACTIVITY:
+            status["state"] = "activity"
+
+canonical = json.dumps(data, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+print(hashlib.sha256(canonical.encode()).hexdigest())
+PY
+}
+
 fm_hclab_fleet_entry() { # <path>
   local path=$1 size digest limit
   if [ -S "$path" ]; then
-    printf '%s socket -' "$path"
+    printf '%s socket -\n' "$path"
     return 0
   fi
   size=$(fm_hclab_file_size "$path") || return 1
@@ -197,8 +284,18 @@ fm_hclab_fleet_entry() { # <path>
     fm_hclab_error "refusing to compare '$path' by metadata only: $size bytes exceeds the $limit-byte digest limit"
     return 1
   fi
+  case ${path##*/} in
+    terminals.json)
+      # The normalised digest is the whole comparison for this file: its raw byte
+      # length moves with the very activity counters that are normalised, so a
+      # size check here would reintroduce the false alarm.
+      digest=$(fm_hclab_terminals_digest "$path") || return 1
+      printf '%s - %s\n' "$path" "$digest"
+      return 0
+      ;;
+  esac
   digest=$(fm_hclab_file_digest "$path") || return 1
-  printf '%s %s %s' "$path" "$size" "$digest"
+  printf '%s %s %s\n' "$path" "$size" "$digest"
 }
 
 fm_hclab_fleet_state() ( # <root>...

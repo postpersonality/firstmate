@@ -15,6 +15,7 @@ This page owns the migration map between them: what already moved, what stays be
 
 Every row names where the capability lived, where it lives now, and what proves it.
 `migrated` means the Core path exists and is exercised by a test named in the last column.
+The lab's teardown proof compares the real core's state by content, and for its terminal inventory it normalises only that inventory's own activity fields (turn/news/status timestamp, a working/idle/done word, and a leading spinner in a title); terminal identity, membership, processes, labels, real names and every unknown field still have to match, so a rename, a replaced process or a new terminal refuses.
 `boundary` means the capability has no Core transfer and the row states why, or what decision it needs.
 Nothing is listed as "not found" without a reason: a capability missing from one search is not a boundary.
 
